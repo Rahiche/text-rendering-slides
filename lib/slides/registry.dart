@@ -3,6 +3,7 @@ import '../deck/widgets.dart';
 import 's01_title.dart';
 import 's01a_title_split.dart';
 import 's01b_title_site.dart';
+import 's01c_title_factory.dart';
 import 's03_string.dart';
 import 's04_pipeline.dart';
 import 's05_itemize.dart';
@@ -40,6 +41,7 @@ final slides = <SlideDef>[
   // Title-slide options under consideration.
   SlideDef(id: 'title-split', section: 'intro', title: 'Title option · easy vs hard', builder: (_) => const TitleSplitSlide()),
   SlideDef(id: 'title-site', section: 'intro', title: 'Title option · construction site', builder: (_) => const TitleSiteSlide()),
+  SlideDef(id: 'title-factory', section: 'intro', title: 'Title option · glyph factory', builder: (_) => const TitleFactorySlide()),
 
   // 01 — how text rendering works
   SlideDef(

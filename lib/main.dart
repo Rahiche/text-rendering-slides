@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'deck/deck.dart';
 import 'deck/theme.dart';
 import 'slides/registry.dart';
+import 'worlds/worlds.dart';
 
 void main() => runApp(const SlidesApp());
 
@@ -28,7 +29,7 @@ class SlidesApp extends StatelessWidget {
         // widgets measure exactly like the raw paragraphs the slides probe.
         child: DefaultTextStyle(
           style: const TextStyle(fontFamily: BP.display, fontSize: 16, color: BP.ink),
-          child: Deck(slides: slides),
+          child: Deck(worlds: worlds, initial: worldFromEnvironment(), slidesFor: buildSlides),
         ),
       ),
     );

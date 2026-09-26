@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../worlds/world.dart';
 import 'theme.dart';
 
 /// One slide in the deck.
@@ -93,11 +94,8 @@ class DeckController extends ChangeNotifier {
 }
 
 class DeckScope extends InheritedNotifier<DeckController> {
-  const DeckScope({
-    super.key,
-    required DeckController controller,
-    required super.child,
-  }) : super(notifier: controller);
+  const DeckScope({super.key, required DeckController controller, required super.child})
+    : super(notifier: controller);
 
   static DeckController of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<DeckScope>()!.notifier!;
@@ -127,21 +125,38 @@ class SlideScope extends InheritedWidget {
       context.dependOnInheritedWidgetOfExactType<SlideScope>()!;
 
   @override
-  bool updateShouldNotify(SlideScope old) =>
-      old.step != step || old.index != index;
+  bool updateShouldNotify(SlideScope old) => old.step != step || old.index != index;
 }
 
 class Deck extends StatefulWidget {
-  const Deck({super.key, required this.slides});
+  const Deck({super.key, required this.worlds, required this.initial, required this.slidesFor});
 
-  final List<SlideDef> slides;
+  /// All versions of the deck; `w` cycles through them while presenting.
+  final List<World> worlds;
+  final World initial;
+  final List<SlideDef> Function(World world) slidesFor;
 
   @override
   State<Deck> createState() => _DeckState();
 }
 
 class _DeckState extends State<Deck> {
-  late final DeckController _c = DeckController(widget.slides);
+  late World _world = widget.initial;
+  late DeckController _c = DeckController(widget.slidesFor(_world));
+
+  /// Switch to another world, staying on the same slide id when it exists.
+  void _setWorld(World w) {
+    final id = _c.current.id;
+    final next = DeckController(widget.slidesFor(w));
+    final i = next.slides.indexWhere((s) => s.id == id);
+    next.index = i >= 0 ? i : _c.index.clamp(0, next.slides.length - 1);
+    final old = _c;
+    setState(() {
+      _world = w;
+      _c = next;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+  }
 
   /// When the platform's font set changes (on the web: a Noto fallback font
   /// finished downloading), rebuild and repaint everything — keeping state —
@@ -187,8 +202,7 @@ class _DeckState extends State<Deck> {
   bool _editingText() {
     final ctx = FocusManager.instance.primaryFocus?.context;
     if (ctx == null) return false;
-    return ctx.widget is EditableText ||
-        ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+    return ctx.widget is EditableText || ctx.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
   bool _onKey(KeyEvent e) {
@@ -207,8 +221,7 @@ class _DeckState extends State<Deck> {
         k == LogicalKeyboardKey.space ||
         k == LogicalKeyboardKey.pageDown) {
       _c.next();
-    } else if (k == LogicalKeyboardKey.arrowLeft ||
-        k == LogicalKeyboardKey.pageUp) {
+    } else if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.pageUp) {
       _c.prev();
     } else if (e is KeyDownEvent) {
       if (k == LogicalKeyboardKey.keyO) {
@@ -219,6 +232,9 @@ class _DeckState extends State<Deck> {
         _c.goTo(0);
       } else if (k == LogicalKeyboardKey.end) {
         _c.goTo(_c.slides.length - 1);
+      } else if (k == LogicalKeyboardKey.keyW && widget.worlds.length > 1) {
+        final i = widget.worlds.indexWhere((w) => w.id == _world.id);
+        _setWorld(widget.worlds[(i + 1) % widget.worlds.length]);
       }
     }
     return false;
@@ -226,81 +242,98 @@ class _DeckState extends State<Deck> {
 
   @override
   Widget build(BuildContext context) {
-    return DeckScope(
-      controller: _c,
-      child: ListenableBuilder(
-        listenable: _c,
-        builder: (context, _) => LayoutBuilder(
-          builder: (context, box) {
-            final scale = math.min(
-              box.maxWidth / BP.canvas.width,
-              box.maxHeight / BP.canvas.height,
-            );
-            final origin = Offset(
-              (box.maxWidth - BP.canvas.width * scale) / 2,
-              (box.maxHeight - BP.canvas.height * scale) / 2,
-            );
-            return ColoredBox(
-              color: BP.paper,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: GridPaperPainter(scale: scale, origin: origin),
+    return WorldScope(
+      world: _world,
+      child: DeckScope(
+        controller: _c,
+        child: ListenableBuilder(
+          listenable: _c,
+          builder: (context, _) => LayoutBuilder(
+            builder: (context, box) {
+              final scale = math.min(
+                box.maxWidth / BP.canvas.width,
+                box.maxHeight / BP.canvas.height,
+              );
+              final origin = Offset(
+                (box.maxWidth - BP.canvas.width * scale) / 2,
+                (box.maxHeight - BP.canvas.height * scale) / 2,
+              );
+              return ColoredBox(
+                color: BP.paper,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: GridPaperPainter(scale: scale, origin: origin),
+                      ),
                     ),
-                  ),
-                  const Positioned(left: 0, top: 0, child: _FontWarmup()),
-                  Positioned.fill(
-                    child: FittedBox(
-                      child: SizedBox.fromSize(
-                        size: BP.canvas,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Positioned.fill(child: _slides()),
-                            const Positioned.fill(
-                              child: IgnorePointer(
-                                child: CustomPaint(painter: CropMarksPainter()),
+                    const Positioned(left: 0, top: 0, child: _FontWarmup()),
+                    Positioned.fill(
+                      child: FittedBox(
+                        child: SizedBox.fromSize(
+                          size: BP.canvas,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Positioned.fill(child: _slides()),
+                              const Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(painter: CropMarksPainter()),
+                                ),
                               ),
-                            ),
-                            Positioned(
-                              left: BP.margin,
-                              right: BP.margin,
-                              bottom: 22,
-                              height: 48,
-                              child: _Ruler(controller: _c),
-                            ),
-                            if (_c.overview)
-                              Positioned.fill(child: _Overview(controller: _c)),
-                          ],
+                              ?_worldRuler(),
+                              if (_world.ruler(_c) == null)
+                                Positioned(
+                                  left: BP.margin,
+                                  right: BP.margin,
+                                  bottom: 22,
+                                  height: 48,
+                                  child: _Ruler(controller: _c),
+                                ),
+                              if (_c.overview) Positioned.fill(child: _Overview(controller: _c)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  Widget? _worldRuler() {
+    final r = _world.ruler(_c);
+    if (r == null) return null;
+    return Positioned(left: 0, right: 0, bottom: 0, height: 110, child: r);
+  }
+
   Widget _slides() {
     final def = _c.current;
-    final key = ValueKey('${_c.index}:${_c.nonce}');
+    final key = ValueKey('${_world.id}:${_c.index}:${_c.nonce}');
+    final worldTransition = _world.transition;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 800),
-      layoutBuilder: (current, previous) => Stack(
-        fit: StackFit.expand,
-        children: [...previous, ?current],
-      ),
-      transitionBuilder: (child, anim) => _Wipe(
-        animation: anim,
-        incoming: child.key == key,
-        forward: _c.direction > 0,
-        child: child,
-      ),
+      layoutBuilder: (current, previous) =>
+          Stack(fit: StackFit.expand, children: [...previous, ?current]),
+      transitionBuilder: (child, anim) => worldTransition != null
+          ? worldTransition(
+              context,
+              child,
+              anim,
+              incoming: child.key == key,
+              forward: _c.direction > 0,
+            )
+          : _Wipe(
+              animation: anim,
+              incoming: child.key == key,
+              forward: _c.direction > 0,
+              child: child,
+            ),
       child: SlideScope(
         key: key,
         index: _c.index,
@@ -398,11 +431,17 @@ class _ScanLinePainter extends CustomPainter {
     canvas.drawRect(
       Rect.fromLTRB(math.min(x, x + trail), 0, math.max(x, x + trail), size.height),
       Paint()
-        ..shader = LinearGradient(
-          begin: forward ? Alignment.centerRight : Alignment.centerLeft,
-          end: forward ? Alignment.centerLeft : Alignment.centerRight,
-          colors: [BP.line.withValues(alpha: 0.18 * fade), BP.line.withValues(alpha: 0)],
-        ).createShader(Rect.fromLTRB(math.min(x, x + trail), 0, math.max(x, x + trail), size.height)),
+        ..shader =
+            LinearGradient(
+              begin: forward ? Alignment.centerRight : Alignment.centerLeft,
+              end: forward ? Alignment.centerLeft : Alignment.centerRight,
+              colors: [
+                BP.line.withValues(alpha: 0.18 * fade),
+                BP.line.withValues(alpha: 0),
+              ],
+            ).createShader(
+              Rect.fromLTRB(math.min(x, x + trail), 0, math.max(x, x + trail), size.height),
+            ),
     );
     canvas.drawLine(
       Offset(x, -40),
@@ -453,8 +492,7 @@ class GridPaperPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(GridPaperPainter old) =>
-      old.scale != scale || old.origin != origin;
+  bool shouldRepaint(GridPaperPainter old) => old.scale != scale || old.origin != origin;
 }
 
 class CropMarksPainter extends CustomPainter {
@@ -502,10 +540,7 @@ class _Ruler extends StatelessWidget {
             Positioned(
               left: 0,
               top: 16,
-              child: Text(
-                c.current.section,
-                style: BT.mono(14, color: BP.inkDim),
-              ),
+              child: Text(c.current.section, style: BT.mono(14, color: BP.inkDim)),
             ),
             Positioned(
               right: 0,
@@ -576,12 +611,7 @@ class _Ruler extends StatelessWidget {
 }
 
 class _Tick extends StatefulWidget {
-  const _Tick({
-    required this.title,
-    required this.major,
-    required this.done,
-    required this.onTap,
-  });
+  const _Tick({required this.title, required this.major, required this.done, required this.onTap});
 
   final String title;
   final bool major;
@@ -614,9 +644,7 @@ class _TickState extends State<_Tick> {
                 duration: const Duration(milliseconds: 200),
                 width: _hover ? 3 : 1.5,
                 height: widget.major ? 18 : 9,
-                color: _hover
-                    ? BP.amber
-                    : (widget.done ? BP.line : BP.lineDim),
+                color: _hover ? BP.amber : (widget.done ? BP.line : BP.lineDim),
               ),
             ),
             if (_hover)
@@ -628,11 +656,7 @@ class _TickState extends State<_Tick> {
                     color: BP.panel,
                     border: Border.all(color: BP.line),
                   ),
-                  child: Text(
-                    widget.title,
-                    softWrap: false,
-                    style: BT.mono(13, color: BP.ink),
-                  ),
+                  child: Text(widget.title, softWrap: false, style: BT.mono(13, color: BP.ink)),
                 ),
               ),
           ],
@@ -741,7 +765,6 @@ class _OverviewCardState extends State<_OverviewCard> {
     );
   }
 }
-
 
 /// Lays out (never paints) one paragraph with every script the deck uses, so on
 /// the web CanvasKit downloads the Noto fallback fonts early — but only after

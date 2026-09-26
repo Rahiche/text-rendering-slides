@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../worlds/world.dart';
 import 'deck.dart';
 import 'theme.dart';
 
@@ -38,8 +39,11 @@ class SlideFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = SlideScope.of(context);
     final n = (scope.index + 1).toString().padLeft(2, '0');
+    final ambient = WorldScope.maybeOf(context)?.ambient(context);
     return Stack(
       children: [
+        // The world's scenery lives behind the content, in the margins.
+        if (ambient != null) Positioned.fill(child: ambient),
         Positioned(
           left: BP.margin,
           right: BP.margin,

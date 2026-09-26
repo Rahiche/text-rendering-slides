@@ -31,15 +31,16 @@ workflows:
         script: flutter analyze --no-fatal-infos
       - name: Test
         script: flutter test
-      - name: Build web (Wasm)
-        script: flutter build web --wasm --release --base-href "$BASE_HREF"
+      - name: Build web (Wasm) + assemble the site
+        # One Wasm build, copied to /factory/, /construction/, /workers/ and
+        # /classic/ (the app picks its world from the URL), plus a landing page.
+        script: BASE_PATH="$BASE_HREF" ./tool/build_pages.sh
       - name: Package artifact
-        script: cd build && zip -qr web.zip web
+        script: cd build && zip -qr pages.zip pages
       - name: Publish to GitHub Pages
         script: |
           set -euo pipefail
-          cd build/web
-          touch .nojekyll
+          cd build/pages
           git init -q -b gh-pages
           git config user.name "Codemagic"
           git config user.email "builds@codemagic.io"
@@ -48,4 +49,4 @@ workflows:
           git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${PAGES_REPO}.git" gh-pages
           echo "Published → https://rahiche.github.io${BASE_HREF}"
     artifacts:
-      - build/web.zip
+      - build/pages.zip

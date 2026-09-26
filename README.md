@@ -2,6 +2,20 @@
 
 **Live (WebAssembly):** https://rahiche.github.io/text-rendering-slides/
 
+Three versions of the same talk, each told inside one world:
+
+| version | link |
+| --- | --- |
+| Glyph factory | https://rahiche.github.io/text-rendering-slides/factory/ |
+| Construction site | https://rahiche.github.io/text-rendering-slides/construction/ |
+| Easy vs hard (workers) | https://rahiche.github.io/text-rendering-slides/workers/ |
+| Classic blueprint | https://rahiche.github.io/text-rendering-slides/classic/ |
+
+The content slides are shared; each world (`lib/worlds/`) supplies the title,
+section dividers, pipeline overview, journey map, outro, ambient scenery, the
+progress ruler and the slide transition. Press `w` to switch worlds live, or run
+natively with `flutter run -d macos --dart-define=WORLD=factory`.
+
 A Blueprint-themed, fully interactive deck on how text rendering works, why
 more scripts make it harder, how Chrome / Figma / macOS / Android do it, what
 Flutter can and can't do, and one word's journey from `Text('…')` to GPU pixels.
@@ -15,10 +29,10 @@ flutter run -d chrome    # web (CanvasKit), fallback fonts download from Google 
 
 Deep link on the web: `?slide=<id>` (e.g. `?slide=j-map`, `?slide=shaping`).
 
-Build the WebAssembly version locally:
+Build the WebAssembly site locally (one build, copied per world, plus the landing page):
 
 ```bash
-flutter build web --wasm --base-href /text-rendering-slides/
+./tool/build_pages.sh   # → build/pages
 ```
 
 ## Deploy (Codemagic → GitHub Pages)
@@ -44,6 +58,7 @@ WasmGC fall back to the JavaScript build automatically.
 | ← / page up | previous |
 | o | overview grid (click a slide to jump) |
 | r | replay the current slide's animations |
+| w | switch to the next world (version) |
 | home / end | first / last slide |
 | esc | leave a text field (so arrows drive the deck again) |
 

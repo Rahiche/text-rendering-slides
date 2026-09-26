@@ -2,6 +2,7 @@ import '../deck/deck.dart';
 import '../deck/widgets.dart';
 import 's01_title.dart';
 import 's01a_title_split.dart';
+import 's01b_title_site.dart';
 import 's03_string.dart';
 import 's04_pipeline.dart';
 import 's05_itemize.dart';
@@ -38,6 +39,7 @@ final slides = <SlideDef>[
   SlideDef(id: 'title', section: 'intro', title: 'Text rendering', builder: (_) => const TitleSlide()),
   // Title-slide options under consideration.
   SlideDef(id: 'title-split', section: 'intro', title: 'Title option · easy vs hard', builder: (_) => const TitleSplitSlide()),
+  SlideDef(id: 'title-site', section: 'intro', title: 'Title option · construction site', builder: (_) => const TitleSiteSlide()),
 
   // 01 — how text rendering works
   SlideDef(

@@ -9,6 +9,7 @@ Three versions of the same talk, each told inside one world:
 | Glyph factory | https://rahiche.github.io/text-rendering-slides/factory/ |
 | Construction site | https://rahiche.github.io/text-rendering-slides/construction/ |
 | Easy vs hard (workers) | https://rahiche.github.io/text-rendering-slides/workers/ |
+| The case of 直 (detective) | https://rahiche.github.io/text-rendering-slides/detective/ |
 | Classic blueprint | https://rahiche.github.io/text-rendering-slides/classic/ |
 
 The content slides are shared; each world (`lib/worlds/`) supplies the title,
@@ -73,4 +74,5 @@ Click the progress ruler ticks to jump; hover a tick to see the slide title.
 - `lib/slides/journey/` — section 05: one word's journey. The word is shared by
   every slide in the section; change it on any of them.
 - `assets/fonts/` — Space Grotesk, JetBrains Mono, Noto Kufi Arabic (SIL OFL,
-  from github.com/google/fonts).
+  from github.com/google/fonts), plus tiny Noto Sans JP / SC subsets for the
+  detective world's Han-unification evidence (SIL OFL, via Google Fonts).

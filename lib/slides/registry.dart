@@ -81,7 +81,7 @@ List<SlideDef> buildSlides(World w) {
     builder: (_) => w.section(sections[i]),
   );
   final outro = w.outro();
-  return [
+  final base = [
     SlideDef(id: 'title', section: 'intro', title: 'Text rendering', builder: (_) => w.title()),
 
     // 01 — how text rendering works
@@ -265,5 +265,9 @@ List<SlideDef> buildSlides(World w) {
     SlideDef(id: 'end', section: 'outro', title: 'The trade-off', builder: (_) => const EndSlide()),
     if (outro != null)
       SlideDef(id: 'outro', section: 'outro', title: 'Thank you', builder: (_) => outro),
+  ];
+  // Let the world weave its own story slides in between.
+  return [
+    for (final s in base) ...[s, ...w.after(s.id)],
   ];
 }

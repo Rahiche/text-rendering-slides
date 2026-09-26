@@ -63,6 +63,10 @@ abstract class World {
   /// An extra closing slide appended after 'The trade-off'.
   Widget? outro() => null;
 
+  /// Story slides this world inserts right after the shared slide [slideId]
+  /// (e.g. a clue after 'string'). Their ids must be unique across the deck.
+  List<SlideDef> after(String slideId) => const [];
+
   /// Painted behind every standard content slide (anything using
   /// SlideFrame), across the full 1600×900 canvas. Keep it in the margins:
   /// the content area is x 64–1536, y 176–804; the title sits top-left.

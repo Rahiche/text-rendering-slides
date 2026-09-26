@@ -4,12 +4,13 @@
 #   <base>/factory/       glyph factory
 #   <base>/construction/  construction site
 #   <base>/workers/       easy vs hard
+#   <base>/detective/     the case of 直
 #   <base>/classic/       plain blueprint deck
 # Each folder is the same build; the app picks its world from the URL path.
 set -euo pipefail
 
 BASE="${BASE_PATH:-/text-rendering-slides/}"
-WORLDS=(factory construction workers classic)
+WORLDS=(factory construction workers detective classic)
 PLACEHOLDER="/__world_base__/"
 
 flutter build web --wasm --release --base-href "$PLACEHOLDER"

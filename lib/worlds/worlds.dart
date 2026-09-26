@@ -1,11 +1,18 @@
 import 'classic.dart';
 import 'construction/construction_world.dart';
+import 'detective/detective_world.dart';
 import 'factory/factory_world.dart';
 import 'workers/workers_world.dart';
 import 'world.dart';
 
 /// Every version of the deck. Order = the `w` key's cycle order.
-const worlds = <World>[FactoryWorld(), ConstructionWorld(), WorkersWorld(), ClassicWorld()];
+const worlds = <World>[
+  FactoryWorld(),
+  ConstructionWorld(),
+  WorkersWorld(),
+  DetectiveWorld(),
+  ClassicWorld(),
+];
 
 /// Picks the world from the URL (web): a path segment such as
 /// `/text-rendering-slides/factory/`, or `?deck=factory`. Otherwise

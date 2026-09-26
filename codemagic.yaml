@@ -1,0 +1,51 @@
+# Builds the deck as a WebAssembly Flutter web app and publishes it to
+# GitHub Pages (the gh-pages branch) on every push to main.
+#
+# One-time setup in Codemagic (App settings → Environment variables):
+#   group:  github_pages
+#   secure variable: GITHUB_TOKEN = a fine-grained GitHub token with
+#           "Contents: Read and write" on Rahiche/text-rendering-slides
+workflows:
+  web-wasm:
+    name: Web (Wasm) → GitHub Pages
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: 3.41.6
+      groups:
+        - github_pages
+      vars:
+        BASE_HREF: /text-rendering-slides/
+        PAGES_REPO: Rahiche/text-rendering-slides
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze --no-fatal-infos
+      - name: Test
+        script: flutter test
+      - name: Build web (Wasm)
+        script: flutter build web --wasm --release --base-href "$BASE_HREF"
+      - name: Package artifact
+        script: cd build && zip -qr web.zip web
+      - name: Publish to GitHub Pages
+        script: |
+          set -euo pipefail
+          cd build/web
+          touch .nojekyll
+          git init -q -b gh-pages
+          git config user.name "Codemagic"
+          git config user.email "builds@codemagic.io"
+          git add -A
+          git commit -q -m "Deploy ${CM_COMMIT:-manual build}"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${PAGES_REPO}.git" gh-pages
+          echo "Published → https://rahiche.github.io${BASE_HREF}"
+    artifacts:
+      - build/web.zip

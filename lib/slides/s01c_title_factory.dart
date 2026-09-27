@@ -8,6 +8,7 @@ import '../deck/font_data.dart';
 import '../deck/scripts.dart';
 import '../deck/theme.dart';
 import '../deck/widgets.dart';
+import '../worlds/factory/factory_kit.dart';
 
 /// Title, option C: "The glyph factory".
 ///
@@ -839,14 +840,12 @@ class _Model {
 
   // ── Labels ───────────────────────────────────────────────────────────────
   final labels = <String, TextPainter>{};
-  late final TextPainter zz;
   late final TextPainter hexRoll;
   late final TextPainter glyphsLabel;
   final fontCells = <TextPainter>[];
   final plates = <TextPainter>[];
 
   void _buildMisc() {
-    zz = _tp(TextSpan(text: 'z', style: BT.mono(11, color: BP.inkDim)));
     final cps = <String>{};
     for (final r in (_title + _mEntries.map((e) => e.$1).join()).runes) {
       if (r != 0x20) cps.add(_hex(r));
@@ -1241,69 +1240,16 @@ class _Model {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stick figures
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// A worker's pose. Angles are absolute, 0 = pointing down, +π/2 = forward
-/// (the way the worker faces), π = up.
-class _Fig {
-  double lean = 0;
-  double head = 0;
-  double drop = 0; // hip lowered, as a fraction of height
-  double bob = 0; // px up
-  double thA = 0.12, shA = 0.05, thB = -0.1, shB = -0.1;
-  double upA = 0.14, foA = 0.34, upB = -0.1, foB = 0.06;
-
-  void walk(double ph, {double amp = 0.42, bool arms = true}) {
-    final sn = math.sin(ph), cs = math.cos(ph);
-    thA = amp * sn;
-    thB = -amp * sn;
-    shA = thA - 0.55 * math.max(0, cs);
-    shB = thB - 0.55 * math.max(0, -cs);
-    drop = (1 - math.cos(amp * sn)) * 0.48;
-    if (arms) {
-      upA = -0.45 * sn;
-      foA = upA + 0.35;
-      upB = 0.45 * sn;
-      foB = upB + 0.35;
-    }
-  }
-
-  void wave(double t) {
-    upA = 2.65;
-    foA = 3.0 + 0.5 * math.sin(t * 13);
-  }
-
-  void cheer(double t, int seed) {
-    final w = 0.16 * math.sin(t * 9 + seed);
-    upA = 2.75 + w;
-    foA = 2.95 + w;
-    upB = 2.85 - w;
-    foB = 3.05 - w;
-    bob = 3 * math.max(0, math.sin(t * 9 + seed));
-  }
-
-  void wipe(double t) {
-    upA = 2.0;
-    foA = 3.75 + 0.22 * math.sin(t * 10);
-    head = -0.1;
-  }
-}
-
-typedef _Limbs = ({Offset handA, Offset handB, Offset head, Offset elbowA});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // One painted frame
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _Frame {
-  _Frame(this.c, this.m, this.s, this.t, this.io) : cyc = (s / _tc).floor() {
+class _Frame extends FactoryInk {
+  _Frame(super.c, this.m, this.s, this.t, this.io) : cyc = (s / _tc).floor() {
     ph = s / _tc - cyc;
     e = ph < _mv ? _eio(ph / _mv) : 1.0;
     belt = (cyc - 1 + e) * _pitch;
   }
 
-  final Canvas c;
   final _Model m;
   final double s; // simulation time
   final double t; // wall time since the slide appeared
@@ -1313,18 +1259,8 @@ class _Frame {
   late final double e;
   late final double belt;
 
-  static final _stroke = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round;
-  static final _fill = Paint();
   static final _pix = Paint()..filterQuality = FilterQuality.none;
   static final _sheen = Paint()..blendMode = BlendMode.srcATop;
-
-  Paint st(Color col, [double w = 1.4]) => _stroke
-    ..color = col
-    ..strokeWidth = w;
-  Paint fl(Color col) => _fill..color = col;
 
   bool get dwell => ph >= _mv;
 
@@ -1453,7 +1389,7 @@ class _Frame {
       tile(u, r);
       return;
     }
-    crate(u, r, sortP, fontP, pressed);
+    unitCrate(u, r, sortP, fontP, pressed);
     if (rastP > 0) {
       final y = r.top + r.height * rastP;
       c.save();
@@ -1464,16 +1400,7 @@ class _Frame {
     }
   }
 
-  void paintFit(TextPainter p, Rect box) {
-    final k = math.min(1.0, box.width / math.max(1, p.width));
-    c.save();
-    c.translate(box.center.dx, box.center.dy);
-    c.scale(k);
-    p.paint(c, Offset(-p.width / 2, -p.height / 2));
-    c.restore();
-  }
-
-  void crate(_Unit u, Rect r, double sortP, double fontP, bool pressed) {
+  void unitCrate(_Unit u, Rect r, double sortP, double fontP, bool pressed) {
     final col = sortP >= 0.5 ? u.color : BP.inkDim;
     c.drawRect(r, fl(BP.panel));
     c.drawRect(r, st(col, 1.2));
@@ -1553,6 +1480,7 @@ class _Frame {
 
   // ── Machines ──────────────────────────────────────────────────────────────
 
+  @override
   void lamp(Offset p, Color col, bool on, [double r = 4.5]) {
     if (on) c.drawCircle(p, r - 1, fl(col));
   }
@@ -2121,7 +2049,7 @@ class _Frame {
   /// Set by [guy]: the last worker dropped his task to cheer or wave.
   bool busy = false;
 
-  _Limbs guy(Offset feet, double h, int dir, _Fig f, {int seed = 0, bool canCheer = true, int machine = -1}) {
+  Limbs guy(Offset feet, double h, int dir, Pose f, {int seed = 0, bool canCheer = true, int machine = -1}) {
     busy = false;
     if (canCheer && (cheering || (machine >= 0 && boost(machine) > 0))) {
       f.cheer(t, seed);
@@ -2131,52 +2059,7 @@ class _Frame {
       f.wave(t);
       busy = true;
     }
-    return fig(feet, h, dir, f);
-  }
-
-  _Limbs fig(Offset feet, double h, int dir, _Fig f) {
-    Offset v(double a, double len) => Offset(math.sin(a) * dir * len, math.cos(a) * len);
-    final hip = feet + Offset(0, -0.48 * h + f.drop * h - f.bob);
-    final spine = 0.32 * h;
-    final neck = hip + Offset(math.sin(f.lean) * dir * spine, -math.cos(f.lean) * spine);
-    final hr = 0.125 * h;
-    final ha = f.lean + f.head;
-    final up = Offset(math.sin(ha) * dir, -math.cos(ha));
-    final head = neck + up * (hr + 0.8);
-    final sh = neck - Offset(math.sin(f.lean) * dir, -math.cos(f.lean)) * (0.05 * h);
-    final kA = hip + v(f.thA, 0.25 * h), fA = kA + v(f.shA, 0.24 * h);
-    final kB = hip + v(f.thB, 0.25 * h), fB = kB + v(f.shB, 0.24 * h);
-    final eA = sh + v(f.upA, 0.17 * h), hA = eA + v(f.foA, 0.17 * h);
-    final eB = sh + v(f.upB, 0.17 * h), hB = eB + v(f.foB, 0.17 * h);
-    final w = h < 30 ? 1.5 : 1.8;
-    c.drawPath(
-      Path()
-        ..moveTo(hip.dx, hip.dy)
-        ..lineTo(kB.dx, kB.dy)
-        ..lineTo(fB.dx, fB.dy)
-        ..moveTo(sh.dx, sh.dy)
-        ..lineTo(eB.dx, eB.dy)
-        ..lineTo(hB.dx, hB.dy),
-      st(BP.inkDim, w),
-    );
-    c.drawPath(
-      Path()
-        ..moveTo(fA.dx, fA.dy)
-        ..lineTo(kA.dx, kA.dy)
-        ..lineTo(hip.dx, hip.dy)
-        ..lineTo(neck.dx, neck.dy)
-        ..moveTo(sh.dx, sh.dy)
-        ..lineTo(eA.dx, eA.dy)
-        ..lineTo(hA.dx, hA.dy),
-      st(BP.ink, w),
-    );
-    c.drawCircle(head, hr, fl(BP.paper));
-    c.drawCircle(head, hr, st(BP.ink, w * 0.85));
-    final top = math.atan2(up.dy, up.dx);
-    c.drawArc(Rect.fromCircle(center: head, radius: hr + 0.9), top - math.pi / 2, math.pi, true, fl(BP.amber));
-    final fwd = Offset(-up.dy, up.dx) * dir.toDouble();
-    c.drawLine(head - fwd * (hr + 0.6), head + fwd * (hr + 3.2), st(BP.amber, 1.5));
-    return (handA: hA, handB: hB, head: head, elbowA: eA);
+    return worker(feet, h, dir, f);
   }
 
   void workers() {
@@ -2186,7 +2069,7 @@ class _Frame {
       final n = (s / per).floor();
       final p = s / per - n;
       final rest = _rnd(n, 3) < 0.2;
-      final f = _Fig()
+      final f = Pose()
         ..thA = 0.08
         ..thB = -0.06
         ..shB = -0.06;
@@ -2222,7 +2105,7 @@ class _Frame {
     {
       final u = m.unitAt(cyc - _sSort);
       final pull = u != null && dwell ? _eo(dw(0, 0.2)) * (1 - _eio(dw(0.55, 0.85))) : 0.0;
-      final f = _Fig()
+      final f = Pose()
         ..upA = _lerp(2.4, 1.25, pull)
         ..foA = _lerp(2.75, 1.6, pull)
         ..lean = 0.12 * pull;
@@ -2271,7 +2154,7 @@ class _Frame {
         work = (u - 2 * leg - pause) / pause;
         boxes = (3 * (work * 1.6 - 0.6)).ceil().clamp(0, 3);
       }
-      final f = _Fig();
+      final f = Pose();
       if (moving) f.walk(s * speed / 4.5, arms: false);
       final bend = _bump(work);
       f
@@ -2287,7 +2170,7 @@ class _Frame {
     {
       final u = m.unitAt(cyc - _sFont);
       final poke = u != null && dwell ? _bump(dw(0, 0.3)) : 0.0;
-      final f = _Fig()
+      final f = Pose()
         ..upA = 1.05 + 0.2 * poke
         ..foA = 1.3 + 0.35 * poke;
       final ep = (s / 9).floor();
@@ -2308,7 +2191,7 @@ class _Frame {
     {
       final ep = (s / 7).floor();
       final r = _rnd(ep, 11);
-      final f = _Fig();
+      final f = Pose();
       var age = -1.0;
       if (r < 0.72) {
         const hp = _tc / 2;
@@ -2342,7 +2225,7 @@ class _Frame {
     {
       final a = m.unitAt(cyc - 13);
       final pull = a != null && a.lineEnd && dwell ? _eo(dw(0, 0.18)) * (1 - _eio(dw(0.45, 0.85))) : 0.0;
-      final f = _Fig()
+      final f = Pose()
         ..upA = _lerp(2.55, 1.5, pull)
         ..foA = _lerp(2.75, 1.65, pull)
         ..upB = _lerp(2.35, 1.35, pull)
@@ -2359,7 +2242,7 @@ class _Frame {
       final ep = (s / 9).floor();
       final r = _rnd(ep, 13);
       final u = s - ep * 9;
-      final f = _Fig()
+      final f = Pose()
         ..thA = 1.35
         ..shA = 0.15
         ..thB = 1.25
@@ -2391,7 +2274,7 @@ class _Frame {
           ..head = 0.32;
       }
       final g = guy(const Offset(932, _floor), 34, 1, f, seed: 7);
-      coffee(g.handA);
+      coffee(g.handA, s);
       if (yawn) zees(g.head, u, 1);
     }
     // 7 · Stokes the oven: scoop from the pile, turn, throw into the firebox.
@@ -2400,7 +2283,7 @@ class _Frame {
       final n = (s / per).floor();
       final p = s / per - n;
       final toss = p >= 0.45;
-      final f = _Fig();
+      final f = Pose();
       if (!toss) {
         final sc = _bump(_seg(p, 0.05, 0.42));
         f
@@ -2434,7 +2317,7 @@ class _Frame {
       final ep = (s / 6).floor();
       final r = _rnd(ep, 19);
       final u = s - ep * 6;
-      final f = _Fig();
+      final f = Pose();
       var wiping = false;
       if (r < 0.5) {
         wiping = u < 2.4;
@@ -2455,7 +2338,7 @@ class _Frame {
     // 9 · Foreman with a clipboard, nodding at every glyph.
     {
       final nod = _bump(_seg(t, m.countChangedAt, m.countChangedAt + 0.45));
-      final f = _Fig()
+      final f = Pose()
         ..upB = 0.55
         ..foB = 1.55
         ..upA = 0.65
@@ -2469,14 +2352,14 @@ class _Frame {
           ..head = 0.3;
       }
       final g = guy(const Offset(1424, _floor), 35, -1, f, seed: 10);
-      clipboard(g.handB);
+      clipboard(g.handB, done: s > m.sDone);
     }
     // 10, 11 · The shelf crew: polisher and inspector.
     {
       final a = crew(s);
       final b = crew(s - 0.35);
       const h = 28.0;
-      final fb = _Fig();
+      final fb = Pose();
       var dirB = b.dir;
       final atWork = b.walk < 0 && b.target != null;
       if (b.walk >= 0) {
@@ -2496,7 +2379,7 @@ class _Frame {
       }
       final gb = guy(Offset(b.x - 22, _shelfY), h, dirB, fb, seed: 11);
       if (atWork && a.five <= 0) magnifier(gb.handA, gb.elbowA);
-      final fa = _Fig();
+      final fa = Pose();
       var dirA = a.dir;
       final polishing = a.walk < 0 && a.target != null && a.polish > 0 && a.polish < 1;
       if (a.walk >= 0) {
@@ -2517,148 +2400,6 @@ class _Frame {
         star(Offset.lerp(ga.handA, gb.handA, 0.5)! + const Offset(0, -3), 3 + 5 * _bump((a.five - 0.3) / 0.6), BP.amber);
       }
     }
-  }
-
-  // ── Props & particles ───────────────────────────────────────────────────
-
-  void shovel(Offset back, Offset front, double ext) {
-    final d = front - back;
-    final n = d.distance;
-    if (n < 0.1) return;
-    final u = d / n;
-    final tip = front + u * ext;
-    c.drawLine(back - u * 3, tip, st(BP.inkDim, 1.3));
-    final pp = Offset(-u.dy, u.dx);
-    final blade = Path()
-      ..moveTo(tip.dx + pp.dx * 4, tip.dy + pp.dy * 4)
-      ..lineTo(tip.dx + u.dx * 7 + pp.dx * 3, tip.dy + u.dy * 7 + pp.dy * 3)
-      ..lineTo(tip.dx + u.dx * 7 - pp.dx * 3, tip.dy + u.dy * 7 - pp.dy * 3)
-      ..lineTo(tip.dx - pp.dx * 4, tip.dy - pp.dy * 4)
-      ..close();
-    c.drawPath(blade, fl(BP.panel));
-    c.drawPath(blade, st(BP.line, 1.1));
-  }
-
-  void hammer(Offset elbow, Offset hand) {
-    final d = hand - elbow;
-    final n = d.distance;
-    if (n < 0.1) return;
-    final u = d / n;
-    final end = hand + u * 7;
-    c.drawLine(hand, end, st(BP.inkDim, 1.4));
-    final pp = Offset(-u.dy, u.dx);
-    c.drawLine(end - pp * 3.5, end + pp * 3.5, st(BP.line, 3));
-  }
-
-  void coffee(Offset hand) {
-    final r = Rect.fromLTWH(hand.dx - 1, hand.dy - 5, 5, 6);
-    c.drawRect(r, fl(BP.panel));
-    c.drawRect(r, st(BP.ink, 1));
-    for (var i = 0; i < 2; i++) {
-      final ph0 = s * 2 + i * 1.7;
-      final p = Path()..moveTo(r.center.dx + i * 2 - 1, r.top - 2);
-      for (var k = 1; k <= 6; k++) {
-        p.lineTo(r.center.dx + i * 2 - 1 + math.sin(ph0 + k * 0.9) * 1.6, r.top - 2 - k * 2);
-      }
-      c.drawPath(p, st(BP.inkDim.withValues(alpha: 0.7), 0.9));
-    }
-  }
-
-  void clipboard(Offset hand) {
-    final r = Rect.fromLTWH(hand.dx - 2, hand.dy - 9, 8, 11);
-    c.drawRect(r, fl(BP.panel));
-    c.drawRect(r, st(BP.ink, 1));
-    for (var i = 0; i < 3; i++) {
-      c.drawLine(Offset(r.left + 2, r.top + 3 + i * 2.5), Offset(r.right - 2, r.top + 3 + i * 2.5), st(BP.inkDim, 0.7));
-    }
-    if (s > m.sDone) c.drawPath(Path()..moveTo(r.left + 2, r.bottom - 3)..lineTo(r.left + 3.5, r.bottom - 1.5)..lineTo(r.right - 1, r.bottom - 5), st(BP.green, 1));
-  }
-
-  void magnifier(Offset hand, Offset elbow) {
-    final d = hand - elbow;
-    final n = d.distance;
-    if (n < 0.1) return;
-    final lens = hand + d / n * 6;
-    c.drawLine(hand, lens, st(BP.inkDim, 1.2));
-    c.drawCircle(lens, 3.4, fl(BP.line.withValues(alpha: 0.25)));
-    c.drawCircle(lens, 3.4, st(BP.line, 1.1));
-  }
-
-  void cart(Offset at, int dir, int boxes, double roll, Offset? hand) {
-    final body = Rect.fromLTRB(at.dx - 15, at.dy - 17, at.dx + 15, at.dy - 7);
-    for (var i = 0; i < boxes; i++) {
-      final b = Rect.fromLTWH(body.left + 2 + i * 9.0, body.top - 8, 8, 8);
-      c.drawRect(b, fl(BP.panel));
-      c.drawRect(b, st(BP.amber, 1));
-      c.drawLine(b.topLeft, b.bottomRight, st(BP.amber.withValues(alpha: 0.6), 0.8));
-    }
-    c.drawRect(body, fl(BP.panel));
-    c.drawRect(body, st(BP.line, 1.2));
-    final grip = Offset(at.dx - dir * 15, body.top);
-    c.drawLine(grip, hand ?? grip + Offset(-dir * 5.0, -9), st(BP.line, 1.2));
-    for (final wx in [at.dx - 9, at.dx + 9]) {
-      final w = Offset(wx, at.dy - 4);
-      c.drawCircle(w, 4, fl(BP.panel));
-      c.drawCircle(w, 4, st(BP.line, 1.1));
-      c.drawLine(w, w + Offset(math.cos(roll), math.sin(roll)) * 4, st(BP.line, 1));
-    }
-  }
-
-  void sweat(Offset head, double age, int dir) {
-    for (var i = 0; i < 3; i++) {
-      final q = age * 1.5 + i / 3;
-      final a = q - q.floorToDouble();
-      final p = head + Offset(-dir * (3 + a * 9 + i), -3 + 14 * a * a - 7 * math.sin(a * math.pi));
-      c.drawCircle(p, 0.6 + 1.1 * (1 - a), fl(BP.line.withValues(alpha: 1 - a)));
-    }
-  }
-
-  void zees(Offset head, double age, int dir) {
-    for (var i = 0; i < 3; i++) {
-      final q = age * 0.6 + i / 3;
-      final a = q - q.floorToDouble();
-      c.save();
-      c.translate(head.dx + dir * (6 + a * 12), head.dy - 8 - a * 22);
-      c.scale(0.6 + a * 0.7);
-      m.zz.paint(c, Offset(-m.zz.width / 2, -m.zz.height / 2));
-      c.restore();
-    }
-  }
-
-  void sparks(Offset o, double age, int seed) {
-    if (age < 0 || age > 1) return;
-    final p = Path();
-    for (var i = 0; i < 6; i++) {
-      final a = -math.pi / 2 + (_rnd(seed, i) - 0.5) * 2.6;
-      final sp = 10 + 16 * _rnd(seed, i, 2);
-      final d0 = sp * age, d1 = d0 + 4 * (1 - age) + 1;
-      final g = 14 * age * age;
-      p
-        ..moveTo(o.dx + math.cos(a) * d0, o.dy + math.sin(a) * d0 + g)
-        ..lineTo(o.dx + math.cos(a) * d1, o.dy + math.sin(a) * d1 + g);
-    }
-    c.drawPath(p, st(BP.amber.withValues(alpha: 1 - age * 0.8), 1.3));
-  }
-
-  void puff(Offset o, double age, double r0, double r1, [Color col = BP.inkDim]) {
-    if (age <= 0 || age >= 1) return;
-    c.drawCircle(o, _lerp(r0, r1, _eo(age)), st(col.withValues(alpha: 0.8 * (1 - age)), 1));
-  }
-
-  void star(Offset o, double r, Color col) {
-    final k = r * 0.4;
-    c.drawPath(
-      Path()
-        ..moveTo(o.dx - r, o.dy)
-        ..lineTo(o.dx + r, o.dy)
-        ..moveTo(o.dx, o.dy - r)
-        ..lineTo(o.dx, o.dy + r)
-        ..moveTo(o.dx - k, o.dy - k)
-        ..lineTo(o.dx + k, o.dy + k)
-        ..moveTo(o.dx + k, o.dy - k)
-        ..lineTo(o.dx - k, o.dy + k),
-      st(col, 1.2),
-    );
   }
 
   void counter() {

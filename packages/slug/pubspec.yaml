@@ -1,0 +1,19 @@
+name: slug
+description: "Resolution-independent GPU text for Flutter: glyphs drawn straight from their outlines in a fragment shader (the Slug algorithm, Lengyel 2017)."
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  shaders:
+    - shaders/slug.frag

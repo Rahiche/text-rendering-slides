@@ -1,4 +1,5 @@
 import '../deck/deck.dart';
+import '../deck/widgets.dart';
 import '../worlds/world.dart';
 import 's03_string.dart';
 import 's04_pipeline.dart';
@@ -31,6 +32,9 @@ import 'journey/j07_layout.dart';
 import 'journey/j08_record.dart';
 import 'journey/j09_atlas.dart';
 import 'journey/j10_gpu.dart';
+import 'lab/lab_phrase.dart';
+import 'lab/lab_slug.dart';
+import 'lab/lab_yakumono.dart';
 
 /// The five sections, shared by every world.
 const sections = [
@@ -262,6 +266,32 @@ List<SlideDef> buildSlides(World w) {
       builder: (_) => const JAtlasSlide(),
     ),
     SlideDef(id: 'j-gpu', section: 'journey', title: 'Draw', builder: (_) => const JGpuSlide()),
+    // 06 — side quest: unsolved in Flutter → solved (shared by every world)
+    SlideDef(
+      id: 'sec-lab',
+      section: 'lab',
+      title: 'Unsolved → solved',
+      builder: (_) =>
+          const SectionSlide(number: '06', title: 'Unsolved → solved', glyphs: ['文節', '」「', '◇']),
+    ),
+    SlideDef(
+      id: 'lab-phrase',
+      section: 'lab',
+      title: 'Phrase breaking',
+      builder: (_) => const PhraseLabSlide(),
+    ),
+    SlideDef(
+      id: 'lab-yakumono',
+      section: 'lab',
+      title: 'Punctuation spacing',
+      builder: (_) => const YakumonoLabSlide(),
+    ),
+    SlideDef(
+      id: 'lab-slug',
+      section: 'lab',
+      title: 'Slug · GPU text',
+      builder: (_) => const SlugLabSlide(),
+    ),
     SlideDef(id: 'end', section: 'outro', title: 'The trade-off', builder: (_) => const EndSlide()),
     if (outro != null)
       SlideDef(id: 'outro', section: 'outro', title: 'Thank you', builder: (_) => outro),

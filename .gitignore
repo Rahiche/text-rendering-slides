@@ -46,3 +46,8 @@ app.*.map.json
 
 # Local preview config
 .claude/
+
+# Local packages
+packages/*/build/
+packages/*/.dart_tool/
+packages/*/pubspec.lock

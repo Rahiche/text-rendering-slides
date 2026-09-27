@@ -8,13 +8,14 @@ import 'package:flutter/scheduler.dart';
 import '../deck/scripts.dart';
 import '../deck/theme.dart';
 import '../deck/widgets.dart';
+import '../worlds/workers/crew.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Title prototype: "easy vs hard".
 //
 // Left: three relaxed workers drop "Text" into its slots in ~2 s, then idle.
-// Right: a crowd shapes the same word in a complex script (Arabic →
-// Devanagari → Thai). Every job is a real shaping step, and every letter,
+// Right: a crowd shapes the same word in a complex script (Japanese →
+// Arabic → Devanagari → Thai). Every job is a real shaping step, and every letter,
 // form, dot and mark is real rendered text: contextual forms come from ZWJ
 // context, marks are "word minus word-without-mark", the headline is a clip
 // of the real word. One ticker drives one painter; nothing accumulates.
@@ -27,7 +28,7 @@ const _lCx = 462.0;
 const _rCx = 1180.0;
 const _mastX = 1552.0;
 const _jibY = 150.0;
-const _jibTip = 900.0;
+const _jibTip = 860.0;
 const _homeX = 1440.0; // crane trolley parking spot
 const _hookHome = _jibY + 46.0;
 const _enterX = 1606.0; // carried letters enter here (their left edge)
@@ -297,8 +298,20 @@ class _Word {
   }
 }
 
+/// What every right-side build shares.
+abstract interface class _Stage {
+  String get name;
+  Color get color;
+  List<String> get steps;
+  List<(double, double)> get at;
+  double get work;
+  String get codes;
+  Future<void> scan(bool Function() alive);
+  void dispose();
+}
+
 /// One complex-script build.
-class _Sc {
+class _Sc implements _Stage {
   _Sc({
     required this.name,
     required this.color,
@@ -318,10 +331,15 @@ class _Sc {
     required this.bandBottom,
   });
 
+  @override
   final String name;
+  @override
   final Color color;
+  @override
   final List<String> steps;
+  @override
   final List<(double, double)> at;
+  @override
   final double work;
   final double size;
   final _Word word;
@@ -330,6 +348,7 @@ class _Sc {
   final List<double> preX;
   final List<double> finX;
   final bool rtl;
+  @override
   final String codes;
 
   // Ink measured from real rasterized text (painter coordinates). Estimates
@@ -541,6 +560,7 @@ class _Sc {
 
   /// Rasterizes W' and W − W' once to find the real ink: the mark's box, the
   /// headline band (the row with the most ink) and each column's top.
+  @override
   Future<void> scan(bool Function() alive) async {
     const pad = 6;
     final w = word.width.ceil() + 2 * pad;
@@ -630,10 +650,132 @@ class _Sc {
     }
   }
 
+  @override
   void dispose() {
     word.dispose();
     for (final f in {...pre, ...post}) {
       f.dispose();
+    }
+  }
+}
+
+/// Japanese: 「縦書き」 (tategaki, "vertical writing"). Built as a horizontal
+/// line, broken where the real line breaker breaks it, then hung as
+/// vertical-rl columns. locale 'ja' picks Japanese glyph variants (Hiragino on
+/// macOS, Noto Sans JP on the web); the bracket swap is the font's own 'vert'.
+class _Ja implements _Stage {
+  _Ja._(this.s, this.base, this.solid, this.vert, this.vertSolid, this.ruby, this.rubySolid, this.peek, this.brk);
+
+  factory _Ja.build() {
+    const s = 96.0;
+    const d = TextDirection.ltr;
+    TextStyle st(double size, {bool vert = false, Color? color}) => BT.sample(size, weight: 500).copyWith(
+          locale: const Locale('ja'),
+          color: color,
+          fontFeatures: vert ? const [FontFeature.enable('vert')] : null,
+        );
+    final base = [for (final c in chars) _Form(c, st(s), d)];
+    final solid = [for (final c in chars) _tp(c, st(s), d)];
+    final vert = [_Form('「', st(s, vert: true), d), _Form('」', st(s, vert: true), d)];
+    final vertSolid = [_tp('「', st(s, vert: true), d), _tp('」', st(s, vert: true), d)];
+    final ruby = [for (final c in rubyChars) _Form(c, st(s / 2), d)];
+    final rubySolid = [for (final c in rubyChars) _tp(c, st(s / 2), d)];
+    final peek = [for (final c in const ['字', 'あ', '漢']) _tp(c, st(24, color: BP.inkDim), d)];
+    // Where does Flutter (SkParagraph + ICU line breaking) end line 1 at our
+    // measure? No break is allowed before 」, so き goes down with it.
+    final probe = TextPainter(text: TextSpan(text: chars.join(), style: st(s)), textDirection: d)
+      ..layout(maxWidth: s * 4.4);
+    final brk = probe.getLineBoundary(const TextPosition(offset: 0)).end.clamp(1, 4);
+    probe.dispose();
+    return _Ja._(s, base, solid, vert, vertSolid, ruby, rubySolid, peek, brk);
+  }
+
+  static const chars = ['「', '縦', '書', 'き', '」'];
+  static const rubyChars = ['た', 'て', 'が'];
+  static const rubyAt = [1.25, 1.75, 2.5]; // centres, in em from the line start
+  static const rubyBase = [1, 1, 2]; // the kanji each ruby kana belongs to
+  static const left = 900.0; // line start
+  static const rail = 182.0; // top edge of the vertical text frame
+  static const x1 = 1090.0; // first column (vertical-rl: the rightmost)
+  static const crate = Rect.fromLTWH(1392, 350, 144, 120);
+
+  @override
+  final String name = 'japanese';
+  @override
+  final Color color = Script.kana.color;
+  @override
+  final List<String> steps = const ['fallback', 'ruby', 'kinsoku', 'vert'];
+  @override
+  final List<(double, double)> at = const [(0.2, 3.8), (4.2, 8.4), (5.8, 9.6), (9.6, 15.5)];
+  @override
+  final double work = 15.8;
+  @override
+  final String codes = 'U+300C U+7E26 U+66F8 U+304D U+300D';
+
+  final double s;
+  final List<_Form> base;
+  final List<TextPainter> solid;
+  final List<_Form> vert; // 「 」 with the 'vert' feature
+  final List<TextPainter> vertSolid;
+  final List<_Form> ruby;
+  final List<TextPainter> rubySolid;
+  final List<TextPainter> peek;
+  final int brk; // glyphs on line 1, from the real line breaker
+
+  /// Whether the font really swaps 「 / 」 under 'vert' (checked on pixels);
+  /// if not, the brackets are turned 90° instead.
+  final List<bool> vertWorks = [true, true];
+
+  double get measure => s * 4.4;
+  double get emMid => _gy - s / 2;
+  double get rubyMid => _gy - s - 3 - s / 4;
+  double get x2 => x1 - 1.4 * s;
+  int chainOf(int k) => k < brk ? 0 : 1;
+  Offset anchor0(int c) => Offset(left + (c == 0 ? 0 : brk) * s, emMid);
+  Offset anchorF(int c) => Offset(c == 0 ? x1 : x2, rail);
+  Offset slot(int k) => Offset(left + (k + 0.5) * s, emMid);
+  Offset rubySlot(int i) => Offset(left + rubyAt[i] * s, rubyMid);
+
+  @override
+  Future<void> scan(bool Function() alive) async {
+    final pics = <ui.Picture>[];
+    for (var i = 0; i < 2; i++) {
+      for (final p in [solid[i == 0 ? 0 : 4], vertSolid[i]]) {
+        final r = ui.PictureRecorder();
+        p.paint(Canvas(r), Offset.zero);
+        pics.add(r.endRecording());
+      }
+    }
+    try {
+      final w = s.ceil() + 4, h = solid[0].height.ceil() + 4;
+      final px = <ByteData?>[];
+      for (final p in pics) {
+        px.add(await _Sc._pixels(p, w, h));
+      }
+      if (!alive()) return;
+      for (var i = 0; i < 2; i++) {
+        final a = px[2 * i], b = px[2 * i + 1];
+        if (a == null || b == null) continue;
+        var diff = 0;
+        for (var j = 3; j < a.lengthInBytes; j += 4) {
+          diff += (a.getUint8(j) - b.getUint8(j)).abs();
+        }
+        vertWorks[i] = diff > 255 * 40;
+      }
+    } finally {
+      for (final p in pics) {
+        p.dispose();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final f in [...base, ...vert, ...ruby]) {
+      f.dispose();
+    }
+    for (final p in [...solid, ...vertSolid, ...rubySolid, ...peek]) {
+      p.dispose();
     }
   }
 }
@@ -732,10 +874,10 @@ class _Kit {
     period = acc;
   }
 
-  factory _Kit.build() => _Kit(_Latin.build(), [_Sc.arabic(), _Sc.deva(), _Sc.thai()]);
+  factory _Kit.build() => _Kit(_Latin.build(), [_Ja.build(), _Sc.arabic(), _Sc.deva(), _Sc.thai()]);
 
   final _Latin latin;
-  final List<_Sc> scripts;
+  final List<_Stage> scripts;
   final List<double> starts = [];
   late final double period;
   final Map<String, TextPainter> _labels = {};
@@ -783,371 +925,22 @@ class _Kit {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Workers
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _P {
-  stand,
-  walk,
-  run,
-  carry,
-  shoulder,
-  reach,
-  toss,
-  push,
-  pull,
-  hammer,
-  wrench,
-  weld,
-  climb,
-  climbCarry,
-  sit,
-  coffee,
-  lie,
-  lean,
-  cheer,
-  highFive,
-  wipe,
-  signal,
-  clipboard,
-  pole,
-  point,
-  survey,
-  bucket,
-  ladder,
-  wave2,
-}
-
-enum _I { none, cup, wrench, torch, clipboard, hammer, bucket, sign, flag, staff }
-
-class _Fig {
-  _Fig(
-    this.x,
-    this.f,
-    this.p, {
-    this.y = _gy,
-    this.ph = 0,
-    this.k = 0,
-    this.move = false,
-    this.id = 0,
-    this.item = _I.none,
-    this.aim,
-    this.rope,
-    this.sweat = false,
-    this.itemT = 0,
-  });
-
-  double x;
-  double f;
-  _P p;
-  double y;
-  double ph;
-  double k;
-  bool move;
-  int id;
-  _I item;
-  Offset? aim;
-  Offset? rope;
-  bool sweat;
-  double itemT;
-  Offset? plant; // planted pole base (sign / flag)
-  bool wave = false;
-  bool visor = false;
-  bool alarm = false;
-  bool free = true; // may celebrate / wave
-  bool fixed = false; // never moves (crane operator)
-
-  Offset hip = Offset.zero, neck = Offset.zero, head = Offset.zero;
-  Offset hl = Offset.zero, hr = Offset.zero, fl = Offset.zero, fr = Offset.zero;
-  Offset el = Offset.zero, er = Offset.zero, kl = Offset.zero, kr = Offset.zero;
-}
-
-Offset _ik(Offset a, Offset b, double l1, double l2, Offset hint) {
-  final d = b - a;
-  final dist = d.distance;
-  if (dist < 1e-4) return a + Offset(0, l1);
-  final u = d / dist;
-  if (dist >= l1 + l2) return a + u * l1;
-  final p = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist);
-  final h = math.sqrt(math.max(0, l1 * l1 - p * p));
-  var n = Offset(-u.dy, u.dx);
-  if (n.dx * hint.dx + n.dy * hint.dy < 0) n = -n;
-  return a + u * p + n * h;
-}
-
-/// Poses a stick figure: feet on (x, y), ~33 px tall with its hard hat.
-void _solve(_Fig g, double time) {
-  final f = g.f;
-  final x = g.x;
-  var y = g.y;
-  final s = math.sin(g.ph), c = math.cos(g.ph);
-  var hipH = 13.0;
-  var lean = 0.0;
-  var fl = Offset(x - 2.6, y), fr = Offset(x + 2.6, y);
-  var kneeHint = Offset(f, -0.15);
-
-  void legs(double stride, double lift) {
-    fl = Offset(x + f * stride * s, y - lift * math.max(0, c));
-    fr = Offset(x - f * stride * s, y - lift * math.max(0, -c));
-    hipH += 0.6 * c.abs() - 0.3;
-  }
-
-  switch (g.p) {
-    case _P.walk || _P.bucket || _P.ladder:
-      legs(4.8, 2.4);
-      lean = g.p == _P.bucket ? -0.06 : 0.05;
-    case _P.run:
-      legs(7.0, 3.6);
-      lean = 0.3;
-    case _P.carry || _P.shoulder || _P.toss:
-      if (g.move) legs(4.2, 2.0);
-      hipH -= 4.5 * g.k;
-    case _P.push:
-      lean = 0.55;
-      fl = Offset(x - f * (7.5 - 1.5 * s), y);
-      fr = Offset(x + f * 1.5, y - 1.4 * math.max(0, s));
-    case _P.pull:
-      lean = -0.38;
-      fl = Offset(x + f * 5.5, y);
-      fr = Offset(x - f * (2.5 + 1.0 * s), y);
-    case _P.hammer || _P.weld:
-      hipH = 7.5;
-      lean = 0.18;
-      fl = Offset(x - f * 7, y);
-      fr = Offset(x + f * 5, y);
-    case _P.climb || _P.climbCarry:
-      lean = 0.1;
-      fl = Offset(x + f * 1.5, y - 3 * math.max(0, s));
-      fr = Offset(x + f * 1.5, y - 3 * math.max(0, -s));
-    case _P.sit || _P.coffee:
-      hipH = 4.2;
-      lean = -0.08;
-      fl = Offset(x + f * 10.5, y);
-      fr = Offset(x + f * 12.5, y - 0.4);
-      kneeHint = const Offset(0, -1);
-    case _P.lie:
-      hipH = 3.3 + 0.3 * math.sin(time * 1.8 + g.id);
-      lean = math.pi / 2;
-      fl = Offset(x - f * 12.5, y - 1.2);
-      fr = Offset(x - f * 13.2, y - 3.2);
-      kneeHint = const Offset(0, -1);
-    case _P.lean:
-      lean = -0.26;
-      fl = Offset(x + f * 5.5, y);
-      fr = Offset(x + f * 8.2, y);
-    case _P.cheer:
-      y -= math.max(0, math.sin(time * 9 + g.id)) * 5;
-      fl = Offset(x - 2.8, y + 0.5);
-      fr = Offset(x + 2.8, y + 0.5);
-    case _P.highFive:
-      y -= math.max(0, math.sin(time * 6 + g.k)) * 2.5;
-      fl = Offset(x - 2.6, y);
-      fr = Offset(x + 2.6, y);
-      lean = 0.08;
-    case _P.wipe:
-      lean = 0.12;
-    case _P.survey:
-      lean = 0.42;
-    case _P.stand ||
-        _P.wave2 ||
-        _P.reach ||
-        _P.wrench ||
-        _P.signal ||
-        _P.clipboard ||
-        _P.pole ||
-        _P.point:
-      if (g.p == _P.wrench) lean = 0.3;
-      if (g.move) legs(4.8, 2.4);
-  }
-
-  final hip = Offset(x, y - hipH);
-  final dir = Offset(math.sin(lean) * f, -math.cos(lean));
-  final neck = hip + dir * 9.5;
-  final head = neck + dir * 4.7;
-
-  var hl = neck + const Offset(-2.8, 10.2);
-  var hr = neck + const Offset(2.8, 10.2);
-  var hintL = Offset(-f * 0.5, 1);
-  var hintR = Offset(-f * 0.5, 1);
-
-  switch (g.p) {
-    case _P.walk:
-      hl = neck + Offset(-f * 3.8 * s, 10.2);
-      hr = neck + Offset(f * 3.8 * s, 10.2);
-    case _P.run:
-      hl = neck + Offset(f * (2 - 4.5 * s), 6.5);
-      hr = neck + Offset(f * (2 + 4.5 * s), 6.5);
-      hintL = hintR = Offset(-f, 0.6);
-    case _P.carry || _P.climbCarry:
-      hl = neck + const Offset(-2.6, -9.4);
-      hr = neck + const Offset(2.6, -9.4);
-      hintL = const Offset(-1, 0.2);
-      hintR = const Offset(1, 0.2);
-    case _P.shoulder:
-      hr = neck + Offset(f * 1.2, -7.5);
-      hl = neck + Offset(-f * 3.8 * s * (g.move ? 1 : 0), 10.2);
-      hintR = Offset(f, 0.3);
-    case _P.reach:
-      final a = g.aim ?? neck + Offset(f * 6, -9);
-      final d = a - neck;
-      hr = neck + d / math.max(1, d.distance) * 11;
-      hintR = Offset(f, 0.4);
-    case _P.toss:
-      final k = g.itemT;
-      hr = neck + Offset(f * (1.2 + 8 * k), -7.5 + 2 * k);
-      hintR = Offset(f * -0.3, 1);
-    case _P.push:
-      hl = neck + Offset(f * 9.5, 1.5);
-      hr = neck + Offset(f * 9.5, 3.5);
-      hintL = hintR = const Offset(0, 1);
-    case _P.pull:
-      hl = neck + Offset(f * 9.2, 3.5 + 1.2 * s);
-      hr = neck + Offset(f * 8.2, 4.5 + 1.2 * s);
-      hintL = hintR = const Offset(0, 1);
-    case _P.hammer:
-      final sw = 0.5 + 0.5 * s;
-      final th = _lerp(-2.1, 0.45, sw * sw);
-      hr = neck + Offset(f * math.cos(th) * 10.5, math.sin(th) * 10.5);
-      hl = neck + Offset(f * 4, 8.5);
-      hintR = Offset(-f * 0.3, 1);
-    case _P.wrench:
-      final a = g.aim ?? neck + Offset(f * 16, 6);
-      final ang = -0.5 + 0.55 * s;
-      final end = a + Offset(-f * 15 * math.cos(ang), 15 * math.sin(ang));
-      hr = end;
-      hl = end + Offset(f * 2.8, 0.6);
-      hintL = hintR = const Offset(0, 1);
-    case _P.weld:
-      final a = g.aim ?? neck + Offset(f * 12, 8);
-      hr = a - Offset(f * 7, 1);
-      hl = hr + Offset(-f * 2, 2);
-      hintL = hintR = const Offset(0, 1);
-    case _P.climb:
-      hl = neck + Offset(f * 3, -6.5 + 3 * s);
-      hr = neck + Offset(f * 3, -6.5 - 3 * s);
-      hintL = hintR = Offset(-f, 0.5);
-    case _P.sit:
-      hl = neck + Offset(f * 6.5, 6);
-      hr = neck + Offset(f * 7.5, 7);
-    case _P.coffee:
-      final sip = _seg(math.sin(time * 1.1 + g.id), 0.55, 0.9);
-      hr = Offset.lerp(neck + Offset(f * 6.5, 5.5), head + Offset(f * 3.2, 1.8), sip)!;
-      hl = neck + Offset(f * 6, 7.5);
-      g.k = sip;
-    case _P.lie:
-      hl = neck + Offset(-f * 6, 1.8);
-      hr = neck + Offset(-f * 3.5, -1.6);
-      hintL = hintR = const Offset(0, -1);
-    case _P.lean:
-      if (g.k > 0.5) {
-        hr = neck + Offset(f * 6.5, 0.2);
-        hl = hr + Offset(-f * 1.2, 1.6);
-        hintR = hintL = const Offset(0, 1);
-      } else {
-        hl = neck + Offset(f * 3.2, 5.5);
-        hr = neck + Offset(f * 2.4, 4.4);
-      }
-    case _P.cheer:
-      hl = neck + const Offset(-4, -9.8);
-      hr = neck + const Offset(4, -9.8);
-      hintL = const Offset(-1, 0);
-      hintR = const Offset(1, 0);
-    case _P.highFive:
-      hr = g.aim ?? neck + Offset(f * 6, -9.2);
-      hintR = Offset(-f, 0.2);
-    case _P.wipe:
-      hr = head + Offset(f * (0.8 + 2.4 * math.sin(time * 7 + g.id)), -1.8);
-      hintR = Offset(f, 0.5);
-    case _P.signal:
-      hl = neck + Offset(-5, -2 + 6 * s);
-      hr = neck + Offset(5, -2 - 6 * s);
-      hintL = const Offset(-1, 0.2);
-      hintR = const Offset(1, 0.2);
-    case _P.clipboard:
-      hl = neck + Offset(f * 5.5, 5);
-      hr = neck + Offset(f * (6.2 + 1.3 * math.sin(time * 11)), 3.6 + 0.8 * math.cos(time * 8));
-    case _P.wave2:
-      hl = Offset(g.plant?.dx ?? neck.dx + f * 4.5, neck.dy + 2);
-      hr = neck + Offset(-f * 3 + 3.2 * math.sin(time * 14), -10.4);
-      hintR = Offset(-f, 0);
-    case _P.pole:
-      hl = neck + Offset(f * 4.5, -1.5);
-      hr = neck + Offset(f * 4.5, 5.5);
-      if (g.plant != null) {
-        hl = Offset(g.plant!.dx, neck.dy - 1.5);
-        hr = Offset(g.plant!.dx, neck.dy + 5.5);
-      }
-    case _P.point:
-      final a = g.aim;
-      if (a != null) {
-        final d = a - neck;
-        hr = neck + d / math.max(1, d.distance) * 11;
-      }
-      hintR = const Offset(0, 1);
-    case _P.survey:
-      final a = g.aim ?? neck + Offset(f * 8, 2);
-      hl = a + const Offset(0, 1.5);
-      hr = a + const Offset(0, -1);
-      hintL = hintR = const Offset(0, 1);
-    case _P.bucket:
-      hr = neck + Offset(f * 2, 10.8);
-      hl = neck + Offset(-f * 5.5, 5.5);
-    case _P.ladder:
-      hr = neck + Offset(f * 2, -3.5);
-      hl = neck + Offset(-f * 2.5, -3.5);
-      hintL = hintR = const Offset(0, 1);
-    case _P.stand:
-      if (g.move) {
-        hl = neck + Offset(-f * 3.8 * s, 10.2);
-        hr = neck + Offset(f * 3.8 * s, 10.2);
-      }
-  }
-
-  if (g.wave) {
-    hr = neck + Offset(f * 3 + 3.2 * math.sin(time * 14), -10.4);
-    hintR = Offset(f, 0);
-  }
-
-  g
-    ..hip = hip
-    ..neck = neck
-    ..head = head
-    ..hl = hl
-    ..hr = hr
-    ..fl = fl
-    ..fr = fr
-    ..el = _ik(neck, hl, 5.6, 5.6, hintL)
-    ..er = _ik(neck, hr, 5.6, 5.6, hintR)
-    ..kl = _ik(hip, fl, 7, 7, kneeHint)
-    ..kr = _ik(hip, fr, 7, 7, kneeHint);
-}
-
-final _halo = Paint()
-  ..color = BP.paper
-  ..strokeWidth = 4.6
-  ..style = PaintingStyle.stroke
-  ..strokeCap = StrokeCap.round
-  ..strokeJoin = StrokeJoin.round;
-final _body = Paint()
-  ..color = BP.ink
-  ..strokeWidth = 1.9
-  ..style = PaintingStyle.stroke
-  ..strokeCap = StrokeCap.round
-  ..strokeJoin = StrokeJoin.round;
-final _headFill = Paint()..color = BP.paper;
-final _headLine = Paint()
-  ..color = BP.ink
-  ..strokeWidth = 1.6
-  ..style = PaintingStyle.stroke;
-final _hatFill = Paint()..color = BP.amber;
-
-Path _hatPath(double f) => Path()
-  ..addArc(Rect.fromCircle(center: const Offset(0, -1.2), radius: 4.4), math.pi, math.pi)
-  ..close()
-  ..addRect(Rect.fromLTRB(f > 0 ? -4.9 : -6.9, -1.7, f > 0 ? 6.9 : 4.9, -0.4));
-final _hatR = _hatPath(1);
-final _hatL = _hatPath(-1);
+/// A worker standing on the title's ground unless told otherwise.
+Worker _w(
+  double x,
+  double f,
+  Pose p, {
+  double y = _gy,
+  double ph = 0,
+  double k = 0,
+  bool move = false,
+  int id = 0,
+  Tool item = Tool.none,
+  Offset? aim,
+  Offset? rope,
+  bool sweat = false,
+  double itemT = 0,
+}) => Worker(x, f, p, y: y, ph: ph, k: k, move: move, id: id, item: item, aim: aim, rope: rope, sweat: sweat, itemT: itemT);
 
 Paint _stroke(Color c, double w, [double a = 1]) => Paint()
   ..color = c.withValues(alpha: c.a * a)
@@ -1169,6 +962,7 @@ class _ScenePainter extends CustomPainter {
   final _Kit kit;
 
   late Canvas _c;
+  late CrewPainter _k;
   double _time = 0;
 
   @override
@@ -1176,6 +970,7 @@ class _ScenePainter extends CustomPainter {
     if (kit.disposed) return;
     _c = canvas;
     _time = clock.t;
+    _k = CrewPainter(canvas, clock.t, flagSplit: _divX);
     kit.beginFrame();
     final cy = kit.cycleAt(clock.t);
     _frame();
@@ -1201,115 +996,15 @@ class _ScenePainter extends CustomPainter {
 
   void _text(TextPainter p, Offset o) => p.paint(_c, o);
 
-  /// Sparks flying from [o]: a burst [age] seconds old.
-  void _burst(Offset o, double age, int seed, {int n = 7, Color color = BP.amber, double up = 1, double speed = 1}) {
-    if (age < 0 || age > 0.55) return;
-    for (var i = 0; i < n; i++) {
-      final life = 0.3 + 0.25 * _h(seed, i, 1);
-      if (age > life) continue;
-      final ang = -math.pi / 2 * up + (_h(seed, i, 2) - 0.5) * 2.6;
-      final sp = (60 + 110 * _h(seed, i, 3)) * speed;
-      final v = Offset(math.cos(ang) * sp, math.sin(ang) * sp + 420 * age);
-      final p = o + Offset(math.cos(ang) * sp * age, math.sin(ang) * sp * age + 210 * age * age);
-      final tail = p - v / math.max(1, v.distance) * 4;
-      _c.drawLine(tail, p, _stroke(color, 1.4, 1 - age / life));
-    }
-  }
-
-  /// A continuous spark stream (welding).
-  void _stream(Offset o, double t, int seed, {Color color = BP.amber}) {
-    const period = 0.42;
-    for (var i = 0; i < 9; i++) {
-      final off = _h(seed, i, 9) * period;
-      final k = ((t + off) / period).floor();
-      final age = (t + off) - k * period;
-      _burst(o, age, seed * 31 + i * 7 + k, n: 1, color: color, speed: 1.1);
-    }
-  }
-
-  void _dust(Offset o, double age, {double spread = 1}) {
-    if (age < 0 || age > 0.8) return;
-    final a = age / 0.8;
-    for (var i = 0; i < 7; i++) {
-      final side = i.isEven ? 1 : -1;
-      final dx = side * (4 + (18 + 16 * _h(i, 3)) * spread * _eo(a));
-      final dy = -2 - 9 * a * _h(i, 4);
-      _c.drawCircle(o + Offset(dx, dy), 2 + 6 * a * (0.6 + 0.4 * _h(i, 5)), _stroke(BP.inkDim, 1, 0.7 * (1 - a)));
-    }
-  }
-
-  void _rope(Offset a, Offset b, {double sag = 4, Color color = BP.amber, double w = 1.4}) {
-    final m = Offset.lerp(a, b, 0.5)! + Offset(0, sag);
-    _c.drawPath(
-      Path()
-        ..moveTo(a.dx, a.dy)
-        ..quadraticBezierTo(m.dx, m.dy, b.dx, b.dy),
-      _stroke(color, w),
-    );
-  }
-
-  void _ladder(Offset foot, Offset top, {double a = 1}) {
-    final d = top - foot;
-    final len = d.distance;
-    if (len < 2) return;
-    final u = d / len;
-    final n = Offset(-u.dy, u.dx) * 4.6;
-    final p = _stroke(BP.inkDim, 1.4, a);
-    _c
-      ..drawLine(foot + n, top + n, p)
-      ..drawLine(foot - n, top - n, p);
-    for (var s = 7.0; s < len - 3; s += 9) {
-      final q = foot + u * s;
-      _c.drawLine(q + n, q - n, p);
-    }
-  }
-
-  void _zzz(Offset o, double t) {
-    for (var j = 0; j < 3; j++) {
-      final p = (t * 0.35 + j / 3) % 1;
-      final s = 2.4 + p * 2.6;
-      final c = o + Offset(4 + p * 12, -6 - p * 22);
-      final path = Path()
-        ..moveTo(c.dx - s, c.dy - s)
-        ..lineTo(c.dx + s, c.dy - s)
-        ..lineTo(c.dx - s, c.dy + s)
-        ..lineTo(c.dx + s, c.dy + s);
-      _c.drawPath(path, _stroke(BP.inkDim, 1.3, math.sin(p * math.pi)));
-    }
-  }
-
-  void _steam(Offset o, double t) {
-    for (var j = 0; j < 3; j++) {
-      final p = (t * 0.55 + j / 3) % 1;
-      final path = Path();
-      for (var k = 0; k <= 6; k++) {
-        final yy = o.dy - 2 - p * 14 - k * 1.6;
-        final xx = o.dx + (j - 1) * 2 + math.sin(p * 6 + k * 0.9) * 1.6;
-        k == 0 ? path.moveTo(xx, yy) : path.lineTo(xx, yy);
-      }
-      _c.drawPath(path, _stroke(BP.inkDim, 1, math.sin(p * math.pi) * 0.8));
-    }
-  }
-
-  void _check(Offset o, double s, Paint p) {
-    _c.drawPath(
-      Path()
-        ..moveTo(o.dx, o.dy)
-        ..lineTo(o.dx + s * 0.35, o.dy + s * 0.35)
-        ..lineTo(o.dx + s, o.dy - s * 0.45),
-      p,
-    );
-  }
-
   // ── figures ────────────────────────────────────────────────────────────────
 
-  void _hover(List<_Fig> figs) {
+  void _hover(List<Worker> figs) {
     final p = clock.pointer;
     if (p == null) return;
-    _Fig? best;
+    Worker? best;
     var bd = 22.0;
     for (final g in figs) {
-      if (!g.free || g.p == _P.carry || g.p == _P.climbCarry || g.p == _P.shoulder || g.p == _P.ladder) continue;
+      if (!g.free || g.p == Pose.carry || g.p == Pose.climbCarry || g.p == Pose.shoulder || g.p == Pose.ladder) continue;
       final d = (Offset(g.x, g.y - 16) - p).distance;
       if (d < bd) {
         bd = d;
@@ -1317,173 +1012,6 @@ class _ScenePainter extends CustomPainter {
       }
     }
     best?.wave = true;
-  }
-
-  void _drawFigs(List<_Fig> figs, {double minX = -99, double maxX = 1630}) {
-    for (final g in figs) {
-      _solve(g, _time);
-    }
-    // ropes behind bodies
-    for (final g in figs) {
-      final r = g.rope;
-      if (r == null || g.x < minX || g.x > maxX) continue;
-      _rope(Offset.lerp(g.hl, g.hr, 0.5)!, r, sag: 3);
-    }
-    for (final g in figs) {
-      if (g.x < minX || g.x > maxX) continue;
-      _fig(g);
-    }
-  }
-
-  void _fig(_Fig g) {
-    final c = _c;
-    final f = g.f;
-    final path = Path()
-      ..moveTo(g.fl.dx, g.fl.dy)
-      ..lineTo(g.kl.dx, g.kl.dy)
-      ..lineTo(g.hip.dx, g.hip.dy)
-      ..lineTo(g.kr.dx, g.kr.dy)
-      ..lineTo(g.fr.dx, g.fr.dy)
-      ..moveTo(g.hip.dx, g.hip.dy)
-      ..lineTo(g.neck.dx, g.neck.dy)
-      ..moveTo(g.hl.dx, g.hl.dy)
-      ..lineTo(g.el.dx, g.el.dy)
-      ..lineTo(g.neck.dx, g.neck.dy)
-      ..lineTo(g.er.dx, g.er.dy)
-      ..lineTo(g.hr.dx, g.hr.dy);
-    c
-      ..drawPath(path, _halo)
-      ..drawPath(path, _body)
-      ..drawCircle(g.head, 3.8, _headFill)
-      ..drawCircle(g.head, 3.8, _headLine);
-    final up = g.neck - g.hip;
-    final ang = math.atan2(up.dx, -up.dy);
-    c
-      ..save()
-      ..translate(g.head.dx, g.head.dy)
-      ..rotate(ang);
-    if (g.p == _P.lie) {
-      c.rotate(f * 1.1);
-      c.translate(0, 1.6);
-    }
-    c.drawPath(f > 0 ? _hatR : _hatL, _hatFill);
-    if (g.visor) {
-      c.drawRect(Rect.fromLTWH(f > 0 ? 1.4 : -4.4, -0.8, 3, 4.6), _fill(BP.amber, 0.85));
-    }
-    c.restore();
-    _item(g);
-    if (g.sweat) _sweat(g);
-    if (g.alarm) {
-      final o = g.head + const Offset(0, -9);
-      c
-        ..drawLine(o + const Offset(0, -9), o + const Offset(0, -2.5), _stroke(BP.amber, 2))
-        ..drawCircle(o + const Offset(0, 0.6), 1.1, _fill(BP.amber));
-    }
-  }
-
-  void _sweat(_Fig g) {
-    const period = 0.95;
-    for (var j = 0; j < 2; j++) {
-      final t = _time + g.id * 0.37 + j * period / 2;
-      final age = t % period;
-      if (age > 0.6) continue;
-      final side = (((t / period).floor() + j) % 2 == 0) ? 1.0 : -1.0;
-      final p = g.head + Offset(side * (3 + 16 * age), -4 - 22 * age + 70 * age * age);
-      final a = 1 - age / 0.6;
-      _c
-        ..drawCircle(p, 1.3, _fill(BP.line, a))
-        ..drawLine(p + const Offset(0, -1.1), p + const Offset(0, -3), _stroke(BP.line, 1, a));
-    }
-  }
-
-  void _item(_Fig g) {
-    final c = _c;
-    final f = g.f;
-    switch (g.item) {
-      case _I.none:
-        break;
-      case _I.cup:
-        final o = g.hr + Offset(f * 1.4, -1.6);
-        c
-          ..drawRect(Rect.fromCenter(center: o, width: 3.6, height: 4.2), _fill(BP.paper))
-          ..drawRect(Rect.fromCenter(center: o, width: 3.6, height: 4.2), _stroke(BP.ink, 1.1));
-        if (g.k < 0.2) _steam(o + const Offset(0, -2), _time + g.id);
-      case _I.wrench:
-        final a = g.p == _P.wrench ? g.aim : null;
-        final end = a ?? g.hr + Offset(f * 7, -5);
-        c
-          ..drawLine(g.hr, end, _stroke(BP.inkDim, 2.4))
-          ..drawCircle(end, 2.4, _stroke(BP.amber, 1.4));
-      case _I.torch:
-        final a = g.p == _P.weld ? g.aim : null;
-        final end = a ?? g.hr + Offset(f * 6, -2);
-        c.drawLine(g.hr, end, _stroke(BP.ink, 1.8));
-        if (a != null) c.drawCircle(end, 2, _fill(BP.amber));
-      case _I.clipboard:
-        final r = Rect.fromCenter(center: g.hl + Offset(f * 1.2, -2.5), width: 6, height: 8);
-        c
-          ..drawRect(r, _fill(BP.paper))
-          ..drawRect(r, _stroke(BP.inkDim, 1.1))
-          ..drawLine(r.topLeft + const Offset(1.5, 3), r.topRight + const Offset(-1.5, 3), _stroke(BP.inkDim, 0.8))
-          ..drawLine(r.topLeft + const Offset(1.5, 5), r.topRight + const Offset(-1.5, 5), _stroke(BP.inkDim, 0.8));
-      case _I.hammer:
-        final d = g.hr - g.er;
-        final u = d / math.max(0.01, d.distance);
-        final end = g.hr + u * 6.5;
-        final n = Offset(-u.dy, u.dx) * 2.8;
-        c
-          ..drawLine(g.hr, end, _stroke(BP.inkDim, 1.4))
-          ..drawLine(end - n, end + n, _stroke(BP.ink, 2.8));
-      case _I.bucket:
-        final top = g.hr + const Offset(0, 2.5);
-        final path = Path()
-          ..moveTo(top.dx - 3.6, top.dy)
-          ..lineTo(top.dx - 2.7, top.dy + 6)
-          ..lineTo(top.dx + 2.7, top.dy + 6)
-          ..lineTo(top.dx + 3.6, top.dy);
-        c
-          ..drawPath(path, _stroke(BP.line, 1.3))
-          ..drawLine(top + const Offset(-3.2, 1.6), top + const Offset(3.2, 1.6), _stroke(BP.line, 1, 0.6))
-          ..drawArc(Rect.fromCircle(center: top, radius: 3.6), math.pi, math.pi, false, _stroke(BP.inkDim, 0.9));
-      case _I.sign:
-        final base = g.plant ?? Offset(g.hr.dx, g.hr.dy + 16);
-        final top = base + const Offset(0, -128);
-        c.drawLine(base, top, _stroke(BP.inkDim, 2));
-        final board = Rect.fromCenter(center: top + const Offset(0, 17), width: 70, height: 34);
-        c
-          ..drawRect(board, _fill(BP.paper))
-          ..drawRect(board, _stroke(BP.amber, 1.6));
-        final a = board.center + const Offset(21, 0), b = board.center + const Offset(-21, 0);
-        c.drawLine(a, b, _stroke(BP.amber, 2.6));
-        drawArrowHead(c, b, a, _stroke(BP.amber, 2.6), 9);
-      case _I.flag:
-        final base = g.plant ?? Offset(g.hr.dx, g.hr.dy + 14);
-        const h = 100.0;
-        final top = base + const Offset(0, -h);
-        c.drawLine(base, top, _stroke(BP.inkDim, 2));
-        final fy = top.dy + (1 - g.itemT) * (h - 30);
-        final wv = math.sin(_time * 5) * 2;
-        final fd = base.dx > _divX ? -1.0 : 1.0; // fly away from the word
-        final path = Path()
-          ..moveTo(top.dx, fy)
-          ..quadraticBezierTo(top.dx + fd * 20, fy - wv, top.dx + fd * 40, fy + wv)
-          ..lineTo(top.dx + fd * 40, fy + 26 + wv)
-          ..quadraticBezierTo(top.dx + fd * 20, fy + 26 - wv, top.dx, fy + 26)
-          ..close();
-        c
-          ..drawPath(path, _fill(BP.green, 0.18))
-          ..drawPath(path, _stroke(BP.green, 1.6));
-        _check(Offset(top.dx + (fd > 0 ? 11 : -29), fy + 13), 18, _stroke(BP.green, 2.6));
-      case _I.staff:
-        final x = g.hr.dx + f * 2.5;
-        for (var i = 0; i < 7; i++) {
-          c.drawLine(
-            Offset(x, _gy - i * 10.0),
-            Offset(x, _gy - i * 10.0 - 10),
-            _stroke(i.isEven ? BP.amber : BP.inkDim, 2.2),
-          );
-        }
-    }
   }
 
   // ── frame: divider, labels ────────────────────────────────────────────────
@@ -1533,7 +1061,7 @@ class _ScenePainter extends CustomPainter {
     x += dot.width + 12;
     _text(b, Offset(x, y));
     x += b.width;
-    if (done) _check(Offset(x + 12, y + 14), 15, _stroke(BP.green, 2.6));
+    if (done) _k.check(Offset(x + 12, y + 14), 15, _stroke(BP.green, 2.6));
     if (fast > 0.02 && !done) {
       for (var i = 0; i < 2; i++) {
         final o = Offset(x + 10 + i * 9, y + 14);
@@ -1612,98 +1140,98 @@ class _ScenePainter extends CustomPainter {
     const napX = 198.0;
 
     // Worker plans (before teardown)
-    _Fig plan(int w, double t) {
+    Worker plan(int w, double t) {
       final sx = _Latin.startX[w];
       switch (w) {
         case 0: // A: T, then leans on the T checking his watch
           if (t < _Latin.leave[0]) {
-            return _Fig(sx, -1, _P.reach, id: 100, aim: L.stackPos(0) + const Offset(4, 14));
+            return _w(sx, -1, Pose.reach, id: 100, aim: L.stackPos(0) + const Offset(4, 14));
           }
           final a = L.arrive[0];
           if (t < a) {
             final (x, _) = _go(t, _Latin.leave[0], sx, L.dropX(0), _Latin.v);
-            return _Fig(x, 1, _P.shoulder, ph: x / 5, move: true, id: 100);
+            return _w(x, 1, Pose.shoulder, ph: x / 5, move: true, id: 100);
           }
           if (t < a + 0.2) {
-            return _Fig(L.dropX(0), 1, _P.toss, id: 100, itemT: _eo(_seg(t, a, a + 0.12)));
+            return _w(L.dropX(0), 1, Pose.toss, id: 100, itemT: _eo(_seg(t, a, a + 0.12)));
           }
           final watchEnd = math.max(L.done, a + 1.2);
-          if (t < watchEnd) return _Fig(L.dropX(0), 1, _P.stand, id: 100);
+          if (t < watchEnd) return _w(L.dropX(0), 1, Pose.stand, id: 100);
           if (hasEvent && t >= ts + 0.5) {
             if (t < tArrive) {
               final (x, d) = _go(t, ts + 0.5, leanX, pushX, 140);
-              return _Fig(x, d, _P.walk, ph: x / 4.5, move: true, id: 100);
+              return _w(x, d, Pose.walk, ph: x / 4.5, move: true, id: 100);
             }
             if (t < tArrive + 0.75) {
-              return _Fig(pushX, amp > 0 ? -1 : 1, _P.push, ph: t * 9, id: 100, sweat: false);
+              return _w(pushX, amp > 0 ? -1 : 1, Pose.push, ph: t * 9, id: 100, sweat: false);
             }
             final back = _arr(tArrive + 0.75, pushX, leanX, 140);
             if (t < back) {
               final (x, d) = _go(t, tArrive + 0.75, pushX, leanX, 140);
-              return _Fig(x, d, _P.walk, ph: x / 4.5, move: true, id: 100);
+              return _w(x, d, Pose.walk, ph: x / 4.5, move: true, id: 100);
             }
           }
           final arrLean = _arr(watchEnd, L.dropX(0), leanX, 120);
           if (t < arrLean) {
             final (x, d) = _go(t, watchEnd, L.dropX(0), leanX, 120);
-            return _Fig(x, d == 0 ? 1 : d, _P.walk, ph: x / 4.5, move: true, id: 100);
+            return _w(x, d == 0 ? 1 : d, Pose.walk, ph: x / 4.5, move: true, id: 100);
           }
           final watch = (t * 0.23 + 0.1) % 1 < 0.35 ? 1.0 : 0.0;
-          return _Fig(leanX, 1, _P.lean, k: watch, id: 100);
+          return _w(leanX, 1, Pose.lean, k: watch, id: 100);
         case 1: // B: e, then coffee at the far end
-          if (t < _Latin.pick[1]) return _Fig(sx, -1, _P.stand, id: 101);
+          if (t < _Latin.pick[1]) return _w(sx, -1, Pose.stand, id: 101);
           if (t < _Latin.leave[1]) {
-            return _Fig(sx, -1, _P.reach, id: 101, aim: L.stackPos(1) + const Offset(-4, 14));
+            return _w(sx, -1, Pose.reach, id: 101, aim: L.stackPos(1) + const Offset(-4, 14));
           }
           final a = L.arrive[1];
           if (t < a) {
             final (x, _) = _go(t, _Latin.leave[1], sx, L.dropX(1), _Latin.v);
-            return _Fig(x, 1, _P.shoulder, ph: x / 5 + 1, move: true, id: 101);
+            return _w(x, 1, Pose.shoulder, ph: x / 5 + 1, move: true, id: 101);
           }
           if (t < a + 0.2) {
-            return _Fig(L.dropX(1), 1, _P.toss, id: 101, itemT: _eo(_seg(t, a, a + 0.12)));
+            return _w(L.dropX(1), 1, Pose.toss, id: 101, itemT: _eo(_seg(t, a, a + 0.12)));
           }
           final arrSit = _arr(a + 0.45, L.dropX(1), sitX, 170);
           if (t < arrSit) {
             final (x, _) = _go(t, a + 0.45, L.dropX(1), sitX, 170);
-            return _Fig(x, 1, t < a + 0.45 ? _P.stand : _P.walk, ph: x / 4.5, move: t >= a + 0.45, id: 101);
+            return _w(x, 1, t < a + 0.45 ? Pose.stand : Pose.walk, ph: x / 4.5, move: t >= a + 0.45, id: 101);
           }
-          return _Fig(sitX, -1, _P.coffee, id: 101, item: _I.cup);
+          return _w(sitX, -1, Pose.coffee, id: 101, item: Tool.cup);
         default: // C: x and t at once, then a nap by the empty pallet
-          if (t < _Latin.pick[2]) return _Fig(sx, -1, _P.stand, id: 102);
+          if (t < _Latin.pick[2]) return _w(sx, -1, Pose.stand, id: 102);
           if (t < _Latin.leave[2]) {
-            return _Fig(sx, -1, _P.reach, id: 102, aim: L.stackPos(2) + const Offset(10, 4));
+            return _w(sx, -1, Pose.reach, id: 102, aim: L.stackPos(2) + const Offset(10, 4));
           }
           final a2 = L.arrive[2], a3 = L.arrive[3];
           if (t < a2) {
             final (x, _) = _go(t, _Latin.leave[2], sx, L.dropX(2), _Latin.v);
-            return _Fig(x, 1, _P.carry, ph: x / 5 + 2, move: true, id: 102);
+            return _w(x, 1, Pose.carry, ph: x / 5 + 2, move: true, id: 102);
           }
-          if (t < a2 + 0.14) return _Fig(L.dropX(2), 1, _P.carry, id: 102);
+          if (t < a2 + 0.14) return _w(L.dropX(2), 1, Pose.carry, id: 102);
           if (t < a3) {
             final (x, _) = _go(t, a2 + 0.14, L.dropX(2), L.dropX(3), _Latin.v);
-            return _Fig(x, 1, _P.carry, ph: x / 5 + 2, move: true, id: 102);
+            return _w(x, 1, Pose.carry, ph: x / 5 + 2, move: true, id: 102);
           }
-          if (t < a3 + 0.2) return _Fig(L.dropX(3), 1, _P.carry, id: 102);
+          if (t < a3 + 0.2) return _w(L.dropX(3), 1, Pose.carry, id: 102);
           final arrNap = _arr(a3 + 0.6, L.dropX(3), napX, 190);
-          if (t < a3 + 0.6) return _Fig(L.dropX(3), 1, _P.stand, id: 102);
+          if (t < a3 + 0.6) return _w(L.dropX(3), 1, Pose.stand, id: 102);
           if (t < arrNap) {
             final (x, _) = _go(t, a3 + 0.6, L.dropX(3), napX, 190);
-            return _Fig(x, -1, _P.walk, ph: x / 4.5, move: true, id: 102);
+            return _w(x, -1, Pose.walk, ph: x / 4.5, move: true, id: 102);
           }
-          return _Fig(napX, -1, _P.lie, id: 102);
+          return _w(napX, -1, Pose.lie, id: 102);
       }
     }
 
-    final figs = <_Fig>[];
+    final figs = <Worker>[];
     for (var w = 0; w < 3; w++) {
       if (tau < tearAt) {
         final g = plan(w, tau);
-        if (clock.awake && tau > L.done + 1 && (g.p == _P.lie || g.p == _P.coffee || g.p == _P.lean)) {
+        if (clock.awake && tau > L.done + 1 && (g.p == Pose.lie || g.p == Pose.coffee || g.p == Pose.lean)) {
           g
-            ..p = _P.stand
+            ..p = Pose.stand
             ..alarm = true
-            ..item = _I.none
+            ..item = Tool.none
             ..f = (clock.pointer?.dx ?? 900) > g.x ? 1 : -1;
         }
         figs.add(g);
@@ -1712,7 +1240,7 @@ class _ScenePainter extends CustomPainter {
         final tt = tau - tearAt;
         final sx = _Latin.startX[w];
         final (x, d) = _go(tt, 0.25, g0.x, sx, 330);
-        figs.add(_Fig(x, d == 0 ? (tt < 0.25 ? g0.f : 1) : d, d == 0 ? _P.stand : _P.run, ph: x / 6, move: d != 0, id: 100 + w));
+        figs.add(_w(x, d == 0 ? (tt < 0.25 ? g0.f : 1) : d, d == 0 ? Pose.stand : Pose.run, ph: x / 6, move: d != 0, id: 100 + w));
       }
     }
 
@@ -1785,20 +1313,20 @@ class _ScenePainter extends CustomPainter {
             final big = Rect.fromLTRB(L.slotL[i], _gy - cap, L.slotR[i], _gy);
             c.drawRect(Rect.lerp(r, big, _eo(pop))!, _stroke(BP.amber, 1.4));
           });
-          _dust(Offset(L.slotC(i), _gy), tau - land, spread: 1.2);
+          _k.dust(Offset(L.slotC(i), _gy), tau - land, spread: 1.2);
         } else {
           _letter(i, Offset(L.slotC(i), _gy), 1, i == si ? tilt(tau) : 0);
-          _dust(Offset(L.slotC(i), _gy), tau - land, spread: 1.2);
+          _k.dust(Offset(L.slotC(i), _gy), tau - land, spread: 1.2);
         }
       }
     }
 
     _hover(figs);
-    _drawFigs(figs);
+    _k.drawCrew(figs);
 
     // Idle details
     for (final g in figs) {
-      if (g.p == _P.lie && !g.wave) _zzz(g.head, _time);
+      if (g.p == Pose.lie && !g.wave) _k.zzz(g.head, _time);
     }
 
     // Counter + steps + label
@@ -1840,14 +1368,16 @@ class _ScenePainter extends CustomPainter {
     for (var x = 840.0; x < 1580; x += 20) {
       c.drawLine(Offset(x, _gy), Offset(x, _gy + (x % 100 == 40 ? 7 : 4)), tick);
     }
-    final figs = <_Fig>[];
-    switch (cy.s) {
-      case 0:
-        _arabic(sc, cy, figs);
-      case 1:
-        _deva(sc, cy, figs);
-      default:
-        _thai(sc, cy, figs);
+    final figs = <Worker>[];
+    switch (sc) {
+      case _Ja ja:
+        _japanese(ja, cy, figs);
+      case _Sc st when st.name == 'arabic':
+        _arabic(st, cy, figs);
+      case _Sc st when st.name == 'devanagari':
+        _deva(st, cy, figs);
+      case _Sc st:
+        _thai(st, cy, figs);
     }
     final t = math.min(cy.tau, sc.work);
     final done = cy.tau >= sc.work;
@@ -1862,35 +1392,37 @@ class _ScenePainter extends CustomPainter {
 
   /// Foreman, surveyor (+ staff), water carrier, two hammerers.
   void _common(
-    List<_Fig> out,
-    _Sc sc,
+    List<Worker> out,
+    _Stage sc,
     _Cyc cy,
     double t, {
     required double left,
     required double right,
     double? laserTo,
     Offset? job,
+    double? surveyX,
+    double? foremanX,
   }) {
     // Foreman, front row, clipboard; points at whatever is being built.
     {
-      final x1 = left - 8;
+      final x1 = foremanX ?? left - 8;
       final (x, d) = _go(t, 0.1, _offX, x1, 260);
-      final g = _Fig(x, d != 0 ? d : 1, d != 0 ? _P.walk : _P.clipboard,
-          y: _fy, ph: x / 4.5, move: d != 0, id: 900, item: _I.clipboard);
+      final g = _w(x, d != 0 ? d : 1, d != 0 ? Pose.walk : Pose.clipboard,
+          y: _fy, ph: x / 4.5, move: d != 0, id: 900, item: Tool.clipboard);
       if (d == 0 && job != null && (t % 3.6) < 1.1) {
         g
-          ..p = _P.point
+          ..p = Pose.point
           ..aim = job
           ..f = job.dx >= x ? 1 : -1;
       }
       out.add(g);
     }
     // Surveyor + theodolite on the baseline, left end.
-    final sx = left - 44;
+    final sx = surveyX ?? left - 44;
     final tx = sx + 11;
     final (svx, svd) = _go(t, 0.25, _offX, sx, 270);
     final svArr = _arr(0.25, _offX, sx, 270);
-    final surveyor = _Fig(svx, svd != 0 ? svd : 1, svd != 0 ? _P.walk : _P.survey,
+    final surveyor = _w(svx, svd != 0 ? svd : 1, svd != 0 ? Pose.walk : Pose.survey,
         ph: svx / 4.5, move: svd != 0, id: 903, aim: Offset(tx - 2, _gy - 28));
     out.add(surveyor);
     // Staff man, right end (unless a sign pole is the target).
@@ -1898,8 +1430,8 @@ class _ScenePainter extends CustomPainter {
     if (target == null) {
       final stx = right + 20;
       final (x, d) = _go(t, 0.45, _offX, stx, 240);
-      out.add(_Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : _P.pole,
-          ph: x / 4.5, move: d != 0, id: 902, item: _I.staff));
+      out.add(_w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : Pose.pole,
+          ph: x / 4.5, move: d != 0, id: 902, item: Tool.staff));
       target = stx - 2.5;
     }
     // Water carrier (front row), back and forth.
@@ -1917,20 +1449,20 @@ class _ScenePainter extends CustomPainter {
         x = right - 40 - span * (ph < 1 ? ph : 2 - ph);
         f = ph < 1 ? -1 : 1;
       }
-      out.add(_Fig(x, f, _P.bucket, y: _fy, ph: x / 4.5, move: true, id: 904, item: _I.bucket));
+      out.add(_w(x, f, Pose.bucket, y: _fy, ph: x / 4.5, move: true, id: 904, item: Tool.bucket));
     }
     // Hammerers: tapping letters into true.
     for (var j = 0; j < 2; j++) {
       final hx = _lerp(left, right, j == 0 ? 0.3 : 0.74) + 10;
       final (x, d) = _go(t, 1.6 + j * 0.6, _offX, hx, 230);
       final active = t > 5.3 && t < sc.work - 0.6 && ((t * 0.45 + j * 0.5) % 1) < 0.62;
-      final g = _Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : (active ? _P.hammer : _P.stand),
-          ph: d != 0 ? x / 4.5 : t * 9 + j, move: d != 0, id: 905 + j, item: _I.hammer, sweat: active);
+      final g = _w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : (active ? Pose.hammer : Pose.stand),
+          ph: d != 0 ? x / 4.5 : t * 9 + j, move: d != 0, id: 905 + j, item: Tool.hammer, sweat: active);
       out.add(g);
       if (active && d == 0) {
         final period = 2 * math.pi / 9;
         final age = ((t * 9 + j - math.pi / 2) / (2 * math.pi) % 1) * period;
-        _burst(Offset(hx - 11, _gy - 3), age, cy.n * 13 + j * 5 + ((t * 9 + j) / (2 * math.pi)).floor(), n: 5);
+        _k.burst(Offset(hx - 11, _gy - 3), age, cy.n * 13 + j * 5 + ((t * 9 + j) / (2 * math.pi)).floor(), n: 5);
       }
     }
     // Theodolite + laser + surveyed baseline.
@@ -1965,7 +1497,7 @@ class _ScenePainter extends CustomPainter {
   }
 
   /// The tower crane. [load] draws whatever hangs from the hook.
-  void _crane(double tx, double hy, {void Function(Offset hook)? load, List<Offset> slings = const []}) {
+  void _crane(double tx, double hy, {void Function(Offset hook)? load, List<Offset> slings = const [], bool strain = false}) {
     final c = _c;
     final p = _stroke(BP.lineDim, 1.1);
     const m = _mastX;
@@ -2007,13 +1539,19 @@ class _ScenePainter extends CustomPainter {
       ..drawRect(cab, _stroke(BP.line, 1.2));
     final head = Offset(m - 18 + math.sin(_time * 0.7) * 1.5, j + 26);
     c
-      ..drawCircle(head, 3.4, _headFill)
-      ..drawCircle(head, 3.4, _headLine)
+      ..drawCircle(head, 3.4, CrewInk.headFill)
+      ..drawCircle(head, 3.4, CrewInk.headLine)
       ..save()
       ..translate(head.dx, head.dy)
       ..scale(0.9)
-      ..drawPath(_hatL, _hatFill)
+      ..drawPath(CrewInk.hatLeft, CrewInk.hatFill)
       ..restore();
+    if (strain) {
+      for (var j = 0; j < 2; j++) {
+        final age = (_time * 1.6 + j * 0.5) % 1;
+        c.drawCircle(head + Offset(5 + 8 * age, -3 + 14 * age * age), 1.2, _fill(BP.line, 1 - age));
+      }
+    }
     // Trolley, cable, hook
     c
       ..drawRect(Rect.fromLTWH(tx - 8, j + 14, 16, 5), _fill(BP.amber))
@@ -2071,7 +1609,7 @@ class _ScenePainter extends CustomPainter {
   }
 
   /// After the work: celebrate (collapse, cheer, high-five), then run off.
-  void _finishCrew(List<_Fig> figs, _Cyc cy) {
+  void _finishCrew(List<Worker> figs, _Cyc cy) {
     final dd = cy.tau - cy.work;
     if (dd < 0) return;
     if (dd < _hold) {
@@ -2083,35 +1621,35 @@ class _ScenePainter extends CustomPainter {
         if ((b.x - a.x).abs() < 34 && (b.x - a.x).abs() > 6 && a.y == b.y && _h(cy.n, a.id, 3) < 0.7) {
           final mid = Offset((a.x + b.x) / 2, a.y - 34);
           a
-            ..p = _P.highFive
+            ..p = Pose.highFive
             ..f = 1
             ..aim = mid
-            ..item = a.item == _I.hammer ? _I.none : a.item
+            ..item = a.item == Tool.hammer ? Tool.none : a.item
             ..k = a.id.toDouble();
           b
-            ..p = _P.highFive
+            ..p = Pose.highFive
             ..f = -1
             ..aim = mid
-            ..item = b.item == _I.hammer ? _I.none : b.item
+            ..item = b.item == Tool.hammer ? Tool.none : b.item
             ..k = a.id.toDouble();
           paired
             ..add(order[j])
             ..add(order[j + 1]);
           final clap = (math.sin(_time * 6 + a.id) + 1) / 2;
-          if (clap > 0.9) _burst(mid, (clap - 0.9) * 2, a.id + cy.n, n: 5, color: BP.green);
+          if (clap > 0.9) _k.burst(mid, (clap - 0.9) * 2, a.id + cy.n, n: 5, color: BP.green);
         }
       }
       for (final g in figs) {
         if (g.id == 900) {
           // Foreman plants the green flag.
           g
-            ..p = _P.pole
-            ..item = _I.flag
+            ..p = Pose.pole
+            ..item = Tool.flag
             ..plant = Offset(g.x + g.f * 4.5, g.y)
             ..itemT = _eo(_seg(dd, 0.15, 1.0))
             ..move = false;
         } else if (g.id == 901) {
-          g.p = (dd * 0.8) % 1 < 0.5 ? _P.pole : _P.wave2;
+          g.p = (dd * 0.8) % 1 < 0.5 ? Pose.pole : Pose.wave2;
         }
       }
       for (var i = 0; i < figs.length; i++) {
@@ -2124,10 +1662,10 @@ class _ScenePainter extends CustomPainter {
           ..move = false
           ..sweat = true;
         if (lifted) {
-          g.p = _P.cheer;
+          g.p = Pose.cheer;
         } else {
-          g.p = [_P.cheer, _P.lie, _P.sit, _P.wipe][m];
-          if (g.p == _P.lie || g.p == _P.sit) g.item = _I.none;
+          g.p = [Pose.cheer, Pose.lie, Pose.sit, Pose.wipe][m];
+          if (g.p == Pose.lie || g.p == Pose.sit) g.item = Tool.none;
         }
       }
     } else {
@@ -2139,26 +1677,571 @@ class _ScenePainter extends CustomPainter {
           ..x = g.x + v * tt + 80 * tt * tt
           ..y = g.y < _gy - 1 && g.y != _fy ? _lerp(g.y, _gy, _seg(tt, 0, 0.25)) : g.y
           ..f = 1
-          ..p = _P.run
+          ..p = Pose.run
           ..ph = g.x / 6
           ..move = true
           ..sweat = false
           ..plant = null
           ..rope = null
           ..visor = false;
-        if (g.item == _I.cup) g.item = _I.none;
+        if (g.item == Tool.cup) g.item = Tool.none;
         if (g.id == 900) {
           g
-            ..item = _I.flag
+            ..item = Tool.flag
             ..itemT = 1;
         }
       }
     }
   }
 
+  // ── Japanese: fallback, ruby, kinsoku, vert ──────────────────────────────
+
+  /// A glyph form centred on its em box at [c].
+  void _jaForm(_Form f, Offset c, double size, {double a = 1, double rot = 0}) {
+    _alpha(a, Rect.fromCenter(center: c, width: size * 1.7, height: size * 1.7), () {
+      _c.save();
+      if (rot != 0) {
+        _c
+          ..translate(c.dx, c.dy)
+          ..rotate(rot)
+          ..translate(-c.dx, -c.dy);
+      }
+      f.paint(_c, c.dx - f.width / 2, c.dy + size * 0.38);
+      _c.restore();
+    });
+  }
+
+  void _jaSolid(TextPainter p, Offset c, double size, {double rot = 0}) {
+    _c.save();
+    if (rot != 0) {
+      _c
+        ..translate(c.dx, c.dy)
+        ..rotate(rot)
+        ..translate(-c.dx, -c.dy);
+    }
+    final base = p.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+    p.paint(_c, Offset(c.dx - p.width / 2, c.dy + size * 0.38 - base));
+    _c.restore();
+  }
+
+  /// The font crate: huge, because a CJK font carries tens of thousands of glyphs.
+  void _crate(Rect r, {double lid = 0, double a = 1, List<TextPainter> peek = const []}) {
+    _alpha(a, r.inflate(90), () {
+      final c = _c;
+      if (lid > 0.4) {
+        for (var i = 0; i < peek.length; i++) {
+          final p = peek[i];
+          _text(p, Offset(r.left + 28 + i * 38, r.top - p.height * 0.55 + 3 * math.sin(i * 2 + _time * 2.5)));
+        }
+      }
+      c
+        ..drawRect(r, _fill(BP.paper))
+        ..drawRect(r, _stroke(BP.line, 1.8));
+      for (final f in [0.16, 0.84]) {
+        c.drawLine(Offset(r.left, r.top + r.height * f), Offset(r.right, r.top + r.height * f), _stroke(BP.lineDim, 1));
+      }
+      for (final x in [r.left + 7, r.right - 7]) {
+        c.drawLine(Offset(x, r.top), Offset(x, r.bottom), _stroke(BP.lineDim, 1));
+      }
+      final l1 = kit.label('CJK font', 18, BP.ink);
+      final l2 = kit.label('U+4E00–9FFF', 11, BP.inkDim);
+      _text(l1, Offset(r.center.dx - l1.width / 2, r.center.dy - l1.height + 2));
+      _text(l2, Offset(r.center.dx - l2.width / 2, r.center.dy + 6));
+      // Two flaps hinged on the outer edges swing UP and open (the left one
+      // just past vertical, the right one stopping short of the mast); short
+      // enough to stay clear of the ruby lifted out above them.
+      final e = _eo(lid);
+      final hw = r.width / 2;
+      for (final left in [true, false]) {
+        c
+          ..save()
+          ..translate(left ? r.left : r.right, r.top)
+          ..rotate(left ? -1.75 * e : 1.45 * e);
+        final flap = left ? Rect.fromLTWH(0, -7, hw, 7) : Rect.fromLTWH(-hw, -7, hw, 7);
+        c
+          ..drawRect(flap, _fill(BP.paper))
+          ..drawRect(flap, _stroke(BP.line, 1.6))
+          ..restore();
+      }
+    });
+  }
+
+  void _japanese(_Ja ja, _Cyc cy, List<Worker> figs) {
+    final tau = cy.tau;
+    final t = math.min(tau, ja.work);
+    final s = ja.s;
+    const crate = _Ja.crate;
+    const lowerA = 0.4, landT = 3.0;
+    // Each carrier leaves the crate 0.75 s after the previous one, so the
+    // glyphs travel ~190 px apart (a glyph is 96 px): a readable train.
+    const cs = [3.5, 4.25, 5.0, 5.75, 6.5];
+    const cv = 250.0;
+    final pickX = crate.left - 8;
+    final arr = [for (var k = 0; k < 5; k++) cs[k] + (pickX - ja.slot(k).dx) / cv];
+    const plantA = 5.9, breakA = 7.3, flagA = 7.8, kickA = 8.6, kickB = 9.2;
+    // vertical-rl: line 2 (き」) becomes the LEFT column, so it is hoisted
+    // first and carried over the top; line 1 slides right, then is raised
+    // by its head (its tail slides along the ground). Nothing crosses.
+    const hoist2 = (9.6, 10.3), trav2 = (10.3, 11.1), swing2 = (11.1, 11.8);
+    const slide1 = (10.3, 11.1), raise1 = (12.3, 13.8);
+    const liftStart = [10.3, 9.6], liftEnd = [13.8, 11.8];
+    const topY = 230.0; // line 2's anchor height while carried over the top
+    const raiseA = 13.9, raiseB = 14.3, climbA = 14.3, climbB = 14.9, turnA = 14.9;
+    const swapT = [15.3, 15.4];
+    final kinsoku = ja.brk < 4;
+    final naiveX = _Ja.left + 4 * s;
+    final breakX = _Ja.left + ja.brk * s;
+    final rubyCx = _Ja.left + 1.875 * s;
+    final rubyHook = ja.rubyMid - 46;
+    final dd = tau - ja.work;
+    final la = 1 - _seg(tau, ja.work + _hold, ja.work + _hold + 0.6);
+
+    // Each line hangs from its start (the anchor) and turns into a column,
+    // glyphs staying upright. (anchor, rotation) of chain c at time [at].
+    (Offset, double) chain(int c, double at) {
+      final a0 = ja.anchor0(c), af = ja.anchorF(c);
+      if (c == 1) {
+        // Hoisted flat, carried over the top, then let go at the tail: it
+        // swings down (a little past vertical) into the left column.
+        if (at <= hoist2.$1) return (a0, 0.0);
+        final up = _eio(_seg(at, hoist2.$1, hoist2.$2));
+        final tr = _seg(at, trav2.$1, trav2.$2);
+        final sw = _seg(at, swing2.$1, swing2.$2);
+        final x = _lerp(a0.dx, af.dx, _eio(tr));
+        final y = _lerp(_lerp(a0.dy, topY, up), af.dy, _eio(sw));
+        final sway = 0.035 * math.sin(_time * 3.1) * math.sin(math.pi * tr);
+        return (Offset(x, y), math.pi / 2 * _backOut(sw) + sway);
+      }
+      // Line 1: slides right, then its head is raised; the tail stays on
+      // the ground, like standing up a beam.
+      final x = _lerp(a0.dx, af.dx, _eio(_seg(at, slide1.$1, slide1.$2)));
+      final u = _seg(at, raise1.$1, raise1.$2);
+      if (u <= 0) return (Offset(x, a0.dy), 0.0);
+      final th = math.pi / 2 * _eio(u) + 0.03 * math.sin(_time * 4.2) * math.sin(math.pi * u);
+      return (Offset(x, a0.dy - (a0.dy - af.dy) * math.sin(th)), th);
+    }
+
+    Offset rot(Offset a, double th, Offset off) =>
+        a + Offset(off.dx * math.cos(th) - off.dy * math.sin(th), off.dx * math.sin(th) + off.dy * math.cos(th));
+    Offset placed(int k, double at) {
+      final c = ja.chainOf(k);
+      final (a, th) = chain(c, at);
+      return rot(a, th, ja.slot(k) - ja.anchor0(c));
+    }
+
+    Offset rubyPlaced(int i, double at) {
+      final c = ja.chainOf(_Ja.rubyBase[i]);
+      final (a, th) = chain(c, at);
+      return rot(a, th, ja.rubySlot(i) - ja.anchor0(c));
+    }
+
+    final open0 = placed(0, 99), close0 = placed(4, 99);
+    // Where each ladder worker's wrench meets its bracket (both climb from
+    // the left: one in the gap between the columns, one left of column 2).
+    final aims = [open0 + const Offset(-26, 8), close0 + const Offset(-34, -4)];
+
+    // ── crew ──
+    // Crate guides on tag lines, a signaller in the front row.
+    final crateBottom = _lerp(330, _gy, _eio(_seg(t, lowerA, landT)));
+    final crateR = Rect.fromLTRB(crate.left, crateBottom - crate.height, crate.right, crateBottom);
+    for (var j = 0; j < 3; j++) {
+      final st = [1366.0, 1380.0, 1548.0][j];
+      final f = j < 2 ? 1.0 : -1.0;
+      final (x, d) = _go(t, j * 0.2, _offX, st, 280);
+      final on = d == 0 && t < landT;
+      final g = _w(x, d != 0 ? d : f, d != 0 ? Pose.walk : (on ? Pose.pull : (t < landT + 0.9 && j == 0 ? Pose.reach : Pose.wipe)),
+          ph: d != 0 ? x / 4.5 : t * 6 + j, move: d != 0, id: 70 + j, sweat: t < landT + 1.5,
+          rope: on ? (j < 2 ? crateR.bottomLeft + const Offset(4, -6) : crateR.bottomRight + const Offset(-4, -6)) : null,
+          aim: crate.topLeft + const Offset(20, -6));
+      figs.add(g);
+    }
+    {
+      final sx = t < 6.0 ? 1470.0 : _lerp(1470, rubyCx + 34, _eio(_seg(t, 6.0, 7.0)));
+      final (x, d) = _go(t, 0.3, _offX, 1470, 280);
+      final on = (t > 0.8 && t < landT) || (t > 7.1 && t < 8.3);
+      final moving = t > 6.0 && t < 7.0;
+      figs.add(_w(d != 0 ? x : sx, d != 0 ? d : -1, d != 0 || moving ? Pose.walk : (on ? Pose.signal : Pose.stand),
+          y: _fy, ph: t * 6, move: d != 0 || moving, id: 73));
+    }
+    // Carriers: one glyph each, unpacked from the font crate.
+    for (var k = 0; k < 5; k++) {
+      final slot = ja.slot(k);
+      final (xIn, dIn) = _go(t, cs[k] - 1.3, _offX, pickX, 260);
+      Worker g;
+      if (t < cs[k]) {
+        g = _w(xIn, dIn != 0 ? dIn : -1, dIn != 0 ? Pose.walk : Pose.carry, ph: xIn / 4.5, move: dIn != 0, id: 74 + k);
+      } else if (t < arr[k] + 0.5) {
+        final x = t < arr[k] ? pickX - cv * (t - cs[k]) : slot.dx;
+        g = _w(x, -1, Pose.carry, ph: x / 4.2 + k, move: t < arr[k], id: 74 + k, sweat: true,
+            k: math.sin(math.pi * _seg(t, arr[k], arr[k] + 0.5)) * 0.9);
+        g.free = false;
+      } else {
+        final e = _eio(_seg(t, arr[k] + 0.5, arr[k] + 1.3));
+        final rx = slot.dx + (k.isEven ? -18 : 18);
+        final rest = [Pose.wipe, Pose.sit, Pose.stand, Pose.wipe, Pose.signal][(k + cy.n) % 5];
+        g = _w(_lerp(slot.dx, rx, e), k.isEven ? 1 : -1, e < 1 ? Pose.walk : rest,
+            y: _lerp(_gy, _fy, e), ph: t * 7 + k, move: e < 1, id: 74 + k, sweat: true);
+      }
+      figs.add(g);
+    }
+    // Kinsoku crew: the measure post, a naive line break, the inspector.
+    final postX = _Ja.left + ja.measure;
+    {
+      final (x, d) = _go(t, 4.3, _offX, postX + 12, 250);
+      final e = _eio(_seg(t, plantA + 0.6, plantA + 1.4));
+      final ham = t > plantA && t < plantA + 0.45;
+      figs.add(_w(x + 10 * e, d != 0 ? d : -1, d != 0 ? Pose.walk : (ham ? Pose.hammer : (e > 0 && e < 1 ? Pose.walk : Pose.stand)),
+          y: _lerp(_gy, _fy, e), ph: ham ? t * 12 : x / 4.5, move: d != 0 || (e > 0 && e < 1), id: 80,
+          item: t < plantA ? Tool.staff : Tool.hammer));
+      if (ham) {
+        _k.burst(Offset(postX, _gy - 4), (t - plantA) % 0.22, cy.n * 3 + 1, n: 4);
+      }
+    }
+    {
+      final st = naiveX - 16;
+      final (x, d) = _go(t, 5.7, _offX, st, 260);
+      final ham = t > breakA && t < breakA + 0.45;
+      final shamed = kinsoku && t > flagA;
+      figs.add(_w(x, d != 0 ? d : 1, d != 0 ? Pose.walk : (ham ? Pose.hammer : (shamed ? Pose.wipe : Pose.stand)),
+          ph: ham ? t * 12 : x / 4.5, move: d != 0, id: 81, item: Tool.hammer, sweat: shamed));
+      if (ham) _k.burst(Offset(naiveX, _gy - 4), (t - breakA) % 0.22, cy.n * 3 + 2, n: 4);
+    }
+    {
+      final st = naiveX + 38;
+      final (x, d) = _go(t, 5.0, _offX, st, 250);
+      Worker g;
+      if (d != 0) {
+        g = _w(x, d, Pose.walk, ph: x / 4.5, move: true, id: 82);
+      } else if (kinsoku && t > flagA && t < kickA - 0.25) {
+        g = _w(st, -1, Pose.point, id: 82, item: Tool.redFlag, aim: Offset(naiveX, _gy - 110));
+        g.alarm = true;
+      } else if (kinsoku && t >= kickA - 0.25 && t < kickA) {
+        final (xx, _) = _go(t, kickA - 0.25, st, naiveX + 16, 120);
+        g = _w(xx, -1, Pose.walk, ph: xx / 4.5, move: true, id: 82);
+      } else if (kinsoku && t >= kickA && t < kickA + 0.4) {
+        g = _w(naiveX + 16, -1, Pose.kick, id: 82, k: math.sin(math.pi * _seg(t, kickA, kickA + 0.4)));
+      } else {
+        g = _w(t > kickA ? naiveX + 16 : st, -1, Pose.clipboard, id: 82, item: Tool.clipboard);
+      }
+      figs.add(g);
+    }
+    // Rope team (front row, in front of the crate): a tag line on line 2's
+    // tail while it is hoisted, then they haul line 1 to the right and hold
+    // its tail while it is stood up.
+    for (var j = 0; j < 3; j++) {
+      final back = 26 * _eio(_seg(t, slide1.$1, slide1.$2));
+      final st = 1398.0 + j * 24;
+      final (x, d) = _go(t, 7.8 + j * 0.2, _offX, st, 240);
+      Offset? rope;
+      if (d == 0) {
+        if (t > hoist2.$1 && t < hoist2.$2 - 0.05) {
+          rope = placed(4, t) + Offset(s * 0.3, s * 0.2);
+        } else if ((t > slide1.$1 - 0.1 && t < slide1.$2) || (t > raise1.$1 && t < raise1.$2)) {
+          rope = placed(ja.brk - 1, t) + Offset(s * 0.3, s * 0.2);
+        }
+      }
+      final hauling = rope != null && t > slide1.$1 - 0.1 && t < slide1.$2;
+      figs.add(_w(x + (d == 0 ? back : 0), d != 0 ? d : -1, d != 0 ? Pose.walk : (rope != null ? Pose.pull : Pose.stand),
+          y: _fy, ph: d != 0 ? x / 4.5 : t * (hauling ? 9 : 6) + j, move: d != 0, id: 84 + j, rope: rope, sweat: rope != null));
+    }
+    // Ladder crews: GSUB 'vert' swaps each bracket for its vertical form.
+    for (var j = 0; j < 2; j++) {
+      final aim = aims[j];
+      final foot = j == 0 ? Offset(aim.dx - 72, _gy) : Offset(aim.dx - 50, _gy);
+      final feetY = aim.dy + 24;
+      final top = Offset(j == 0 ? aim.dx - 24 : aim.dx - 14, aim.dy - 24);
+      final u = ((_gy - feetY) / (_gy - top.dy)).clamp(0.0, 1.0);
+      final feet = Offset(_lerp(foot.dx, top.dx, u) + 2, feetY);
+      final (x, d) = _go(t, j == 0 ? 11.4 : 11.1, _offX, foot.dx + 16, 280);
+      final r = _eio(_seg(t, raiseA, raiseB));
+      Worker g;
+      if (t < climbA) {
+        g = _w(x, d != 0 ? d : -1, d != 0 || r <= 0 ? Pose.ladder : Pose.push, ph: x / 4.5, move: d != 0, id: 87 + j, sweat: r > 0);
+      } else {
+        final up = _eio(_seg(t, climbA, climbB));
+        final p = Offset.lerp(Offset(foot.dx + 3, _gy), feet, up)!;
+        final on = t > turnA && t < swapT[j];
+        g = _w(p.dx, 1, on ? Pose.wrench : (up < 1 ? Pose.climb : Pose.cheer), y: p.dy, ph: on ? t * 6 : up * 16,
+            id: 87 + j, item: Tool.wrench, aim: on ? aim : null, sweat: on);
+      }
+      g.free = t > swapT[j];
+      figs.add(g);
+      if (r <= 0) {
+        if (x < 1640) _k.ladder(Offset(x - 32, _gy - 27), Offset(x + 30, _gy - 27), a: la);
+      } else {
+        _k.ladder(foot, Offset.lerp(foot + Offset(j == 0 ? -70 : 70, -4), top, r)!, a: la);
+      }
+    }
+    final job = t < landT
+        ? crateR.center
+        : t < arr[0] + 0.5
+            ? ja.slot(0)
+            : t < kickB
+                ? Offset(naiveX, _gy - 60)
+                : t < raise1.$2
+                    ? placed(t < swing2.$2 ? 3 : 0, t)
+                    : aims[0];
+    _common(figs, ja, cy, t, left: _Ja.left, right: crate.left - 10, laserTo: crate.left, job: job, surveyX: 838, foremanX: 1252);
+
+    _finishCrew(figs, cy);
+    _hover(figs);
+
+    // ── crane ──
+    double tx;
+    double hy;
+    final a1 = ja.anchor0(1);
+    if (t < landT) {
+      tx = crate.center.dx + (t > lowerA ? 1.3 * math.sin(_time * 31) : 0);
+      hy = crateR.top - 26;
+    } else if (t < 9.0) {
+      tx = _lerp(crate.center.dx, rubyCx, _eio(_seg(t, 6.0, 7.0)));
+      hy = _lerp(crate.top - 26, _hookHome, _eio(_seg(t, landT + 0.05, landT + 0.8)));
+      if (t > 4.2) hy = _lerp(_hookHome, crate.top + 4, _eio(_seg(t, 4.2, 4.9)));
+      if (t > 5.0) hy = _lerp(crate.top + 4, _hookHome, _eio(_seg(t, 5.0, 5.9)));
+      if (t > 7.1) hy = _lerp(_hookHome, rubyHook, _eio(_seg(t, 7.1, 8.3)));
+      if (t > 8.4) hy = _lerp(rubyHook, _hookHome, _eio(_seg(t, 8.4, 8.9)));
+    } else if (t < hoist2.$1) {
+      // Over to line 2's start.
+      tx = _lerp(rubyCx, a1.dx, _eio(_seg(t, 9.0, 9.35)));
+      hy = _lerp(_hookHome, a1.dy - 8, _eio(_seg(t, 9.2, 9.6)));
+    } else if (t < swing2.$2) {
+      final (a, _) = chain(1, t);
+      tx = a.dx;
+      hy = a.dy - 8;
+    } else if (t < raise1.$1) {
+      // Line 2 is on the rail: over to line 1's head (it has slid right).
+      final af = ja.anchorF(1);
+      final (h, _) = chain(0, t);
+      tx = _lerp(af.dx, h.dx, _eio(_seg(t, 11.85, 12.15)));
+      hy = _lerp(_lerp(af.dy - 8, _hookHome, _eio(_seg(t, 11.8, 11.95))), h.dy - 8, _eio(_seg(t, 12.0, 12.3)));
+    } else if (t < raise1.$2) {
+      final (a, _) = chain(0, t);
+      tx = a.dx;
+      hy = a.dy - 8;
+    } else {
+      final af = ja.anchorF(0);
+      tx = af.dx;
+      hy = _lerp(af.dy - 8, _hookHome, _eio(_seg(t, 13.85, 14.3)));
+    }
+    if (dd > 0) {
+      tx = _lerp(tx, _homeX, _eio(_seg(dd, _hold, _hold + 1.4)));
+    }
+    final crateA = _seg(tau, 0, 0.5) * la;
+    final rubyHang = t > 4.9 && t < 8.3;
+    final rubyHangAt = [for (var i = 0; i < 3; i++) Offset(tx + (_Ja.rubyAt[i] - 1.875) * s, hy + 46)];
+    _crane(tx, hy,
+        strain: t > lowerA && t < landT,
+        slings: t < landT
+            ? [crateR.topLeft + const Offset(12, 0), crateR.topRight + const Offset(-12, 0)]
+            : rubyHang
+                ? [Offset(tx - 1.2 * s, hy + 12), Offset(tx + 1.0 * s, hy + 12)]
+                : const [],
+        load: t < landT
+            ? (hook) => _crate(crateR, a: crateA)
+            : rubyHang
+                ? (hook) {
+                    _c.drawLine(Offset(tx - 1.2 * s, hy + 12), Offset(tx + 1.0 * s, hy + 12), _stroke(BP.inkDim, 2.4));
+                    for (var i = 0; i < 3; i++) {
+                      final o = rubyHangAt[i];
+                      _c.drawLine(Offset(o.dx, hy + 12), Offset(o.dx, o.dy - s / 4), _stroke(BP.line, 0.8, 0.6));
+                      _jaForm(ja.ruby[i], o, s / 2);
+                    }
+                  }
+                : null);
+    // A second cable keeps line 2 flat while it is carried; let go, and the
+    // line swings down into its column.
+    final tailA = _seg(t, hoist2.$1, hoist2.$1 + 0.15) * (1 - _seg(t, swing2.$1, swing2.$1 + 0.12));
+    if (tailA > 0) {
+      _c.drawLine(Offset(tx + 6, _jibY + 19), placed(4, t) + Offset(s / 2 - 10, -s / 2 + 4),
+          _stroke(BP.line, 1.1, 0.85 * tailA));
+    }
+
+    // ── the crate, on the ground ──
+    if (t >= landT) {
+      for (var k = 0; k < 5; k++) {
+        if (t > cs[k] - 0.35 && t < cs[k]) {
+          final e = _eio(_seg(t, cs[k] - 0.35, cs[k]));
+          final from = Offset(crate.center.dx - 30 + 15 * k, crate.top + 50);
+          _jaForm(ja.base[k], Offset.lerp(from, Offset(pickX, _gy - _carryLift - s / 2), e)!, s);
+        }
+      }
+      _crate(crate, lid: _seg(t, 3.25, 3.8), a: la, peek: ja.peek);
+      _k.dust(Offset(crate.left + 20, _gy), t - landT, spread: 2.2);
+      _k.dust(Offset(crate.right - 20, _gy), t - landT, spread: 2.2);
+    }
+
+    if (tau < ja.work) {
+      // Tofu: the slots before a font that has these characters arrives.
+      for (var k = 0; k < 5; k++) {
+        final a = 1 - _seg(t, arr[k] + 0.2, arr[k] + 0.5);
+        if (a <= 0) continue;
+        final r = Rect.fromCenter(center: ja.slot(k), width: s * 0.6, height: s * 0.78);
+        final p = _stroke(BP.inkFaint, 1.3, a);
+        _c
+          ..drawPath(dashPath(Path()..addRect(r), dash: 5, gap: 4), p)
+          ..drawLine(r.topLeft, r.bottomRight, p)
+          ..drawLine(r.topRight, r.bottomLeft, p);
+      }
+      // The measure: a post at the line end and a dimension line.
+      final pa = 1 - _seg(t, 9.3, 9.8);
+      final grow = _eo(_seg(t, plantA, plantA + 0.4));
+      if (grow > 0 && pa > 0) {
+        final topY = _gy - (_gy - 290) * grow;
+        _c.drawPath(dashPath(Path()..moveTo(postX, _gy)..lineTo(postX, topY), dash: 6, gap: 4), _stroke(BP.amber, 1.6, pa));
+        final dl = _eio(_seg(t, plantA + 0.4, plantA + 1.0));
+        if (dl > 0) {
+          const y = 296.0;
+          final x0 = _Ja.left, xe = _lerp(_Ja.left, postX, dl);
+          final p = _stroke(BP.amber, 1.3, pa);
+          _c
+            ..drawLine(Offset(x0, y), Offset(xe, y), p)
+            ..drawLine(Offset(x0, y - 7), Offset(x0, y + 7), p);
+          drawArrowHead(_c, Offset(x0, y), Offset(x0 + 10, y), p, 7);
+          if (dl >= 1) drawArrowHead(_c, Offset(postX, y), Offset(postX - 10, y), p, 7);
+        }
+      }
+      // The line break: planted before 」, flagged, kicked back before き.
+      final sg = _eo(_seg(t, breakA, breakA + 0.4));
+      final sa = 1 - _seg(t, hoist2.$1 - 0.1, hoist2.$1 + 0.3);
+      if (sg > 0 && sa > 0) {
+        final fly = kinsoku ? _seg(t, kickA + 0.1, kickB) : 0.0;
+        final sx = _lerp(naiveX, breakX, _eio(fly));
+        final lift2 = math.sin(math.pi * fly) * 70;
+        final col = !kinsoku || fly >= 1 ? BP.green : (t > flagA ? BP.red : BP.coral);
+        final top = _gy - 128 * sg - lift2;
+        final base = _gy + 8 - lift2;
+        _c
+          ..drawPath(dashPath(Path()..moveTo(sx, base)..lineTo(sx, top), dash: 6, gap: 4), _stroke(col, 2, sa))
+          ..drawPath(
+            Path()
+              ..moveTo(sx, top)
+              ..lineTo(sx + 13, top + 5)
+              ..lineTo(sx, top + 10)
+              ..close(),
+            _fill(col, sa),
+          );
+        if (kinsoku && t > flagA && fly < 0.2) {
+          final o = Offset(naiveX, _gy - s * 0.5);
+          final p = _stroke(BP.red, 3, sa * (1 - fly * 5));
+          _c
+            ..drawLine(o + const Offset(-16, -16), o + const Offset(16, 16), p)
+            ..drawLine(o + const Offset(16, -16), o + const Offset(-16, 16), p);
+        }
+        _k.dust(Offset(breakX, _gy), t - kickB, spread: 1);
+      }
+
+      // Glyphs.
+      for (var k = 0; k < 5; k++) {
+        if (t < cs[k]) continue;
+        Offset c;
+        if (t < arr[k]) {
+          c = Offset(pickX - cv * (t - cs[k]), _gy - _carryLift - s / 2);
+        } else if (t < arr[k] + 0.5) {
+          c = Offset(ja.slot(k).dx, _lerp(_gy - _carryLift - s / 2, ja.emMid, _eio(_seg(t, arr[k], arr[k] + 0.5))));
+        } else {
+          c = placed(k, t);
+        }
+        final b = k == 0 ? 0 : (k == 4 ? 1 : -1);
+        if (b >= 0 && t > swapT[b] - 0.8) {
+          final m = _eio(_seg(t, swapT[b], swapT[b] + 0.35));
+          final shake = _seg(t, swapT[b] - 0.8, swapT[b]) * (1 - _seg(t, swapT[b], swapT[b] + 0.02));
+          c += Offset(shake * 1.2 * math.sin(_time * 70), 0);
+          if (ja.vertWorks[b]) {
+            _jaForm(ja.base[k], c, s, a: 1 - m);
+            _jaForm(ja.vert[b], c, s, a: m);
+          } else {
+            _jaForm(ja.base[k], c, s, rot: m * math.pi / 2);
+          }
+          _k.burst(c, t - swapT[b], cy.n * 11 + b, n: 9);
+        } else {
+          _jaForm(ja.base[k], c, s);
+        }
+        _k.dust(Offset(ja.slot(k).dx, _gy), t - arr[k] - 0.5, spread: 1.3);
+      }
+      if (t >= 8.3) {
+        for (var i = 0; i < 3; i++) {
+          _jaForm(ja.ruby[i], rubyPlaced(i, t), s / 2);
+        }
+      }
+      // Links along each lifted line; the kinsoku lashing ties き to 」.
+      for (var k = 0; k < 4; k++) {
+        if (ja.chainOf(k) != ja.chainOf(k + 1)) continue;
+        final c = ja.chainOf(k);
+        final glue = kinsoku && k == ja.brk && k == 3;
+        final shown = glue ? _seg(t, kickB, kickB + 0.4) : _seg(t, liftStart[c] - 0.4, liftStart[c]);
+        if (shown <= 0) continue;
+        final m = Offset.lerp(placed(k, t), placed(k + 1, t), 0.5)!;
+        final col = glue ? BP.green : BP.amber;
+        _c
+          ..drawCircle(m + const Offset(0, -3), 3.2, _stroke(col, 1.5, shown))
+          ..drawCircle(m + const Offset(0, 3), 3.2, _stroke(col, 1.5, shown));
+      }
+      for (var c = 0; c < 2; c++) {
+        _k.burst(ja.anchorF(c), t - liftEnd[c], cy.n * 7 + c, n: 7);
+      }
+    } else {
+      _jaFinal(ja, dd, placed, rubyPlaced);
+    }
+
+    // The rail: the top edge of the vertical text frame.
+    final ra = _eo(_seg(t, 8.8, 9.4)) * la;
+    if (ra > 0) {
+      final l = ja.x2 - s / 2 - 22, r = _Ja.x1 + s / 2 + 80;
+      final y = _Ja.rail - 3;
+      final p = _stroke(BP.line, 2, ra);
+      _c
+        ..drawLine(Offset(l, y), Offset(_lerp(l, r, ra), y), p)
+        ..drawLine(Offset(l + 14, y), Offset(l + 14, _jibY + 14), _stroke(BP.lineDim, 1.2, ra))
+        ..drawLine(Offset(r - 14, y), Offset(r - 14, _jibY + 14), _stroke(BP.lineDim, 1.2, ra));
+    }
+    _k.drawCrew(figs, minX: 812);
+  }
+
+  /// Finished: the vertical text is swept into solid ink, top to bottom.
+  void _jaFinal(_Ja ja, double dd, Offset Function(int, double) placed, Offset Function(int, double) rubyPlaced) {
+    final s = ja.s;
+    final u = _eio(_seg(dd, 0.05, 0.8));
+    final fade = 1 - _seg(dd, _hold + 0.15, _hold + 0.95);
+    final top = _Ja.rail - 10, bottom = _gy + 10;
+    final ys = _lerp(top, bottom, u);
+    final area = Rect.fromLTRB(830, top - 30, 1400, bottom);
+    _alpha(fade, area, () {
+      for (final solidPart in [false, true]) {
+        _c
+          ..save()
+          ..clipRect(solidPart ? Rect.fromLTRB(830, top - 30, 1400, ys) : Rect.fromLTRB(830, ys, 1400, bottom));
+        for (var k = 0; k < 5; k++) {
+          final c = placed(k, 99);
+          final b = k == 0 ? 0 : (k == 4 ? 1 : -1);
+          if (solidPart) {
+            if (b >= 0 && ja.vertWorks[b]) {
+              _jaSolid(ja.vertSolid[b], c, s);
+            } else {
+              _jaSolid(ja.solid[k], c, s, rot: b >= 0 ? math.pi / 2 : 0);
+            }
+          } else {
+            if (b >= 0 && ja.vertWorks[b]) {
+              _jaForm(ja.vert[b], c, s);
+            } else {
+              _jaForm(ja.base[k], c, s, rot: b >= 0 ? math.pi / 2 : 0);
+            }
+          }
+        }
+        for (var i = 0; i < 3; i++) {
+          final c = rubyPlaced(i, 99);
+          solidPart ? _jaSolid(ja.rubySolid[i], c, s / 2) : _jaForm(ja.ruby[i], c, s / 2);
+        }
+        _c.restore();
+      }
+      if (u > 0 && u < 1) {
+        _c.drawLine(Offset(ja.x2 - s / 2 - 10, ys), Offset(_Ja.x1 + s + 10, ys), _stroke(BP.amber, 2));
+      }
+    });
+  }
+
   // ── Arabic: bidi, joining, gsub, marks ────────────────────────────────────
 
-  void _arabic(_Sc sc, _Cyc cy, List<_Fig> figs) {
+  void _arabic(_Sc sc, _Cyc cy, List<Worker> figs) {
     final tau = cy.tau;
     final t = math.min(tau, sc.work);
     final s = sc.size;
@@ -2205,7 +2288,7 @@ class _ScenePainter extends CustomPainter {
         final myId = id++;
         if (t < lowEnd) {
           final x = left[i] + w[i] * frac;
-          final g = _Fig(x, -1, _P.carry,
+          final g = _w(x, -1, Pose.carry,
               ph: x / 4.2 + j * 1.3, move: t < arr[i] && t >= tin[i], id: myId, sweat: t > tin[i] + 1,
               k: math.sin(math.pi * _seg(t, arr[i], lowEnd)) * 0.9);
           g.free = false;
@@ -2219,16 +2302,16 @@ class _ScenePainter extends CustomPainter {
           final (x, d) = _go(t, lowEnd, under, stPre, 150);
           final pushing = t >= pushA - 0.3 && t < pushB;
           final atX = t >= pushA ? (t < swap[i] ? st : stPre + (touch[i] - start[i])) : x;
-          figs.add(_Fig(atX, d != 0 ? d : (i == 0 ? 1 : -1),
-              d != 0 ? _P.walk : (pushing ? _P.push : (t >= pushB ? _P.wipe : _P.stand)),
+          figs.add(_w(atX, d != 0 ? d : (i == 0 ? 1 : -1),
+              d != 0 ? Pose.walk : (pushing ? Pose.push : (t >= pushB ? Pose.wipe : Pose.stand)),
               ph: d != 0 ? x / 4.5 : t * 8 + j, move: d != 0, id: myId, sweat: pushing || t >= pushB));
         } else {
           final rx = under + (i == 0 ? -12 : 14) + 8 * _h(cy.n, myId);
           final e = _eio(_seg(t, lowEnd, lowEnd + 0.8));
           final x = _lerp(under, rx, e);
           final y = _lerp(_gy, _fy, e);
-          final rest = [_P.wipe, _P.stand, _P.signal][(myId + cy.n) % 3];
-          figs.add(_Fig(x, i == 0 ? 1 : -1, e < 1 ? _P.walk : rest,
+          final rest = [Pose.wipe, Pose.stand, Pose.signal][(myId + cy.n) % 3];
+          figs.add(_w(x, i == 0 ? 1 : -1, e < 1 ? Pose.walk : rest,
               y: y, ph: t * 7 + j, move: e < 1, id: myId, sweat: true));
         }
       }
@@ -2241,15 +2324,15 @@ class _ScenePainter extends CustomPainter {
       final (x, d) = _go(t, 2.4 + j * 0.2, _offX, st, 210);
       final myId = 30 + j;
       if (d != 0) {
-        figs.add(_Fig(x, d, _P.walk, y: _fy, ph: x / 4.5, move: true, id: myId));
+        figs.add(_w(x, d, Pose.walk, y: _fy, ph: x / 4.5, move: true, id: myId));
         continue;
       }
       if (j == 1) {
-        figs.add(_Fig(x, 1, ropeOn ? _P.signal : _P.stand, y: _fy, ph: t * 7, id: myId, sweat: ropeOn));
+        figs.add(_w(x, 1, ropeOn ? Pose.signal : Pose.stand, y: _fy, ph: t * 7, id: myId, sweat: ropeOn));
       } else {
         final f = j == 0 ? -1.0 : 1.0;
         final anchor = j == 0 ? Offset(left[0] + w[0] - 6, joinY) : Offset(left[1] + 6, joinY);
-        figs.add(_Fig(x, f, ropeOn ? _P.pull : _P.stand, y: _fy, ph: t * 6 + j,
+        figs.add(_w(x, f, ropeOn ? Pose.pull : Pose.stand, y: _fy, ph: t * 6 + j,
             id: myId, sweat: ropeOn, rope: ropeOn ? anchor : null));
       }
     }
@@ -2263,8 +2346,8 @@ class _ScenePainter extends CustomPainter {
       final st = (i == 0 ? touch[0] + w[0] * 0.8 : touch[1] + w[1] * 0.28) - f * 17;
       final (x, d) = _go(t, 5.2 + i * 0.5, _offX, st, 230);
       final on = t > swap[i] - 1.1 && t < swap[i];
-      figs.add(_Fig(x, d != 0 ? d : f, d != 0 ? _P.walk : (on ? _P.wrench : (t > swap[i] ? _P.wipe : _P.stand)),
-          ph: d != 0 ? x / 4.5 : t * 6, move: d != 0, id: 40 + i, item: _I.wrench,
+      figs.add(_w(x, d != 0 ? d : f, d != 0 ? Pose.walk : (on ? Pose.wrench : (t > swap[i] ? Pose.wipe : Pose.stand)),
+          ph: d != 0 ? x / 4.5 : t * 6, move: d != 0, id: 40 + i, item: Tool.wrench,
           aim: on ? aims[i] : null, sweat: on));
     }
     // Rigger under the crane.
@@ -2273,15 +2356,15 @@ class _ScenePainter extends CustomPainter {
       final st = dot.center.dx + 34;
       final (x, d) = _go(t, 6.6, _offX, st, 230);
       final on = t > lowA - 0.4 && t < lowB;
-      figs.add(_Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : (on ? _P.signal : _P.stand),
+      figs.add(_w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : (on ? Pose.signal : Pose.stand),
           ph: d != 0 ? x / 4.5 : t * 5, move: d != 0, id: 45));
     }
     // Flag-bearer: plants the direction sign first (bidi: this run is RTL).
     {
       final (x, d) = _go(t, 0.0, _offX, signX + 7, 230);
       final a0 = _arr(0.0, _offX, signX + 7, 230);
-      final g = _Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : _P.pole,
-          ph: x / 4.5, move: d != 0, id: 901, item: _I.sign);
+      final g = _w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : Pose.pole,
+          ph: x / 4.5, move: d != 0, id: 901, item: Tool.sign);
       if (t >= a0 + 0.35) g.plant = Offset(signX, _gy);
       g.free = true;
       figs.add(g);
@@ -2323,12 +2406,12 @@ class _ScenePainter extends CustomPainter {
         final r = Rect.fromLTWH(left[i] - 20, 40, w[i] + 60, _gy + 60);
         _alpha(1 - m, r, () => sc.pre[i].paint(_c, left[i], by));
         _alpha(m, r, () => sc.post[i].paint(_c, left[i], by));
-        _dust(Offset(left[i] + w[i] / 2, _gy), t - arr[i] - 0.6, spread: 2);
-        _burst(aims[i], t - swap[i], cy.n * 7 + i, n: 9);
+        _k.dust(Offset(left[i] + w[i] / 2, _gy), t - arr[i] - 0.6, spread: 2);
+        _k.burst(aims[i], t - swap[i], cy.n * 7 + i, n: 9);
       }
       if (landed) {
         _diff(sc, Offset.zero);
-        _burst(dot.center, t - lowB, cy.n + 77, n: 8, color: BP.green);
+        _k.burst(dot.center, t - lowB, cy.n + 77, n: 8, color: BP.green);
       }
       // The lashing where the letters meet.
       final knot = _seg(t, pushB, pushB + 0.3) * (1 - _seg(t, swap[1], swap[1] + 0.3));
@@ -2341,12 +2424,12 @@ class _ScenePainter extends CustomPainter {
     } else {
       _finalWord(sc, dd);
     }
-    _drawFigs(figs, minX: 812);
+    _k.drawCrew(figs, minX: 812);
   }
 
   // ── Devanagari: clusters, half forms, shirorekha, marks ───────────────────
 
-  void _deva(_Sc sc, _Cyc cy, List<_Fig> figs) {
+  void _deva(_Sc sc, _Cyc cy, List<Worker> figs) {
     final tau = cy.tau;
     final t = math.min(tau, sc.work);
     final s = sc.size;
@@ -2394,7 +2477,7 @@ class _ScenePainter extends CustomPainter {
         final myId = id++;
         if (t < lowEnd) {
           final x = left[i] + wPre[i] * frac;
-          final g = _Fig(x, -1, _P.carry, ph: x / 4.2 + j * 1.7, move: t < arr[i] && t >= t0s[i],
+          final g = _w(x, -1, Pose.carry, ph: x / 4.2 + j * 1.7, move: t < arr[i] && t >= t0s[i],
               id: myId, sweat: t > t0s[i] + 1, k: math.sin(math.pi * _seg(t, arr[i], lowEnd)) * 0.9);
           g.free = false;
           figs.add(g);
@@ -2410,13 +2493,13 @@ class _ScenePainter extends CustomPainter {
           final pushing = t >= slideA - 0.3 && t < slideB;
           final wd = _lerp(wPre[i], wPost[i], morph[i]);
           final atX = t >= slideA ? st(left[i], wd) : x;
-          figs.add(_Fig(atX, d != 0 ? d : moveDir, d != 0 ? _P.walk : (pushing ? _P.push : (t > slideB ? _P.wipe : _P.stand)),
+          figs.add(_w(atX, d != 0 ? d : moveDir, d != 0 ? Pose.walk : (pushing ? Pose.push : (t > slideB ? Pose.wipe : Pose.stand)),
               ph: d != 0 ? x / 4.5 : t * 8 + j, move: d != 0, id: myId, sweat: pushing || t > slideB));
         } else {
           final rx = under + 10 * (_h(cy.n, myId) - 0.5);
           final e = _eio(_seg(t, lowEnd, lowEnd + 0.8));
-          final rest = [_P.wipe, _P.signal, _P.stand][(myId + cy.n) % 3];
-          figs.add(_Fig(_lerp(under, rx, e), myId.isEven ? 1 : -1, e < 1 ? _P.walk : rest,
+          final rest = [Pose.wipe, Pose.signal, Pose.stand][(myId + cy.n) % 3];
+          figs.add(_w(_lerp(under, rx, e), myId.isEven ? 1 : -1, e < 1 ? Pose.walk : rest,
               y: _lerp(_gy, _fy, e), ph: t * 7 + j, move: e < 1, id: myId, sweat: true));
         }
       }
@@ -2430,8 +2513,8 @@ class _ScenePainter extends CustomPainter {
       final st = sc.preX[i] + wPre[i] * 0.74 + 15;
       final (x, d) = _go(t, 1.6 + k * 0.6, _offX, st, 230);
       final on = t > weld[k].$1 && t < weld[k].$2;
-      final g = _Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : (on ? _P.weld : (t > weld[k].$2 ? _P.wipe : _P.stand)),
-          ph: d != 0 ? x / 4.5 : t * 5, move: d != 0, id: 40 + k, item: _I.torch, aim: aim, sweat: on);
+      final g = _w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : (on ? Pose.weld : (t > weld[k].$2 ? Pose.wipe : Pose.stand)),
+          ph: d != 0 ? x / 4.5 : t * 5, move: d != 0, id: 40 + k, item: Tool.torch, aim: aim, sweat: on);
       g.visor = on;
       figs.add(g);
     }
@@ -2447,7 +2530,7 @@ class _ScenePainter extends CustomPainter {
       final (x, d) = _go(t, 5.6 + k * 0.4, _offX, st, 220);
       final f = k == 0 ? -1.0 : 1.0;
       final end = Offset(k == 0 ? sc.wl + 8 + sway : sc.wl + sc.ww - 8 + sway, bandB + dy);
-      figs.add(_Fig(x, d != 0 ? d : f, d != 0 ? _P.walk : (tagOn ? _P.pull : _P.stand),
+      figs.add(_w(x, d != 0 ? d : f, d != 0 ? Pose.walk : (tagOn ? Pose.pull : Pose.stand),
           y: _fy, ph: d != 0 ? x / 4.5 : t * 5 + k, move: d != 0, id: 50 + k,
           rope: tagOn && d == 0 ? end : null, sweat: tagOn));
     }
@@ -2462,19 +2545,19 @@ class _ScenePainter extends CustomPainter {
       // holder carries the ladder in, raises it, holds its foot
       final (x, d) = _go(t, 8.4, _offX, fx + 10, 230);
       final raise = _seg(t, raiseA, raiseB);
-      final g = _Fig(x, d != 0 ? d : -1, d != 0 ? _P.ladder : (raise > 0 ? _P.push : _P.ladder),
+      final g = _w(x, d != 0 ? d : -1, d != 0 ? Pose.ladder : (raise > 0 ? Pose.push : Pose.ladder),
           ph: x / 4.5, move: d != 0, id: 60, sweat: raise > 0);
       figs.add(g);
       final la = 1 - _seg(tau, sc.work + _hold, sc.work + _hold + 0.6);
       if (raise <= 0) {
         if (x < 1640) {
-          _ladder(Offset(x - 32, _gy - 27), Offset(x + 30, _gy - 27), a: la);
+          _k.ladder(Offset(x - 32, _gy - 27), Offset(x + 30, _gy - 27), a: la);
         }
       } else {
         final e = _eio(raise);
         final foot = Offset(fx, _gy);
         final flat = Offset(fx - 62, _gy - 4);
-        _ladder(foot, Offset.lerp(flat, topC, e)!, a: la);
+        _k.ladder(foot, Offset.lerp(flat, topC, e)!, a: la);
       }
     }
     Offset? matraAt;
@@ -2482,12 +2565,12 @@ class _ScenePainter extends CustomPainter {
       final (x, d) = _go(t, 8.0, _offX, fx + 3, 170);
       final climb = _eio(_seg(t, climbA, climbB));
       final placed = _seg(t, placeA, placeB);
-      _Fig g;
+      Worker g;
       if (d != 0 || t < climbA) {
-        g = _Fig(x, d != 0 ? d : -1, _P.carry, ph: x / 4.2, move: d != 0, id: 61, sweat: true);
+        g = _w(x, d != 0 ? d : -1, Pose.carry, ph: x / 4.2, move: d != 0, id: 61, sweat: true);
       } else {
         final p = Offset.lerp(Offset(fx + 3, _gy), feetTop, climb)!;
-        g = _Fig(p.dx, -1, placed > 0.4 ? _P.climb : _P.climbCarry, y: p.dy,
+        g = _w(p.dx, -1, placed > 0.4 ? Pose.climb : Pose.climbCarry, y: p.dy,
             ph: climb * 18, id: 61, sweat: true);
       }
       g.free = placed >= 1;
@@ -2547,7 +2630,7 @@ class _ScenePainter extends CustomPainter {
         _alpha(1 - morph[i], r, () => sc.pre[i].paint(_c, left[i], by));
         if (morph[i] > 0) _alpha(morph[i], r, () => sc.post[i].paint(_c, left[i], by));
         _c.restore();
-        _dust(Offset(left[i] + wPre[i] / 2, _gy), t - arr[i] - 0.6, spread: 1.4);
+        _k.dust(Offset(left[i] + wPre[i] / 2, _gy), t - arr[i] - 0.6, spread: 1.4);
       }
       if (headlineOn) {
         _c
@@ -2556,28 +2639,28 @@ class _ScenePainter extends CustomPainter {
         sc.word.mForm.paint(_c, sc.wl, _gy);
         _c.restore();
         for (var k = 0; k < 6; k++) {
-          _burst(Offset(sc.wl + sc.ww * (k + 0.5) / 6, bandB), t - lowB - k * 0.05, cy.n * 5 + k, n: 5);
+          _k.burst(Offset(sc.wl + sc.ww * (k + 0.5) / 6, bandB), t - lowB - k * 0.05, cy.n * 5 + k, n: 5);
         }
       }
       for (var k = 0; k < 2; k++) {
-        if (t > weld[k].$1 && t < weld[k].$2) _stream(weldAim[k], _time, cy.n * 3 + k);
+        if (t > weld[k].$1 && t < weld[k].$2) _k.stream(weldAim[k], _time, cy.n * 3 + k);
       }
       final m = matraAt;
       if (m != null) {
         _diff(sc, m);
       } else {
         _diff(sc, Offset.zero);
-        _burst(mk.center, t - placeB, cy.n + 91, n: 8, color: BP.green);
+        _k.burst(mk.center, t - placeB, cy.n + 91, n: 8, color: BP.green);
       }
     } else {
       _finalWord(sc, dd);
     }
-    _drawFigs(figs, minX: 812);
+    _k.drawCrew(figs, minX: 812);
   }
 
   // ── Thai: clusters, marks, word breaks ────────────────────────────────────
 
-  void _thai(_Sc sc, _Cyc cy, List<_Fig> figs) {
+  void _thai(_Sc sc, _Cyc cy, List<Worker> figs) {
     final tau = cy.tau;
     final t = math.min(tau, sc.work);
     final n = sc.pre.length; // 6
@@ -2614,7 +2697,7 @@ class _ScenePainter extends CustomPainter {
         final myId = id++;
         if (t < lowEnd) {
           final x = left[i] + w[i] * frac;
-          final g = _Fig(x, -1, _P.carry, ph: x / 4.2 + j * 1.7, move: t < arr[i] && t >= t0s[i],
+          final g = _w(x, -1, Pose.carry, ph: x / 4.2 + j * 1.7, move: t < arr[i] && t >= t0s[i],
               id: myId, sweat: t > t0s[i] + 1, k: math.sin(math.pi * _seg(t, arr[i], lowEnd)) * 0.9);
           g.free = false;
           figs.add(g);
@@ -2623,9 +2706,9 @@ class _ScenePainter extends CustomPainter {
         final under = sc.finX[i] + w[i] * frac;
         final rx = under + 12 * (_h(cy.n, myId) - 0.5);
         final e = _eio(_seg(t, lowEnd, lowEnd + 0.8));
-        final rest = [_P.wipe, _P.stand, _P.signal, _P.sit][(myId + cy.n) % 4];
-        figs.add(_Fig(_lerp(under, rx, e), myId.isEven ? 1 : -1, e < 1 ? _P.walk : rest,
-            y: _lerp(_gy, _fy, e), ph: t * 7 + j, move: e < 1, id: myId, sweat: rest != _P.stand));
+        final rest = [Pose.wipe, Pose.stand, Pose.signal, Pose.sit][(myId + cy.n) % 4];
+        figs.add(_w(_lerp(under, rx, e), myId.isEven ? 1 : -1, e < 1 ? Pose.walk : rest,
+            y: _lerp(_gy, _fy, e), ph: t * 7 + j, move: e < 1, id: myId, sweat: rest != Pose.stand));
       }
     }
     // ── crane: า arrives from above ──
@@ -2647,7 +2730,7 @@ class _ScenePainter extends CustomPainter {
       final st = aCx + 8;
       final (x, d) = _go(t, 2.2, _offX, st, 220);
       final on = t > lowA - 0.3 && t < lowB;
-      figs.add(_Fig(x, d != 0 ? d : -1, d != 0 ? _P.walk : (on ? _P.signal : _P.stand),
+      figs.add(_w(x, d != 0 ? d : -1, d != 0 ? Pose.walk : (on ? Pose.signal : Pose.stand),
           y: _fy, ph: d != 0 ? x / 4.5 : t * 5, move: d != 0, id: 45));
     }
     // ── ladder 1: the tone mark ้ on ข ──
@@ -2663,14 +2746,14 @@ class _ScenePainter extends CustomPainter {
       // two-person ladder team
       final (x, d) = _go(t, 2.8, _offX, foot1.dx + 24, 200);
       final raise = _eio(_seg(t, raise1.$1, raise1.$2));
-      figs.add(_Fig(x - 22, d != 0 ? d : -1, raise > 0 ? _P.push : _P.ladder,
+      figs.add(_w(x - 22, d != 0 ? d : -1, raise > 0 ? Pose.push : Pose.ladder,
           ph: x / 4.5, move: d != 0, id: 60, sweat: true));
-      figs.add(_Fig(x + 22, d != 0 ? d : -1, raise > 0 ? _P.stand : _P.ladder,
+      figs.add(_w(x + 22, d != 0 ? d : -1, raise > 0 ? Pose.stand : Pose.ladder,
           ph: x / 4.5 + 2, move: d != 0, id: 62));
       if (raise <= 0) {
-        if (x - 40 < 1640) _ladder(Offset(x - 40, _gy - 27), Offset(x + 40, _gy - 27), a: la);
+        if (x - 40 < 1640) _k.ladder(Offset(x - 40, _gy - 27), Offset(x + 40, _gy - 27), a: la);
       } else {
-        _ladder(foot1, Offset.lerp(foot1 + const Offset(-80, -4), top1, raise)!, a: la);
+        _k.ladder(foot1, Offset.lerp(foot1 + const Offset(-80, -4), top1, raise)!, a: la);
       }
     }
     Offset? markAt;
@@ -2679,16 +2762,16 @@ class _ScenePainter extends CustomPainter {
       final up = _eio(_seg(t, climb1.$1, climb1.$2));
       final dn = _eio(_seg(t, down1.$1, down1.$2));
       final placed = _seg(t, place1.$1, place1.$2);
-      _Fig g;
+      Worker g;
       if (d != 0 || t < climb1.$1) {
-        g = _Fig(x, d != 0 ? d : -1, _P.carry, ph: x / 4.2, move: d != 0, id: 61, sweat: true);
+        g = _w(x, d != 0 ? d : -1, Pose.carry, ph: x / 4.2, move: d != 0, id: 61, sweat: true);
       } else if (dn < 1) {
         final p = Offset.lerp(Offset(foot1.dx + 3, _gy), feet1, up * (1 - dn))!;
-        g = _Fig(p.dx, -1, placed > 0.4 ? _P.climb : _P.climbCarry, y: p.dy, ph: (up + dn) * 18, id: 61, sweat: true);
+        g = _w(p.dx, -1, placed > 0.4 ? Pose.climb : Pose.climbCarry, y: p.dy, ph: (up + dn) * 18, id: 61, sweat: true);
       } else {
         final (x2, d2) = _go(t, down1.$2, foot1.dx + 3, foot1.dx + 40, 120);
         final e = _seg(t, down1.$2, down1.$2 + 0.6);
-        g = _Fig(x2, d2 != 0 ? d2 : -1, d2 != 0 ? _P.walk : _P.wipe, y: _lerp(_gy, _fy, e), ph: x2 / 4.5, move: d2 != 0, id: 61, sweat: true);
+        g = _w(x2, d2 != 0 ? d2 : -1, d2 != 0 ? Pose.walk : Pose.wipe, y: _lerp(_gy, _fy, e), ph: x2 / 4.5, move: d2 != 0, id: 61, sweat: true);
       }
       g.free = t > down1.$2;
       figs.add(g);
@@ -2711,25 +2794,25 @@ class _ScenePainter extends CustomPainter {
       final up = _eio(_seg(t, climb2.$1, climb2.$2));
       final dn = _eio(_seg(t, down2.$1, down2.$2));
       final ham = t > hammer2.$1 && t < hammer2.$2;
-      _Fig g;
+      Worker g;
       if (d != 0 || t < climb2.$1) {
-        g = _Fig(x, d != 0 ? d : 1, d != 0 ? _P.ladder : _P.push, ph: x / 4.5, move: d != 0, id: 63);
+        g = _w(x, d != 0 ? d : 1, d != 0 ? Pose.ladder : Pose.push, ph: x / 4.5, move: d != 0, id: 63);
       } else {
         final p = Offset.lerp(Offset(foot2.dx - 4, _gy), feet2, up * (1 - dn))!;
-        g = _Fig(p.dx, 1, ham ? _P.hammer : _P.climb, y: p.dy, ph: ham ? t * 10 : (up + dn) * 18,
-            id: 63, item: _I.hammer, sweat: ham);
+        g = _w(p.dx, 1, ham ? Pose.hammer : Pose.climb, y: p.dy, ph: ham ? t * 10 : (up + dn) * 18,
+            id: 63, item: Tool.hammer, sweat: ham);
         if (ham) {
           final period = 2 * math.pi / 10;
           final age = ((t * 10 - math.pi / 2) / (2 * math.pi) % 1) * period;
-          _burst(Offset(p.dx + 11, p.dy - 3), age, cy.n * 17 + ((t * 10) / (2 * math.pi)).floor(), n: 5);
+          _k.burst(Offset(p.dx + 11, p.dy - 3), age, cy.n * 17 + ((t * 10) / (2 * math.pi)).floor(), n: 5);
         }
       }
       g.free = t > down2.$2;
       figs.add(g);
       if (raise <= 0) {
-        if (x < 1640) _ladder(Offset(x - 30, _gy - 27), Offset(x + 30, _gy - 27), a: la);
+        if (x < 1640) _k.ladder(Offset(x - 30, _gy - 27), Offset(x + 30, _gy - 27), a: la);
       } else {
-        _ladder(foot2, Offset.lerp(foot2 + const Offset(70, -4), top2, raise)!, a: la);
+        _k.ladder(foot2, Offset.lerp(foot2 + const Offset(70, -4), top2, raise)!, a: la);
       }
     }
     // ── word-boundary stakes (ICU dictionary: no spaces in Thai) ──
@@ -2740,7 +2823,7 @@ class _ScenePainter extends CustomPainter {
       var x0 = _offX;
       double? sx;
       double sf = -1;
-      _P sp = _P.walk;
+      Pose sp = Pose.walk;
       var moving = false;
       for (var k = 0; k < bounds.length; k++) {
         final bx = bounds[k] - 8;
@@ -2750,18 +2833,18 @@ class _ScenePainter extends CustomPainter {
           sx = x;
           sf = d != 0 ? d : 1;
           moving = d != 0;
-          sp = moving ? _P.walk : _P.stand;
+          sp = moving ? Pose.walk : Pose.stand;
         } else if (sx == null && t < a + 0.6) {
           sx = bx;
           sf = 1;
-          sp = _P.hammer;
+          sp = Pose.hammer;
         }
         stakeT.add(a + 0.6);
         tt = a + 0.6;
         x0 = bx;
       }
-      final g = _Fig(sx ?? x0, sf, sx == null ? _P.stand : sp,
-          ph: sp == _P.hammer ? t * 11 : (sx ?? x0) / 4.5, move: moving, id: 70, item: _I.hammer, sweat: sp == _P.hammer);
+      final g = _w(sx ?? x0, sf, sx == null ? Pose.stand : sp,
+          ph: sp == Pose.hammer ? t * 11 : (sx ?? x0) / 4.5, move: moving, id: 70, item: Tool.hammer, sweat: sp == Pose.hammer);
       figs.add(g);
     }
     final lastStake = stakeT.isEmpty ? 0.0 : stakeT.last;
@@ -2787,18 +2870,18 @@ class _ScenePainter extends CustomPainter {
       for (final i in carried) {
         if (left[i] > 1640) continue;
         sc.pre[i].paint(_c, left[i], _gy - lift[i]);
-        _dust(Offset(left[i] + w[i] / 2, _gy), t - arr[i] - 0.6, spread: 1.2);
+        _k.dust(Offset(left[i] + w[i] / 2, _gy), t - arr[i] - 0.6, spread: 1.2);
       }
       if (aLanded) {
         aForm.paint(_c, aLeft, _gy);
-        _dust(Offset(aCx, _gy), t - lowB, spread: 1.2);
+        _k.dust(Offset(aCx, _gy), t - lowB, spread: 1.2);
       }
       final m = markAt;
       if (m != null) {
         _diff(sc, m);
       } else {
         _diff(sc, Offset.zero);
-        _burst(mk.center, t - place1.$2, cy.n + 93, n: 8, color: BP.green);
+        _k.burst(mk.center, t - place1.$2, cy.n + 93, n: 8, color: BP.green);
       }
     } else {
       _finalWord(sc, dd);
@@ -2819,7 +2902,7 @@ class _ScenePainter extends CustomPainter {
             ..close(),
           _fill(sc.color, sa * 0.9),
         );
-      _dust(Offset(bx, _gy), t - stakeT[k], spread: 0.7);
+      _k.dust(Offset(bx, _gy), t - stakeT[k], spread: 0.7);
     }
     final br = _eio(_seg(t, lastStake, lastStake + 0.7));
     if (br > 0 && bounds.length >= 2) {
@@ -2830,6 +2913,6 @@ class _ScenePainter extends CustomPainter {
         ..drawLine(Offset(a, y - 5), Offset(a, y + 5), _stroke(sc.color, 1.6, sa));
       if (br >= 1) _c.drawLine(Offset(b, y - 5), Offset(b, y + 5), _stroke(sc.color, 1.6, sa));
     }
-    _drawFigs(figs, minX: 812);
+    _k.drawCrew(figs, minX: 812);
   }
 }

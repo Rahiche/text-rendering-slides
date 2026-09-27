@@ -158,8 +158,8 @@ class _FontLookupState extends State<_FontLookup> with SingleTickerProviderState
   }
 }
 
-const _cardH = 172.0;
-double _cardTop(int k) => 10 + k * (_cardH + 36);
+const _cardH = 184.0;
+double _cardTop(int k) => 6 + k * (_cardH + 24);
 double _rowH(int n) => math.min(66, 600 / math.max(1, n));
 
 enum _Probe { idle, miss, hit }

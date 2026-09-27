@@ -250,6 +250,7 @@ class _DeckState extends State<Deck> {
           listenable: _c,
           builder: (context, _) => LayoutBuilder(
             builder: (context, box) {
+              final worldRuler = _worldRuler();
               final scale = math.min(
                 box.maxWidth / BP.canvas.width,
                 box.maxHeight / BP.canvas.height,
@@ -281,8 +282,8 @@ class _DeckState extends State<Deck> {
                                   child: CustomPaint(painter: CropMarksPainter()),
                                 ),
                               ),
-                              ?_worldRuler(),
-                              if (_world.ruler(_c) == null)
+                              ?worldRuler,
+                              if (worldRuler == null)
                                 Positioned(
                                   left: BP.margin,
                                   right: BP.margin,
@@ -311,6 +312,7 @@ class _DeckState extends State<Deck> {
     if (r == null) return null;
     return Positioned(left: 0, right: 0, bottom: 0, height: 110, child: r);
   }
+
 
   Widget _slides() {
     final def = _c.current;

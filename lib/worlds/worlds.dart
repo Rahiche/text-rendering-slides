@@ -14,10 +14,10 @@ const worlds = <World>[
   ClassicWorld(),
 ];
 
-/// Picks the world from the URL (web): a path segment such as
-/// `/text-rendering-slides/factory/`, or `?deck=factory`. Otherwise
-/// `--dart-define=WORLD=factory`, else the classic blueprint deck.
-World worldFromEnvironment() {
+/// The world asked for by the URL (web): a path segment such as
+/// `/text-rendering-slides/factory/`, or `?deck=factory`; otherwise
+/// `--dart-define=WORLD=factory`. Null when nothing was asked for.
+World? requestedWorld() {
   World? byId(String? id) {
     for (final w in worlds) {
       if (w.id == id) return w;
@@ -28,6 +28,8 @@ World worldFromEnvironment() {
   final uri = Uri.base;
   return byId(uri.queryParameters['deck']) ??
       uri.pathSegments.map(byId).whereType<World>().firstOrNull ??
-      byId(const String.fromEnvironment('WORLD')) ??
-      const ClassicWorld();
+      byId(const String.fromEnvironment('WORLD'));
 }
+
+/// [requestedWorld], else the classic blueprint deck.
+World worldFromEnvironment() => requestedWorld() ?? const ClassicWorld();

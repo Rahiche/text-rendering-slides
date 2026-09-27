@@ -24,5 +24,13 @@ for w in "${WORLDS[@]}"; do
   sed -i.bak "s#${PLACEHOLDER}#${BASE}${w}/#" "build/pages/$w/index.html"
   rm "build/pages/$w/index.html.bak"
 done
+# The Chrome vs Flutter comparison page, when its renders exist
+# (./compare/capture.sh generates them).
+if [ -f compare/out/flutter/lines.json ] && [ -f compare/fonts/NotoSansJP.ttf ]; then
+  mkdir -p build/pages/compare/out build/pages/compare/fonts
+  cp compare/index.html compare/compare.css compare/compare.js compare/cases.json build/pages/compare/
+  cp -R compare/out/flutter build/pages/compare/out/
+  cp compare/fonts/NotoSansJP.ttf build/pages/compare/fonts/
+fi
 touch build/pages/.nojekyll
 echo "Site assembled in build/pages (${WORLDS[*]})"

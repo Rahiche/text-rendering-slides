@@ -85,19 +85,34 @@ abstract final class SlugShader {
 
 /// Draws encoded glyphs with the Slug shader: one quad per glyph.
 ///
-/// Reuses one [ui.FragmentShader]; uniforms are copied into each draw call.
+/// Every glyph drawn in a paint pass gets its own [ui.FragmentShader] from a
+/// reusable pool: the web renderers (CanvasKit / Skwasm) read a shader's
+/// uniforms when the frame is rasterized, not at `drawRect`, so sharing one
+/// shader would draw every glyph with the last glyph's uniforms. Call
+/// [beginPass] at the start of each paint.
 class SlugPainter {
-  SlugPainter(ui.FragmentProgram program, this.atlas)
-    : _shader = program.fragmentShader() {
-    _shader.setImageSampler(0, atlas.image);
-    _paint = Paint()
-      ..shader = _shader
-      ..isAntiAlias = false;
-  }
+  SlugPainter(this._program, this.atlas);
 
+  final ui.FragmentProgram _program;
   final SlugAtlas atlas;
-  final ui.FragmentShader _shader;
-  late final Paint _paint;
+  final List<ui.FragmentShader> _shaders = [];
+  final List<Paint> _paints = [];
+  int _next = 0;
+
+  /// Starts a paint pass: shader slots are handed out again from the first.
+  void beginPass() => _next = 0;
+
+  (ui.FragmentShader, Paint) _slot() {
+    if (_next == _shaders.length) {
+      final shader = _program.fragmentShader()..setImageSampler(0, atlas.image);
+      _shaders.add(shader);
+      _paints.add(Paint()
+        ..shader = shader
+        ..isAntiAlias = false);
+    }
+    final i = _next++;
+    return (_shaders[i], _paints[i]);
+  }
 
   /// Draws [g] with its pen (origin on the baseline) at [pen], [scale] local
   /// px per font unit. [toDevice] maps the canvas' current local coordinates
@@ -125,7 +140,7 @@ class SlugPainter {
       pen.dy - g.bounds.top * scale,
     );
     final quad = dilate ? h.dilate(b) : b;
-    final s = _shader;
+    final (s, paint) = _slot();
     var i = 0;
     void f(double v) => s.setFloat(i++, v);
     f(atlas.data.width.toDouble());
@@ -156,11 +171,15 @@ class SlugPainter {
     f(color.g * color.a);
     f(color.b * color.a);
     f(color.a);
-    canvas.drawRect(quad, _paint);
+    canvas.drawRect(quad, paint);
     return quad;
   }
 
-  void dispose() => _shader.dispose();
+  void dispose() {
+    for (final s in _shaders) {
+      s.dispose();
+    }
+  }
 }
 
 /// The local → device map of a 4×4 transform restricted to the z = 0 plane.

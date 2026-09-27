@@ -70,3 +70,24 @@ h1 { font-size: 28px; margin: 0 0 4px; font-weight: 600; }
 .badge.ok { background: #e3f4ea; color: var(--ok); }
 .badge.bad { background: #fbe5e5; color: var(--bad); }
 .missing { padding: 18px; color: var(--bad); font-size: 12px; }
+
+/* ── Slug zoom section ───────────────────────────────────────────── */
+@font-face { font-family: 'SGrot'; src: url('fonts/SpaceGrotesk.ttf') format('truetype'); font-weight: 300 700; }
+@font-face { font-family: 'CaseJP'; src: url('fonts/NotoSansJP-case.ttf') format('truetype'); }
+h2.part { font-size: 22px; margin: 48px 0 4px; font-weight: 600; }
+.zoomrow { display: flex; gap: 18px; align-items: flex-start; }
+.zoomcol .colhead { margin-bottom: 6px; }
+.view { position: relative; overflow: hidden; background: #fff; outline: 1px solid var(--line); }
+.subject {
+  position: absolute;
+  display: inline-block;
+  white-space: nowrap;
+  font-family: 'SGrot', 'CaseJP';
+  font-weight: 300;
+  line-height: 1.2;
+  color: #111;
+}
+.subject.anim { animation: zoom 4s ease-in-out infinite; }
+@keyframes zoom { 0%, 100% { transform: scale(1); } 50% { transform: scale(var(--s)); } }
+iframe.probe { border: 0; display: block; background: #fff; outline: 1px solid var(--line); }
+.probeheads { display: flex; gap: 18px; }

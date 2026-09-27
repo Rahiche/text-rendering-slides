@@ -28,7 +28,8 @@ done
 # (./compare/capture.sh generates them).
 if [ -f compare/out/flutter/lines.json ] && [ -f compare/fonts/NotoSansJP.ttf ]; then
   mkdir -p build/pages/compare/out build/pages/compare/fonts
-  cp compare/index.html compare/compare.css compare/compare.js compare/cases.json build/pages/compare/
+  cp compare/index.html compare/compare.css compare/compare.js compare/cases.json compare/zoom.json build/pages/compare/
+  cp assets/fonts/SpaceGrotesk.ttf assets/fonts/NotoSansJP-case.ttf build/pages/compare/fonts/
   cp -R compare/out/flutter build/pages/compare/out/
   cp compare/fonts/NotoSansJP.ttf build/pages/compare/fonts/
 fi

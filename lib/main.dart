@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 
 import 'deck/deck.dart';
 import 'deck/theme.dart';
+import 'probe/slug_probe.dart';
 import 'slides/registry.dart';
 import 'worlds/chooser.dart';
 import 'worlds/world.dart';
 import 'worlds/worlds.dart';
 
-void main() => runApp(const SlidesApp());
+void main() {
+  // compare/index.html embeds `?probe=slug` to show Text vs SlugText alone.
+  if (Uri.base.queryParameters['probe'] == 'slug') {
+    runApp(const SlugProbeApp());
+    return;
+  }
+  runApp(const SlidesApp());
+}
 
 class SlidesApp extends StatelessWidget {
   const SlidesApp({super.key});

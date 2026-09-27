@@ -377,6 +377,7 @@ class RenderSlugText extends RenderBox {
   void paint(PaintingContext context, Offset offset) {
     final p = _painter;
     if (p == null || _placed.isEmpty) return;
+    p.beginPass();
     final canvas = context.canvas;
     // Canvas coordinates → device pixels: (c - offset) → global → × dpr.
     final m = Matrix4.diagonal3Values(_devicePixelRatio, _devicePixelRatio, 1)

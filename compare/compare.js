@@ -4,6 +4,10 @@
 // Characters that must not start a line under strict kinsoku (JLREQ).
 const NO_START = 'ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶー、。，．」』）】〕〉》・：；？！';
 
+const PARAMS = new URLSearchParams(location.search);
+const PART = PARAMS.get('part'); // null = everything
+const STATIC = PARAMS.get('static') === '1';
+
 const $ = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -72,6 +76,10 @@ function same(a, b) {
 }
 
 async function main() {
+  if (PART === 'zoom') {
+    document.getElementById('summary').remove();
+    return;
+  }
   const cases = await (await fetch('cases.json')).json();
   let flutter = null;
   try {
@@ -178,4 +186,101 @@ function renderSummary(cases, rows) {
   document.body.dataset.ready = '1';
 }
 
-main();
+// ── Slug zoom & perspective ────────────────────────────────────────
+// Chrome text under a CSS transform next to an iframe of the Flutter web
+// app in probe mode (lib/probe/slug_probe.dart), which renders Flutter Text
+// and SlugText under the same Matrix4.
+async function renderZoom() {
+  if (PART === 'type') return;
+  let cases;
+  try {
+    cases = (await (await fetch('zoom.json')).json()).filter((c) => !(STATIC && c.anim));
+  } catch (_) {
+    return;
+  }
+  // Local capture builds the app into out/app/; on the site, reuse a deck build.
+  const local = await fetch('out/app/index.html', { method: 'HEAD' }).then((r) => r.ok).catch(() => false);
+  const appBase = local ? 'out/app/' : '../classic/';
+  await document.fonts.load('300 24px SGrot', 'Text');
+  await document.fonts.load('24px CaseJP', '直');
+
+  const root = document.getElementById('zoom');
+  root.append($('h2', 'part', 'Slug · zoom & perspective'));
+  root.append($('div', 'meta', 'Same font file, size and transform on every side. ' +
+    'Chrome: CSS transform on HTML text. Flutter: the web build (Wasm/Skwasm) running live in the iframe. ' +
+    'Note: on the web, Skia draws large or perspective glyphs as paths too, so Text and SlugText mostly match here; ' +
+    'Slug\u2019s gains are vs Impeller\u2019s glyph atlas on native (mid-size zoom, perspective, animated scale).'));
+
+  for (const c of cases) {
+    const w = c.w ?? 520, h = c.h ?? 280, gap = 18;
+    const sec = $('section', 'case');
+    sec.append($('h2', null, c.title));
+    const t = [];
+    if (c.persp) t.push(`perspective(${c.persp}px)`);
+    if (c.rx) t.push(`rotateX(${c.rx}deg)`);
+    if (c.ry) t.push(`rotateY(${c.ry}deg)`);
+    if (c.scale && !c.anim) t.push(`scale(${c.scale})`);
+    const transform = t.join(' ') || 'none';
+    sec.append($('div', 'meta mono', `「${c.text}」 · ${c.size}px · transform-origin ${c.ox}px ${c.oy}px · ${c.anim ? `scale 1 ↔ ${c.scale} (4 s loop)` : transform}`));
+
+    const row = $('div', 'zoomrow');
+    // Chrome
+    const chromeCol = $('div', 'zoomcol');
+    chromeCol.append($('div', 'colhead', 'Chrome · CSS transform'));
+    const view = $('div', 'view');
+    view.style.width = `${w}px`;
+    view.style.height = `${h}px`;
+    const subj = $('div', 'subject');
+    subj.lang = 'ja';
+    subj.textContent = c.text;
+    subj.style.fontFamily = c.font === 'jp' ? 'CaseJP' : 'SGrot';
+    subj.style.fontWeight = c.font === 'jp' ? '400' : '300';
+    Object.assign(subj.style, {
+      left: `${c.x0}px`, top: `${c.y0}px`, fontSize: `${c.size}px`,
+      transformOrigin: `${c.ox}px ${c.oy}px`,
+    });
+    view.append(subj);
+    chromeCol.append(view);
+    row.append(chromeCol);
+    sec.append(row);
+    root.append(sec);
+
+    // Flutter (one iframe renders Text and SlugText side by side)
+    const flCol = $('div', 'zoomcol');
+    const heads = $('div', 'probeheads');
+    for (const label of ['Flutter · Text', 'Flutter · SlugText']) {
+      const hd = $('div', 'colhead', label);
+      hd.style.width = `${w}px`;
+      heads.append(hd);
+    }
+    flCol.append(heads);
+    // Chrome snaps ascent, descent and half-leading to whole pixels; Flutter
+    // keeps fractions. Hand the probe Chrome's measured baseline so both put
+    // the glyphs on the same line (≈1px at 24px, which 40× zoom magnifies).
+    const mark = document.createElement('span');
+    mark.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    subj.append(mark);
+    const base = mark.getBoundingClientRect().top - subj.getBoundingClientRect().top;
+    mark.remove();
+    subj.style.transform = c.anim ? '' : transform;
+    if (c.anim) {
+      subj.style.setProperty('--s', c.scale);
+      subj.classList.add('anim');
+    }
+
+    const params = new URLSearchParams({
+      probe: 'slug', w, h, gap, size: c.size, scale: c.scale ?? 1, rx: c.rx ?? 0, ry: c.ry ?? 0,
+      persp: c.persp ?? 0, ox: c.ox, oy: c.oy, x0: c.x0, y0: c.y0, anim: c.anim ? 1 : 0,
+      text: c.text, font: c.font, base: base.toFixed(3),
+    });
+    const frame = $('iframe', 'probe');
+    frame.src = `${appBase}?${params}`;
+    frame.width = String(2 * w + gap);
+    frame.height = String(h);
+    frame.title = `Flutter Text vs SlugText: ${c.title}`;
+    flCol.append(frame);
+    row.append(flCol);
+  }
+}
+
+main().then(renderZoom);

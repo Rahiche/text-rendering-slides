@@ -1,0 +1,8 @@
+[
+  { "id": "scale8", "title": "Zoom 8× (直, Noto Sans JP)", "text": "直", "font": "jp", "size": 24, "scale": 8, "ox": 0, "oy": 0, "x0": 150, "y0": 8 },
+  { "id": "scale40", "title": "Zoom 40×: stroke edges", "text": "直", "font": "jp", "size": 24, "scale": 40, "ox": 0, "oy": 0, "x0": -120, "y0": -330 },
+  { "id": "tilt-x", "title": "Perspective: tilted back (rotateX 60°)", "text": "Text", "font": "latin", "size": 96, "rx": 60, "persp": 360, "ox": 100, "oy": 58, "x0": 160, "y0": 82 },
+  { "id": "tilt-y", "title": "Perspective: turned away (rotateY −66°)", "text": "直直直", "font": "jp", "size": 88, "ry": -66, "persp": 320, "ox": 132, "oy": 53, "x0": 128, "y0": 88 },
+  { "id": "small-tilt", "title": "Small text, steep tilt (16px, rotateX 72°)", "text": "Text rendering", "font": "latin", "size": 16, "rx": 72, "persp": 220, "scale": 3, "ox": 55, "oy": 10, "x0": 205, "y0": 130 },
+  { "id": "anim", "title": "Animated zoom 1× ↔ 24× (live only)", "text": "直", "font": "jp", "size": 24, "scale": 24, "ox": 12, "oy": 16, "x0": 120, "y0": 90, "anim": true }
+]

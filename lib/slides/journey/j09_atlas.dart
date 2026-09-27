@@ -105,7 +105,13 @@ class _AtlasState extends State<_Atlas> with SingleTickerProviderStateMixin {
       for (final (s, e) in probe.graphemes()) {
         final r = probe.rectFor(s, e);
         final g = d.glyphs.firstWhere((g) => g.start >= s);
-        final k = _Key(text: d.text.substring(s, e), glyph: g, bucket: 0, x: r?.left ?? 0, color: true);
+        final k = _Key(
+          text: d.text.substring(s, e),
+          glyph: g,
+          bucket: 0,
+          x: r?.left ?? 0,
+          color: true,
+        );
         keys.putIfAbsent(k.id, () => k);
       }
     } else {
@@ -113,7 +119,12 @@ class _AtlasState extends State<_Atlas> with SingleTickerProviderStateMixin {
       for (var gi = 0; gi < d.glyphs.length; gi++) {
         final g = d.glyphs[gi];
         final r = probe.rectFor(g.start, g.end);
-        if (g.font == null || g.font!.outline(g.glyphId).contours.isEmpty) continue; // spaces: no tile
+        // Spaces have no ink, so no tile. Glyphs from a platform fallback font
+        // (e.g. kanji) are still A8 tiles, rendered from the text itself.
+        final noInk = g.font == null
+            ? g.char.trim().isEmpty
+            : g.font!.outline(g.glyphId).contours.isEmpty;
+        if (noInk) continue;
         final x = r?.left ?? 0;
         final frac = x - x.floorToDouble();
         final bucket = (frac * 4).round() % 4;
@@ -150,7 +161,9 @@ class _AtlasState extends State<_Atlas> with SingleTickerProviderStateMixin {
       animation: _build,
       builder: (context, _) {
         final n = _keys.length;
-        final built = _paths ? 0 : (_build.value * _buildTime.inMilliseconds / 500).floor().clamp(0, n);
+        final built = _paths
+            ? 0
+            : (_build.value * _buildTime.inMilliseconds / 500).floor().clamp(0, n);
         final current = _hover ?? (_build.isCompleted || _paths ? _cycle : math.min(built, n - 1));
         final sel = n == 0 ? null : _keys[current.clamp(0, n - 1)];
         return Stack(
@@ -262,7 +275,9 @@ class _KeyList extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: i == current ? BP.amber.withValues(alpha: 0.12) : Colors.transparent,
-                border: Border.all(color: i == current ? BP.amber : (i < built ? BP.lineDim : BP.lineFaint)),
+                border: Border.all(
+                  color: i == current ? BP.amber : (i < built ? BP.lineDim : BP.lineFaint),
+                ),
               ),
               child: Row(
                 children: [
@@ -271,15 +286,21 @@ class _KeyList extends StatelessWidget {
                     child: Text(
                       keys[i].color
                           ? 'system · color'
+                          : keys[i].font == null
+                          ? 'system fallback · .${['00', '25', '50', '75'][keys[i].bucket]}'
                           : '${_short(keys[i].glyph.fontName)} · #${keys[i].glyph.glyphId}${keys[i].shaped ? '→${keys[i].form}' : ''} · .${['00', '25', '50', '75'][keys[i].bucket]}',
                       style: BT.mono(13, color: i < built || paths ? BP.ink : BP.inkFaint),
                     ),
                   ),
-                  if (keys[i].uses > 1) Text('×${keys[i].uses}', style: BT.mono(14, color: BP.green)),
+                  if (keys[i].uses > 1)
+                    Text('×${keys[i].uses}', style: BT.mono(14, color: BP.green)),
                   const SizedBox(width: 8),
                   Text(
                     paths ? 'path' : (i < built ? (keys[i].color ? 'RGBA' : 'A8') : '…'),
-                    style: BT.mono(12, color: paths ? BP.red : (keys[i].color ? BP.violet : BP.line)),
+                    style: BT.mono(
+                      12,
+                      color: paths ? BP.red : (keys[i].color ? BP.violet : BP.line),
+                    ),
                   ),
                 ],
               ),
@@ -308,12 +329,18 @@ class _Pipeline extends StatelessWidget {
         SizedBox(
           height: 200,
           child: BpPanel(
-            label: k.color ? 'color glyph' : (k.shaped ? 'cmap outline · before GSUB' : 'glyf outline'),
+            label: k.color
+                ? 'color glyph'
+                : (font == null
+                      ? 'platform fallback glyph'
+                      : (k.shaped ? 'cmap outline · before GSUB' : 'glyf outline')),
             padding: const EdgeInsets.all(10),
             child: SizedBox.expand(
               child: k.color || font == null
                   ? Center(child: Text(k.text, style: journeyStyle(110)))
-                  : CustomPaint(painter: _OutlinePainter(font.outline(k.glyph.glyphId), font, paths)),
+                  : CustomPaint(
+                      painter: _OutlinePainter(font.outline(k.glyph.glyphId), font, paths),
+                    ),
             ),
           ),
         ),
@@ -348,7 +375,9 @@ class _Pipeline extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             color: paths ? BP.red : BP.lineDim,
             child: paths
-                ? Center(child: Text('→ DrawPath', style: BT.mono(22, color: BP.red)))
+                ? Center(
+                    child: Text('→ DrawPath', style: BT.mono(22, color: BP.red)),
+                  )
                 : _CoverageView(text: k.text, px: px, bucket: k.bucket, color: k.color),
           ),
         ),
@@ -374,7 +403,10 @@ class _OutlinePainter extends CustomPainter {
       (size.height - b.height * s) / 2 + b.bottom * s,
     );
     final path = outline.toPath(scale: s, origin: origin);
-    canvas.drawPath(path, Paint()..color = (solid ? BP.red : BP.ink).withValues(alpha: solid ? 0.35 : 0.08));
+    canvas.drawPath(
+      path,
+      Paint()..color = (solid ? BP.red : BP.ink).withValues(alpha: solid ? 0.35 : 0.08),
+    );
     canvas.drawPath(
       path,
       Paint()
@@ -386,7 +418,10 @@ class _OutlinePainter extends CustomPainter {
       for (final p in c) {
         final o = Offset(origin.dx + p.x * s, origin.dy - p.y * s);
         if (p.onCurve) {
-          canvas.drawRect(Rect.fromCenter(center: o, width: 5, height: 5), Paint()..color = BP.amber);
+          canvas.drawRect(
+            Rect.fromCenter(center: o, width: 5, height: 5),
+            Paint()..color = BP.amber,
+          );
         } else {
           canvas.drawCircle(
             o,
@@ -406,7 +441,12 @@ class _OutlinePainter extends CustomPainter {
 
 /// Real coverage: the glyph is rendered to an image and its pixels shown.
 class _CoverageView extends StatefulWidget {
-  const _CoverageView({required this.text, required this.px, required this.bucket, required this.color});
+  const _CoverageView({
+    required this.text,
+    required this.px,
+    required this.bucket,
+    required this.color,
+  });
 
   final String text;
   final double px;
@@ -444,7 +484,10 @@ class _CoverageViewState extends State<_CoverageView> {
 
   static Future<_Bitmap> _rasterize(String text, double px, double dx) async {
     final tp = TextPainter(
-      text: TextSpan(text: text, style: journeyStyle(px, color: Colors.white)),
+      text: TextSpan(
+        text: text,
+        style: journeyStyle(px, color: Colors.white),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     final w = (tp.width + 2).ceil().clamp(1, 200);
@@ -494,10 +537,8 @@ class _CoverageViewState extends State<_CoverageView> {
             child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: 1),
               duration: const Duration(milliseconds: 700),
-              builder: (context, t, _) => CustomPaint(
-                painter: _BitmapPainter(b, widget.color, t),
-                size: Size.infinite,
-              ),
+              builder: (context, t, _) =>
+                  CustomPaint(painter: _BitmapPainter(b, widget.color, t), size: Size.infinite),
             ),
           ),
           Text('${b.w} × ${b.h} px', style: BT.mono(12, color: BP.inkFaint)),
@@ -526,7 +567,12 @@ class _BitmapPainter extends CustomPainter {
         final a = b.rgba[i + 3];
         if (a == 0) continue;
         paint.color = color
-            ? Color.fromARGB(255, _un(b.rgba[i], a), _un(b.rgba[i + 1], a), _un(b.rgba[i + 2], a)).withValues(alpha: a / 255)
+            ? Color.fromARGB(
+                255,
+                _un(b.rgba[i], a),
+                _un(b.rgba[i + 1], a),
+                _un(b.rgba[i + 2], a),
+              ).withValues(alpha: a / 255)
             : Color.fromARGB(a, 255, 255, 255);
         canvas.drawRect(Rect.fromLTWH(o.dx + x * cell, o.dy + y * cell, cell, cell), paint);
       }
@@ -536,16 +582,30 @@ class _BitmapPainter extends CustomPainter {
         ..color = BP.lineFaint.withValues(alpha: 0.6)
         ..strokeWidth = 0.5;
       for (var x = 0; x <= b.w; x++) {
-        canvas.drawLine(Offset(o.dx + x * cell, o.dy), Offset(o.dx + x * cell, o.dy + b.h * cell), grid);
+        canvas.drawLine(
+          Offset(o.dx + x * cell, o.dy),
+          Offset(o.dx + x * cell, o.dy + b.h * cell),
+          grid,
+        );
       }
       for (var y = 0; y <= b.h; y++) {
-        canvas.drawLine(Offset(o.dx, o.dy + y * cell), Offset(o.dx + b.w * cell, o.dy + y * cell), grid);
+        canvas.drawLine(
+          Offset(o.dx, o.dy + y * cell),
+          Offset(o.dx + b.w * cell, o.dy + y * cell),
+          grid,
+        );
       }
     }
     // Scan line while "rasterizing"
     if (t < 1) {
       final y = o.dy + rows * cell;
-      canvas.drawLine(Offset(o.dx - 6, y), Offset(o.dx + b.w * cell + 6, y), Paint()..color = BP.amber..strokeWidth = 2);
+      canvas.drawLine(
+        Offset(o.dx - 6, y),
+        Offset(o.dx + b.w * cell + 6, y),
+        Paint()
+          ..color = BP.amber
+          ..strokeWidth = 2,
+      );
     }
   }
 
@@ -576,8 +636,14 @@ class _Atlases extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mask = [for (var i = 0; i < keys.length; i++) if (!keys[i].color) i];
-    final color = [for (var i = 0; i < keys.length; i++) if (keys[i].color) i];
+    final mask = [
+      for (var i = 0; i < keys.length; i++)
+        if (!keys[i].color) i,
+    ];
+    final color = [
+      for (var i = 0; i < keys.length; i++)
+        if (keys[i].color) i,
+    ];
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 300),
       opacity: paths ? 0.25 : 1,
@@ -598,7 +664,14 @@ class _Atlases extends StatelessWidget {
               label: 'A8 · alpha',
               padding: const EdgeInsets.all(12),
               child: CustomPaint(
-                painter: _AtlasPainter(keys: keys, which: mask, built: built, current: current, px: px, rgba: false),
+                painter: _AtlasPainter(
+                  keys: keys,
+                  which: mask,
+                  built: built,
+                  current: current,
+                  px: px,
+                  rgba: false,
+                ),
                 size: Size.infinite,
               ),
             ),
@@ -611,7 +684,14 @@ class _Atlases extends StatelessWidget {
               color: BP.violet,
               padding: const EdgeInsets.all(12),
               child: CustomPaint(
-                painter: _AtlasPainter(keys: keys, which: color, built: built, current: current, px: px, rgba: true),
+                painter: _AtlasPainter(
+                  keys: keys,
+                  which: color,
+                  built: built,
+                  current: current,
+                  px: px,
+                  rgba: true,
+                ),
                 size: Size.infinite,
               ),
             ),
@@ -655,8 +735,10 @@ class _AtlasPainter extends CustomPainter {
       if (k.color || f == null) {
         tiles[i] = Size(px * 1.25, px * 1.25);
       } else if (k.shaped) {
-        final tp = TextPainter(text: TextSpan(text: k.text, style: journeyStyle(px)), textDirection: TextDirection.rtl)
-          ..layout();
+        final tp = TextPainter(
+          text: TextSpan(text: k.text, style: journeyStyle(px)),
+          textDirection: TextDirection.rtl,
+        )..layout();
         tiles[i] = Size(tp.width + 3, tp.height * 0.85);
         tp.dispose();
       } else {
@@ -710,7 +792,10 @@ class _AtlasPainter extends CustomPainter {
       canvas.clipRect(r);
       if (k.color || k.font == null || k.shaped) {
         final tp = TextPainter(
-          text: TextSpan(text: k.text, style: journeyStyle(px * scale, color: Colors.white)),
+          text: TextSpan(
+            text: k.text,
+            style: journeyStyle(px * scale, color: Colors.white),
+          ),
           textDirection: k.shaped ? TextDirection.rtl : TextDirection.ltr,
         )..layout();
         tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
@@ -719,10 +804,15 @@ class _AtlasPainter extends CustomPainter {
         final f = k.font!;
         final b = f.outline(k.glyph.glyphId).bounds;
         final s = px / f.unitsPerEm * scale;
-        final path = f.outline(k.glyph.glyphId).toPath(
-          scale: s,
-          origin: Offset(r.left + 1.5 * scale - b.left * s + k.bucket / 4 * scale, r.top + 1.5 * scale + b.bottom * s),
-        );
+        final path = f
+            .outline(k.glyph.glyphId)
+            .toPath(
+              scale: s,
+              origin: Offset(
+                r.left + 1.5 * scale - b.left * s + k.bucket / 4 * scale,
+                r.top + 1.5 * scale + b.bottom * s,
+              ),
+            );
         canvas.drawPath(path, Paint()..color = Colors.white);
       }
       canvas.restore();
@@ -737,8 +827,13 @@ class _AtlasPainter extends CustomPainter {
   }
 
   void _text(Canvas c, Offset at, String s, Color color, {bool center = false}) {
-    final tp = TextPainter(text: TextSpan(text: s, style: BT.mono(12, color: color)), textDirection: TextDirection.ltr)
-      ..layout();
+    final tp = TextPainter(
+      text: TextSpan(
+        text: s,
+        style: BT.mono(12, color: color),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
     tp.paint(c, center ? at - Offset(tp.width / 2, tp.height / 2) : at);
     tp.dispose();
   }

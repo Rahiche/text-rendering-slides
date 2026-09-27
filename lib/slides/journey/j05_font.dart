@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../deck/font_data.dart';
+import '../../deck/scripts.dart';
 import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 import 'journey.dart';
@@ -590,36 +591,80 @@ class _SystemFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (glyph.script == Script.emoji) return _emoji();
+    // Not in any bundled font: SkParagraph asks the platform font manager for
+    // a font covering this character, passing the text's locale.
+    final locale = Localizations.maybeLocaleOf(context)?.toLanguageTag() ?? 'none';
+    final cjk = glyph.script == Script.han || glyph.script == Script.kana || glyph.script == Script.hangul;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('not in the bundled fonts', style: BT.mono(18, color: BP.violet)),
         const SizedBox(height: 16),
         BpPanel(
-          label: 'platform emoji font',
+          label: 'platform font manager',
           color: BP.violet,
           child: Row(
             children: [
-              Text(text, style: journeyStyle(110)),
+              Text(glyph.char, style: journeyStyle(110)),
               const SizedBox(width: 28),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  JField('glyph', 'color, not an outline'),
+                  JField('ask', 'matchFamilyStyleCharacter'),
                   const SizedBox(height: 6),
-                  JField('apple', 'sbix bitmaps'),
+                  JField('char', glyph.hex),
                   const SizedBox(height: 6),
-                  JField('noto', 'CBDT / COLRv1'),
+                  JField('locale', locale, color: BP.amber),
                   const SizedBox(height: 6),
-                  JField('web', 'Noto Color Emoji ↓'),
+                  JField('apple', cjk ? 'Core Text cascade' : 'system cascade'),
+                  const SizedBox(height: 6),
+                  JField('android', cjk ? 'fonts.xml · lang-tagged' : 'fonts.xml fallback'),
+                  const SizedBox(height: 6),
+                  JField('web', 'Noto ↓ fonts.gstatic.com'),
                 ],
               ),
             ],
           ),
         ),
         const SizedBox(height: 20),
-        Text('ZWJ + modifiers → one glyph via GSUB', style: BT.mono(14, color: BP.inkDim)),
+        Text(
+          cjk ? 'same code point, regional forms: the locale picks the face' : 'first platform font that covers it',
+          style: BT.mono(14, color: BP.inkDim),
+        ),
       ],
     );
   }
+
+  Widget _emoji() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('not in the bundled fonts', style: BT.mono(18, color: BP.violet)),
+      const SizedBox(height: 16),
+      BpPanel(
+        label: 'platform emoji font',
+        color: BP.violet,
+        child: Row(
+          children: [
+            Text(text, style: journeyStyle(110)),
+            const SizedBox(width: 28),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                JField('glyph', 'color, not an outline'),
+                const SizedBox(height: 6),
+                JField('apple', 'sbix bitmaps'),
+                const SizedBox(height: 6),
+                JField('noto', 'CBDT / COLRv1'),
+                const SizedBox(height: 6),
+                JField('web', 'Noto Color Emoji ↓'),
+              ],
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text('ZWJ + modifiers → one glyph via GSUB', style: BT.mono(14, color: BP.inkDim)),
+    ],
+  );
 }

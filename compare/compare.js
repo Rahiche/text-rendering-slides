@@ -265,6 +265,8 @@ async function renderZoom() {
     subj.style.transform = c.anim ? '' : transform;
     if (c.anim) {
       subj.style.setProperty('--s', c.scale);
+      // Wall-clock phase, same as the Flutter probe, so the loops stay in step.
+      subj.style.animationDelay = `-${Date.now() % 4000}ms`;
       subj.classList.add('anim');
     }
 

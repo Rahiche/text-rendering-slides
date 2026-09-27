@@ -47,7 +47,11 @@ class _ProbeState extends State<_Probe> with SingleTickerProviderStateMixin {
   void initState() {
     super.initState();
     if (_q['anim'] == '1') {
-      _ticker = createTicker((d) => setState(() => _t = d.inMicroseconds / 4e6))..start();
+      // Phase from the wall clock, like the CSS side, so both loops line up
+      // however long each took to load.
+      _ticker = createTicker(
+        (_) => setState(() => _t = DateTime.now().millisecondsSinceEpoch % 4000 / 4000),
+      )..start();
     }
     Future.wait([
       SlugFont.load('assets/fonts/SpaceGrotesk.ttf'),

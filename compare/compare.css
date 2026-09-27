@@ -87,7 +87,8 @@ h2.part { font-size: 22px; margin: 48px 0 4px; font-weight: 600; }
   line-height: 1.2;
   color: #111;
 }
-.subject.anim { animation: zoom 4s ease-in-out infinite; }
+/* easeInOutSine per half = the probe's 0.5 − 0.5·cos(2πt) */
+.subject.anim { animation: zoom 4s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 @keyframes zoom { 0%, 100% { transform: scale(1); } 50% { transform: scale(var(--s)); } }
 iframe.probe { border: 0; display: block; background: #fff; outline: 1px solid var(--line); }
 .probeheads { display: flex; gap: 18px; }

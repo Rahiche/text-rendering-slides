@@ -16,10 +16,9 @@ cp -R "$SRC" "$OUT"
 
 # Its own name and bundle id, so it sits next to the full deck's app.
 PLIST="$OUT/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName Flutter Text Pipeline" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $NAME" "$PLIST" 2>/dev/null ||
-  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $NAME" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier dev.slides.textPipeline" "$PLIST"
+plutil -replace CFBundleName -string "Flutter Text Pipeline" "$PLIST"
+plutil -replace CFBundleDisplayName -string "$NAME" "$PLIST"
+plutil -replace CFBundleIdentifier -string dev.slides.textPipeline "$PLIST"
 codesign --force --deep --sign - --entitlements macos/Runner/Release.entitlements "$OUT" 2>&1 | grep -v "replacing existing signature" || true
 
 mkdir -p "$DEST"

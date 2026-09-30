@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:text_slides/deck/deck.dart';
+import 'package:text_slides/simple/simple_deck.dart';
+import 'package:text_slides/simple/simple_world.dart';
 import 'package:text_slides/slides/registry.dart';
+import 'package:text_slides/worlds/world.dart';
 import 'package:text_slides/worlds/worlds.dart';
 
 Future<void> _loadFonts() async {
@@ -35,19 +38,20 @@ String slidesAtStep(List<SlideDef> slides, int step) {
 
 void main() {
   setUpAll(_loadFonts);
-  for (final world in worlds) {
+  List<SlideDef> slidesOf(World w) => w is SimpleFactoryWorld ? buildSimpleSlides(w) : buildSlides(w);
+  for (final world in [const SimpleFactoryWorld(), ...worlds]) {
     testWidgets('walk the ${world.id} deck', (tester) async {
       tester.view.physicalSize = const Size(1600, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
-      final slides = buildSlides(world);
+      final slides = slidesOf(world);
       final steps = slides.fold<int>(0, (a, s) => a + s.steps);
       await tester.pumpWidget(
         MaterialApp(
           home: Material(
             type: MaterialType.transparency,
-            child: Deck(worlds: [world], initial: world, slidesFor: buildSlides),
+            child: Deck(worlds: [world], initial: world, slidesFor: slidesOf),
           ),
         ),
       );
@@ -58,6 +62,7 @@ void main() {
         final msg = details.exceptionAsString();
         if (msg.contains('overflowed')) {
           overflows.add('${slidesAtStep(slides, _step)}: ${msg.split('\n').first}');
+          if (const bool.fromEnvironment("OVERFLOW_DETAIL")) debugPrint(details.toString());
         } else {
           original?.call(details);
         }

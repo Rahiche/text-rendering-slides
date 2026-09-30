@@ -198,7 +198,12 @@ class _Counts extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 if (api[r] case final a?) ...[
-                  Text(a, style: BT.mono(22, color: _rowColor[r])),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(a, style: BT.mono(22, color: _rowColor[r])),
+                    ),
+                  ),
                   const SizedBox(width: 18),
                 ],
                 ConstrainedBox(

@@ -2,13 +2,18 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 
-/// "Not in Flutter": eight things platform text stacks do that Flutter's
-/// SkParagraph stack doesn't. Each card loops a tiny drawing of the feature
-/// and gets a red stamp; clicking flips it (3D) to the workaround.
+/// "Not in Flutter": six things platform text stacks do that Flutter's
+/// SkParagraph stack doesn't, Japanese vertical text and ruby first. Each
+/// card loops a big drawing of the feature and gets a red stamp; clicking
+/// flips it (3D) to the workaround.
+///
+/// Every loop runs on a clock started with the slide and is timed so the
+/// feature is fully "on" from ~2 s to ~6 s after arrival (the exported still).
 class CantSlide extends StatefulWidget {
   const CantSlide({super.key});
 
@@ -26,18 +31,18 @@ class _Feature {
 const _features = [
   _Feature('vertical text', 'mongol pkg · rotate hacks'),
   _Feature('ruby / furigana', 'WidgetSpan'),
-  _Feature('auto hyphenation', 'manual U+00AD'),
-  _Feature('optimal line breaks', 'greedy only'),
+  _Feature('hyphenation', 'manual U+00AD'),
   _Feature('kashida justify', 'spaces only'),
-  _Feature('LCD subpixel AA', 'grayscale AA'),
-  _Feature('web find · translate · SEO', 'semantics tree'),
-  _Feature('web fonts on demand', 'tofu flash · preload'),
+  _Feature('find & translate (web)', 'semantics tree'),
+  _Feature('fonts on demand (web)', 'tofu flash · preload'),
 ];
 
-const _cardW = 350.0;
-const _cardH = 300.0;
-const _gapX = (1472 - 4 * _cardW) / 3;
-const _gapY = 628 - 2 * _cardH;
+const _cols = 3;
+const _gapX = 28.0;
+const _gapY = 20.0;
+const _cardW = (1472 - (_cols - 1) * _gapX) / _cols;
+const _cardH = 296.0;
+const _labelH = 64.0;
 
 class _CantSlideState extends State<CantSlide> {
   final _flipped = List<bool>.filled(_features.length, false);
@@ -73,6 +78,7 @@ class _CantSlideState extends State<CantSlide> {
       trailing: BpButton(
         label: 'workarounds',
         color: BP.amber,
+        size: 18,
         selected: _allFlipped,
         onTap: _flipAll,
       ),
@@ -80,8 +86,8 @@ class _CantSlideState extends State<CantSlide> {
         children: [
           for (var i = 0; i < _features.length; i++)
             Positioned(
-              left: (i % 4) * (_cardW + _gapX),
-              top: (i ~/ 4) * (_cardH + _gapY),
+              left: (i % _cols) * (_cardW + _gapX),
+              top: (i ~/ _cols) * (_cardH + _gapY),
               width: _cardW,
               height: _cardH,
               child: _Card(
@@ -173,7 +179,7 @@ class _CardState extends State<_Card> with SingleTickerProviderStateMixin {
                           ? Transform(
                               alignment: Alignment.center,
                               transform: Matrix4.rotationY(math.pi),
-                              child: _Back(feature: f, hover: _hover),
+                              child: _Back(feature: f),
                             )
                           : _Front(
                               index: widget.index,
@@ -215,31 +221,23 @@ class _Front extends StatelessWidget {
         children: [
           Positioned(
             left: 16,
-            top: 14,
-            child: Text(
-              (index + 1).toString().padLeft(2, '0'),
-              style: BT.mono(13, color: BP.inkFaint),
-            ),
-          ),
-          Positioned(
-            left: 14,
-            right: 14,
-            top: 40,
-            bottom: 56,
+            right: 16,
+            top: 12,
+            bottom: _labelH + 6,
             child: _Illustration(kind: index),
           ),
           Positioned(
             left: 0,
             right: 0,
-            bottom: 52,
+            bottom: _labelH,
             height: 1,
             child: ColoredBox(color: hover ? BP.lineDim : BP.lineFaint),
           ),
           Positioned(
-            left: 16,
-            right: 44,
+            left: 24,
+            right: 84,
             bottom: 0,
-            height: 52,
+            height: _labelH,
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -247,16 +245,11 @@ class _Front extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.fade,
                 softWrap: false,
-                style: BT.mono(16, color: BP.ink),
+                style: BT.display(27, color: BP.ink),
               ),
             ),
           ),
-          Positioned(
-            right: 16,
-            bottom: 14,
-            child: Text('↻', style: BT.mono(18, color: hover ? BP.amber : BP.inkFaint)),
-          ),
-          Positioned(right: 12, top: 10, child: _Stamp(t: stamp)),
+          Positioned(right: 18, bottom: (_labelH - 48) / 2, child: _Stamp(t: stamp)),
         ],
       ),
     );
@@ -264,10 +257,9 @@ class _Front extends StatelessWidget {
 }
 
 class _Back extends StatelessWidget {
-  const _Back({required this.feature, required this.hover});
+  const _Back({required this.feature});
 
   final _Feature feature;
-  final bool hover;
 
   @override
   Widget build(BuildContext context) {
@@ -275,42 +267,26 @@ class _Back extends StatelessWidget {
     return BpPanel(
       padding: EdgeInsets.zero,
       color: BP.amber,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 16,
-            top: 14,
-            child: Text('workaround', style: BT.mono(13, color: BP.inkFaint)),
-          ),
-          Positioned.fill(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final p in parts)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Text(p, style: BT.mono(27, color: BP.amber, weight: 500)),
-                    ),
-                  const SizedBox(height: 22),
-                  Text(
-                    feature.label,
-                    style: BT.mono(14, color: BP.inkDim).copyWith(
-                      decoration: TextDecoration.lineThrough,
-                      decorationColor: BP.red,
-                      decorationThickness: 2,
-                    ),
-                  ),
-                ],
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final p in parts)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(p, style: BT.mono(32, color: BP.amber, weight: 500)),
+              ),
+            const SizedBox(height: 26),
+            Text(
+              feature.label,
+              style: BT.display(22, color: BP.inkDim).copyWith(
+                decoration: TextDecoration.lineThrough,
+                decorationColor: BP.red,
+                decorationThickness: 2,
               ),
             ),
-          ),
-          Positioned(
-            right: 16,
-            bottom: 14,
-            child: Text('↻', style: BT.mono(18, color: hover ? BP.amber : BP.inkFaint)),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -322,9 +298,11 @@ class _Stamp extends StatelessWidget {
 
   final double t;
 
+  static const _size = Size(48, 48);
+
   @override
   Widget build(BuildContext context) {
-    if (t <= 0) return const SizedBox(width: 50, height: 50);
+    if (t <= 0) return SizedBox.fromSize(size: _size);
     final e = Curves.easeOutBack.transform(t);
     final scale = 2.4 - 1.4 * e;
     return Opacity(
@@ -333,7 +311,7 @@ class _Stamp extends StatelessWidget {
         angle: -0.2 + 0.08 * (1 - t),
         child: Transform.scale(
           scale: scale,
-          child: const CustomPaint(size: Size(50, 50), painter: _StampPainter()),
+          child: const CustomPaint(size: _size, painter: _StampPainter()),
         ),
       ),
     );
@@ -346,22 +324,24 @@ class _StampPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final r = Offset.zero & size;
+    final u = size.width / 50;
     final p = Paint()
       ..color = BP.red
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4;
+      ..strokeWidth = 2.6;
     canvas.drawRRect(RRect.fromRectAndRadius(r.deflate(1), const Radius.circular(4)), p);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(r.deflate(5), const Radius.circular(2)),
+      RRect.fromRectAndRadius(r.deflate(5 * u), const Radius.circular(2)),
       p..strokeWidth = 1,
     );
-    canvas.drawRect(r.deflate(5), Paint()..color = BP.red.withValues(alpha: 0.12));
+    canvas.drawRect(r.deflate(5 * u), Paint()..color = BP.red.withValues(alpha: 0.14));
     final x = Paint()
       ..color = BP.red
-      ..strokeWidth = 4.5
+      ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(r.topLeft + const Offset(15, 15), r.bottomRight - const Offset(15, 15), x);
-    canvas.drawLine(r.topRight + const Offset(-15, 15), r.bottomLeft + const Offset(15, -15), x);
+    final i = 15 * u;
+    canvas.drawLine(r.topLeft + Offset(i, i), r.bottomRight - Offset(i, i), x);
+    canvas.drawLine(r.topRight + Offset(-i, i), r.bottomLeft + Offset(i, -i), x);
   }
 
   @override
@@ -369,7 +349,7 @@ class _StampPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Illustrations (each loops on its own)
+// Illustrations (each loops on its own clock, started with the slide)
 // ─────────────────────────────────────────────────────────────────────────────
 
 double _ease(double x) => Curves.easeInOutCubic.transform(x.clamp(0.0, 1.0));
@@ -380,6 +360,36 @@ double _pulse(double t, double a, double b, double c, double d) {
   if (t < b) return _ease((t - a) / (b - a));
   if (t <= c) return 1;
   return 1 - _ease((t - c) / (d - c));
+}
+
+/// Rebuilds every frame with the seconds since it was first built.
+class _Clock extends StatefulWidget {
+  const _Clock({required this.builder});
+
+  final Widget Function(BuildContext context, double seconds) builder;
+
+  @override
+  State<_Clock> createState() => _ClockState();
+}
+
+class _ClockState extends State<_Clock> with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  double _s = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((d) => setState(() => _s = d.inMicroseconds / 1e6))..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _s);
 }
 
 class _Fn extends CustomPainter {
@@ -409,10 +419,8 @@ class _Illustration extends StatelessWidget {
     0 => const _VerticalIllo(),
     1 => const _RubyIllo(),
     2 => const _HyphenIllo(),
-    3 => const _OptimalIllo(),
-    4 => const _KashidaIllo(),
-    5 => const _SubpixelIllo(),
-    6 => const _FindIllo(),
+    3 => const _KashidaIllo(),
+    4 => const _FindIllo(),
     _ => const _FontsIllo(),
   };
 }
@@ -425,18 +433,17 @@ class _VerticalIllo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 4400),
-      builder: (context, t, _) => LayoutBuilder(
+    return _Clock(
+      builder: (context, sec) => LayoutBuilder(
         builder: (context, box) {
-          final m = _pulse(t, 0.08, 0.36, 0.74, 0.97);
-          const s = 50.0;
-          const step = 56.0;
+          final m = _pulse((sec / 7) % 1, 0.14, 0.3, 0.9, 1.0);
+          const s = 62.0;
+          const step = 68.0;
           final cx = box.maxWidth / 2;
           final cy = box.maxHeight / 2;
           Offset at(int i) => Offset.lerp(
-            Offset(cx + (i - 1) * step - s / 2, cy - s / 2),
-            Offset(cx - s / 2 - 14, cy + (i - 1) * step - s / 2),
+            Offset(cx + (i - 1) * step - s / 2, cy - s / 2 - 12),
+            Offset(cx - s / 2 - 18, cy + (i - 1) * step - s / 2),
             m,
           )!;
           return Stack(
@@ -444,23 +451,23 @@ class _VerticalIllo extends StatelessWidget {
               Positioned.fill(
                 child: CustomPaint(
                   painter: _Fn((canvas, size) {
-                    final yb = cy + s / 2 + 14;
+                    final yb = cy + s / 2 + 8;
                     drawArrow(
                       canvas,
                       Offset(cx - 1.5 * step, yb),
                       Offset(cx + 1.5 * step, yb),
-                      _stroke(BP.lineDim.withValues(alpha: 1 - m)),
+                      _stroke(BP.lineDim.withValues(alpha: 1 - m), 1.4),
                       dashed: true,
-                      head: 6,
+                      head: 8,
                     );
-                    final xv = cx + s / 2;
+                    final xv = cx + s / 2 + 4;
                     drawArrow(
                       canvas,
                       Offset(xv, cy - 1.5 * step),
                       Offset(xv, cy + 1.5 * step),
-                      _stroke(BP.amber.withValues(alpha: m), 1.2),
+                      _stroke(BP.amber.withValues(alpha: m), 1.6),
                       dashed: true,
-                      head: 6,
+                      head: 8,
                     );
                     final bp = _stroke(BP.lineDim);
                     for (var i = 0; i < 3; i++) {
@@ -478,7 +485,7 @@ class _VerticalIllo extends StatelessWidget {
                   top: at(i).dy,
                   width: s,
                   height: s,
-                  child: Center(child: Text(_chars[i], style: BT.sample(36, height: 1))),
+                  child: Center(child: Text(_chars[i], style: BT.sample(46, height: 1))),
                 ),
             ],
           );
@@ -492,20 +499,20 @@ class _VerticalIllo extends StatelessWidget {
 class _RubyIllo extends StatelessWidget {
   const _RubyIllo();
 
-  static const _pairs = [
+  static const _words = [
     [('漢', 'かん'), ('字', 'じ')],
     [('東', 'とう'), ('京', 'きょう')],
   ];
 
   @override
   Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 7600),
-      builder: (context, t, _) {
-        final which = t < 0.5 ? 0 : 1;
-        final u = (t * 2) % 1;
-        final r = _pulse(u, 0.12, 0.34, 0.78, 0.94);
-        final base = _pulse(u, -0.01, 0.06, 0.95, 1.01);
+    return _Clock(
+      builder: (context, sec) {
+        final cycle = sec / 7;
+        final which = cycle.floor() % _words.length;
+        final u = cycle % 1;
+        final r = _pulse(u, 0.1, 0.26, 0.86, 0.94);
+        final base = _pulse(u, -0.01, 0.05, 0.95, 1.01);
         return Center(
           child: Opacity(
             opacity: base,
@@ -513,32 +520,32 @@ class _RubyIllo extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (final (b, ruby) in _pairs[which])
+                for (final (b, ruby) in _words[which])
                   SizedBox(
-                    width: 88,
+                    width: 118,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Opacity(
                           opacity: r,
                           child: Transform.translate(
-                            offset: Offset(0, -18 * (1 - r)),
-                            child: Text(ruby, style: BT.sample(18, color: BP.amber)),
+                            offset: Offset(0, -22 * (1 - r)),
+                            child: Text(ruby, style: BT.sample(27, color: BP.amber, height: 1.2)),
                           ),
                         ),
                         const SizedBox(height: 4),
                         Container(
-                          width: 64 * r,
-                          height: 1.5,
+                          width: 84 * r,
+                          height: 2,
                           color: BP.amber.withValues(alpha: 0.6),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         DashedBox(
                           color: BP.lineDim,
                           child: SizedBox(
-                            width: 74,
-                            height: 74,
-                            child: Center(child: Text(b, style: BT.sample(52, height: 1))),
+                            width: 100,
+                            height: 100,
+                            child: Center(child: Text(b, style: BT.sample(74, height: 1))),
                           ),
                         ),
                       ],
@@ -553,7 +560,7 @@ class _RubyIllo extends StatelessWidget {
   }
 }
 
-// 3 · hyphenation: a column narrows, the word breaks at syllables with a hyphen.
+// 3 · hyphenation: a column narrows, the word breaks at a syllable with a hyphen.
 class _HyphenIllo extends StatefulWidget {
   const _HyphenIllo();
 
@@ -563,7 +570,7 @@ class _HyphenIllo extends StatefulWidget {
 
 class _HyphenIlloState extends State<_HyphenIllo> {
   static const _syl = ['hy', 'phen', 'a', 'tion'];
-  final _style = BT.display(34, color: BP.ink);
+  final _style = BT.display(52, color: BP.ink, height: 1.2);
 
   /// Width of the first k syllables (+ "-" unless it's the whole word), k = 1..4.
   late final List<double> _w = [
@@ -579,220 +586,73 @@ class _HyphenIlloState extends State<_HyphenIllo> {
 
   @override
   Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 5200),
-      builder: (context, t, _) {
-        final lo = _w[1] + 6;
-        final hi = _w[3] + 16;
-        final w = lo + (hi - lo) * (0.5 - 0.5 * math.cos(2 * math.pi * t));
-        var k = 4;
-        while (k > 1 && _w[k - 1] > w) {
-          k--;
-        }
-        final first = _syl.take(k).join();
-        final rest = _syl.skip(k).join();
-        const x0 = 34.0;
-        const y0 = 46.0;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _Fn((canvas, size) {
-                  canvas.drawLine(
-                    const Offset(x0, 14),
-                    Offset(x0, size.height - 14),
-                    _stroke(BP.lineDim),
-                  );
-                  canvas.drawPath(
-                    dashPath(Path()
-                      ..moveTo(x0 + w, 14)
-                      ..lineTo(x0 + w, size.height - 14)),
-                    _stroke(BP.amber, 1.2),
-                  );
-                  final a = _stroke(BP.amber.withValues(alpha: 0.6));
-                  drawArrow(canvas, Offset(x0 + w / 2, 24), const Offset(x0 + 2, 24), a, head: 5);
-                  drawArrow(canvas, Offset(x0 + w / 2, 24), Offset(x0 + w - 2, 24), a, head: 5);
-                }),
-              ),
-            ),
-            Positioned(
-              left: x0,
-              top: y0,
-              child: Text.rich(
-                TextSpan(
-                  style: _style,
-                  children: [
-                    TextSpan(text: first),
-                    if (rest.isNotEmpty)
-                      const TextSpan(text: '-', style: TextStyle(color: BP.amber)),
-                  ],
+    return _Clock(
+      builder: (context, sec) => LayoutBuilder(
+        builder: (context, box) {
+          final lo = _w[1] + 8;
+          final hi = _w[3] + 20;
+          final w = hi - (hi - lo) * _pulse((sec / 8) % 1, 0.1, 0.3, 0.8, 0.95);
+          var k = 4;
+          while (k > 1 && _w[k - 1] > w) {
+            k--;
+          }
+          final first = _syl.take(k).join();
+          final rest = _syl.skip(k).join();
+          final x0 = (box.maxWidth - hi) / 2;
+          const y0 = 50.0;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _Fn((canvas, size) {
+                    canvas.drawLine(
+                      Offset(x0, 12),
+                      Offset(x0, size.height - 8),
+                      _stroke(BP.lineDim, 1.4),
+                    );
+                    canvas.drawPath(
+                      dashPath(Path()
+                        ..moveTo(x0 + w, 12)
+                        ..lineTo(x0 + w, size.height - 8)),
+                      _stroke(BP.amber, 1.6),
+                    );
+                    final a = _stroke(BP.amber.withValues(alpha: 0.7), 1.4);
+                    drawArrow(canvas, Offset(x0 + w / 2, 26), Offset(x0 + 3, 26), a, head: 7);
+                    drawArrow(canvas, Offset(x0 + w / 2, 26), Offset(x0 + w - 3, 26), a, head: 7);
+                  }),
                 ),
-                softWrap: false,
               ),
-            ),
-            if (rest.isNotEmpty)
               Positioned(
                 left: x0,
-                top: y0 + 50,
-                child: Text(rest, style: _style, softWrap: false),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// 4 · optimal breaks: word blocks glide from greedy (ragged, orphan) to
-// whole-paragraph optimal (even) and back. Both layouts are computed here.
-class _OptimalIllo extends StatefulWidget {
-  const _OptimalIllo();
-
-  @override
-  State<_OptimalIllo> createState() => _OptimalIlloState();
-}
-
-class _OptimalIlloState extends State<_OptimalIllo> {
-  static const _ws = [34.0, 70.0, 52.0, 70.0, 52.0, 40.0, 34.0, 26.0, 26.0, 64.0, 70.0, 30.0];
-  static const _c = 236.0;
-  static const _gap = 8.0;
-  static const _pitch = 30.0;
-
-  late final _greedy = _breakGreedy();
-  late final _optimal = _breakOptimal();
-  late final _a = _layout(_greedy);
-  late final _b = _layout(_optimal);
-
-  static List<List<int>> _breakGreedy() {
-    final lines = <List<int>>[[]];
-    var x = 0.0;
-    for (var i = 0; i < _ws.length; i++) {
-      final need = lines.last.isEmpty ? _ws[i] : x + _gap + _ws[i];
-      if (lines.last.isNotEmpty && need > _c) {
-        lines.add([i]);
-        x = _ws[i];
-      } else {
-        lines.last.add(i);
-        x = need;
-      }
-    }
-    return lines;
-  }
-
-  /// Minimum total squared slack (last line free unless very short).
-  static List<List<int>> _breakOptimal() {
-    final n = _ws.length;
-    final best = List<double>.filled(n + 1, double.infinity)..[n] = 0;
-    final next = List<int>.filled(n + 1, n);
-    for (var i = n - 1; i >= 0; i--) {
-      var w = -_gap;
-      for (var j = i + 1; j <= n; j++) {
-        w += _gap + _ws[j - 1];
-        if (w > _c) break;
-        final slack = _c - w;
-        final short = math.max(0.0, slack - _c * 0.5);
-        final cost = j < n ? slack * slack : short * short;
-        if (cost + best[j] < best[i]) {
-          best[i] = cost + best[j];
-          next[i] = j;
-        }
-      }
-    }
-    final lines = <List<int>>[];
-    for (var i = 0; i < n; i = next[i]) {
-      lines.add([for (var k = i; k < next[i]; k++) k]);
-    }
-    return lines;
-  }
-
-  static List<Offset> _layout(List<List<int>> lines) {
-    final out = List<Offset>.filled(_ws.length, Offset.zero);
-    for (var l = 0; l < lines.length; l++) {
-      var x = 0.0;
-      for (final i in lines[l]) {
-        out[i] = Offset(x, l * _pitch);
-        x += _ws[i] + _gap;
-      }
-    }
-    return out;
-  }
-
-  static List<double> _ends(List<List<int>> lines) => [
-    for (final l in lines) l.fold(-_gap, (a, i) => a + _ws[i] + _gap),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 5600),
-      builder: (context, t, _) {
-        final m = _pulse(t, 0.12, 0.4, 0.7, 0.95);
-        return LayoutBuilder(
-          builder: (context, box) {
-            final x0 = (box.maxWidth - _c) / 2;
-            const y0 = 40.0;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _Fn((canvas, size) {
-                      canvas.drawPath(
-                        dashPath(Path()
-                          ..moveTo(x0 + _c, y0 - 10)
-                          ..lineTo(x0 + _c, y0 + 4 * _pitch)),
-                        _stroke(BP.lineDim),
-                      );
-                      canvas.drawLine(
-                        Offset(x0, y0 - 10),
-                        Offset(x0, y0 + 4 * _pitch),
-                        _stroke(BP.lineFaint),
-                      );
-                      for (var i = 0; i < _ws.length; i++) {
-                        final p = Offset.lerp(_a[i], _b[i], m)!;
-                        final r = Rect.fromLTWH(x0 + p.dx, y0 + p.dy, _ws[i], 14);
-                        canvas.drawRect(r, Paint()..color = BP.line.withValues(alpha: 0.28));
-                        canvas.drawRect(r, _stroke(BP.line));
-                      }
-                      // The rag: a polyline through each line's end.
-                      final ea = _ends(_greedy);
-                      final eb = _ends(_optimal);
-                      final rag = Path();
-                      for (var l = 0; l < ea.length; l++) {
-                        final x = x0 + ea[l] + (eb[l] - ea[l]) * m + 5;
-                        final y = y0 + l * _pitch + 7;
-                        l == 0 ? rag.moveTo(x, y) : rag.lineTo(x, y);
-                      }
-                      canvas.drawPath(dashPath(rag, dash: 4, gap: 3), _stroke(BP.amber, 1.4));
-                    }),
-                  ),
-                ),
-                Positioned(
-                  left: x0,
-                  top: 4,
-                  child: Stack(
+                top: y0,
+                child: Text.rich(
+                  TextSpan(
+                    style: _style,
                     children: [
-                      Opacity(
-                        opacity: 1 - m,
-                        child: Text('greedy', style: BT.mono(13, color: BP.inkDim)),
-                      ),
-                      Opacity(
-                        opacity: m,
-                        child: Text('optimal', style: BT.mono(13, color: BP.amber)),
-                      ),
+                      TextSpan(text: first),
+                      if (rest.isNotEmpty)
+                        const TextSpan(text: '-', style: TextStyle(color: BP.amber)),
                     ],
                   ),
+                  softWrap: false,
                 ),
-              ],
-            );
-          },
-        );
-      },
+              ),
+              if (rest.isNotEmpty)
+                Positioned(
+                  left: x0,
+                  top: y0 + 66,
+                  child: Text(rest, style: _style, softWrap: false),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
-// 5 · kashida: the same Arabic words justified by stretching letters with
-// tatweel (ـ) vs. by widening the space.
+// 4 · kashida: the same Arabic words justified by stretching letters with
+// tatweel (ـ, amber) vs. by widening the space (dim, below).
 class _KashidaIllo extends StatefulWidget {
   const _KashidaIllo();
 
@@ -801,63 +661,69 @@ class _KashidaIllo extends StatefulWidget {
 }
 
 class _KashidaIlloState extends State<_KashidaIllo> {
-  final _style = BT.sample(30, color: BP.ink);
-  final _dim = BT.sample(30, color: BP.inkDim);
-  final _amber = BT.sample(30, color: BP.amber);
+  static const _size = 42.0;
+  static const _maxExtra = 150.0;
 
-  late final double _tatweel = _width('ـ');
-  late final double _natural = _width('نص جميل');
-  late final double _w1 = _width('نص');
-  late final double _w2 = _width('جميل');
+  final _style = BT.sample(_size, color: BP.ink, height: 1.35);
+  final _dim = BT.sample(_size, color: BP.inkDim, height: 1.35);
+  final _amber = BT.sample(_size, color: BP.amber, height: 1.35);
 
-  double _width(String s) {
+  late final double _tatweel = _measure('ـ').width;
+  late final Size _natural = _measure('نص جميل');
+  late final double _w1 = _measure('نص').width;
+  late final double _w2 = _measure('جميل').width;
+
+  Size _measure(String s) {
     final p = TextProbe(TextSpan(text: s, style: _style), textDirection: TextDirection.rtl);
-    final w = p.size.width;
+    final size = p.size;
     p.dispose();
-    return w;
+    return size;
   }
 
   @override
   Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 5000),
-      builder: (context, t, _) {
-        final extra = 104 * (0.5 - 0.5 * math.cos(2 * math.pi * t));
-        final w = _natural + extra;
+    return _Clock(
+      builder: (context, sec) {
+        final extra = _maxExtra * _pulse((sec / 8) % 1, 0.1, 0.3, 0.8, 0.95);
+        final w = _natural.width + extra;
         final n = _tatweel > 0 ? (extra / _tatweel).floor() : 0;
         final n1 = n ~/ 2;
         final n2 = n - n1;
-        const right = 22.0;
-        const rowA = 24.0;
-        const rowB = 112.0;
+        final rowH = _natural.height;
         return LayoutBuilder(
           builder: (context, box) {
-            final xr = box.maxWidth - right;
+            final xr = (box.maxWidth + _natural.width + _maxExtra) / 2;
             final xl = xr - w;
+            final rowA = (box.maxHeight - 2 * rowH - 16) / 2;
+            final rowB = rowA + rowH + 16;
             return Stack(
               children: [
                 Positioned.fill(
                   child: CustomPaint(
                     painter: _Fn((canvas, size) {
-                      canvas.drawLine(Offset(xr, 8), Offset(xr, size.height - 8), _stroke(BP.lineDim));
+                      canvas.drawLine(
+                        Offset(xr, 6),
+                        Offset(xr, size.height - 6),
+                        _stroke(BP.lineDim, 1.4),
+                      );
                       canvas.drawPath(
                         dashPath(Path()
-                          ..moveTo(xl, 8)
-                          ..lineTo(xl, size.height - 8)),
-                        _stroke(BP.amber, 1.2),
+                          ..moveTo(xl, 6)
+                          ..lineTo(xl, size.height - 6)),
+                        _stroke(BP.amber, 1.6),
                       );
                       // The widened space in the lower row.
-                      final g0 = xl + _w2 + 4;
-                      final g1 = xr - _w1 - 4;
-                      if (g1 - g0 > 6) {
-                        const gy = rowB + 30;
-                        final p = _stroke(BP.inkFaint, 1.2);
-                        canvas.drawLine(Offset(g0, gy - 5), Offset(g0, gy + 5), p);
-                        canvas.drawLine(Offset(g1, gy - 5), Offset(g1, gy + 5), p);
+                      final g0 = xl + _w2 + 6;
+                      final g1 = xr - _w1 - 6;
+                      if (g1 - g0 > 8) {
+                        final gy = rowB + rowH * 0.55;
+                        final p = _stroke(BP.inkFaint, 1.6);
+                        canvas.drawLine(Offset(g0, gy - 7), Offset(g0, gy + 7), p);
+                        canvas.drawLine(Offset(g1, gy - 7), Offset(g1, gy + 7), p);
                         canvas.drawPath(
                           dashPath(Path()
                             ..moveTo(g0, gy)
-                            ..lineTo(g1, gy), dash: 3, gap: 3),
+                            ..lineTo(g1, gy), dash: 4, gap: 4),
                           p,
                         );
                       }
@@ -865,12 +731,8 @@ class _KashidaIlloState extends State<_KashidaIllo> {
                   ),
                 ),
                 Positioned(
-                  right: right + 2,
-                  top: rowA - 20,
-                  child: Text('ـ kashida', style: BT.mono(11, color: BP.amber)),
-                ),
-                Positioned(
-                  right: right,
+                  left: 0,
+                  width: xr,
                   top: rowA,
                   child: Text.rich(
                     TextSpan(
@@ -887,11 +749,6 @@ class _KashidaIlloState extends State<_KashidaIllo> {
                     textDirection: TextDirection.rtl,
                     softWrap: false,
                   ),
-                ),
-                Positioned(
-                  right: right + 2,
-                  top: rowB - 20,
-                  child: Text('␣ spaces', style: BT.mono(11, color: BP.inkFaint)),
                 ),
                 Positioned(
                   left: xl,
@@ -915,148 +772,19 @@ class _KashidaIlloState extends State<_KashidaIllo> {
   }
 }
 
-// 6 · LCD subpixel AA: the same slanted stroke, zoomed to pixels —
-// per-channel coverage (colour fringes) vs. one coverage per pixel (grey).
-class _SubpixelIllo extends StatelessWidget {
-  const _SubpixelIllo();
-
-  static const n = 7;
-  static const cell = 16.0;
-  static const gap = 36.0;
-  static const y0 = 18.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 4200),
-      builder: (context, t, _) => LayoutBuilder(
-        builder: (context, box) {
-          const gw = n * cell;
-          final x0 = (box.maxWidth - (2 * gw + gap)) / 2;
-          return Stack(
-            children: [
-              Positioned.fill(child: CustomPaint(painter: _SubpixelPainter(t: t, x0: x0))),
-              Positioned(
-                left: x0,
-                width: gw,
-                top: y0 + gw + 12,
-                child: Center(
-                  child: Text.rich(
-                    TextSpan(
-                      style: BT.mono(13, weight: 600),
-                      children: const [
-                        TextSpan(text: 'R', style: TextStyle(color: BP.red)),
-                        TextSpan(text: 'G', style: TextStyle(color: BP.green)),
-                        TextSpan(text: 'B', style: TextStyle(color: BP.line)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: x0 + gw + gap,
-                width: gw,
-                top: y0 + gw + 12,
-                child: Center(child: Text('gray', style: BT.mono(13, color: BP.inkDim))),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _SubpixelPainter extends CustomPainter {
-  _SubpixelPainter({required this.t, required this.x0});
-
-  final double t;
-  final double x0;
-
-  static const _hw = 0.8;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const n = _SubpixelIllo.n;
-    const cell = _SubpixelIllo.cell;
-    const gw = n * cell;
-    const y0 = _SubpixelIllo.y0;
-    final shift = 1.9 + 0.9 * math.sin(2 * math.pi * t);
-    double center(double row) => shift + (n - row) * 0.42;
-    double cover(double a, double b, int row) {
-      final xc = center(row + 0.5);
-      final lo = math.max(a, xc - _hw);
-      final hi = math.min(b, xc + _hw);
-      return ((hi - lo) / (b - a)).clamp(0.0, 1.0);
-    }
-
-    double mix(double a, double b, double k) => a + (b - a) * k;
-    const bg = BP.panel;
-    const ink = BP.ink;
-    final grid = _stroke(BP.lineFaint);
-    for (var g = 0; g < 2; g++) {
-      final ox = x0 + g * (gw + _SubpixelIllo.gap);
-      for (var r = 0; r < n; r++) {
-        for (var c = 0; c < n; c++) {
-          final rect = Rect.fromLTWH(ox + c * cell, y0 + r * cell, cell, cell);
-          final Color col;
-          if (g == 0) {
-            final cr = cover(c.toDouble(), c + 1 / 3, r);
-            final cg = cover(c + 1 / 3, c + 2 / 3, r);
-            final cb = cover(c + 2 / 3, c + 1.0, r);
-            col = Color.from(
-              alpha: 1,
-              red: mix(bg.r, ink.r, cr),
-              green: mix(bg.g, ink.g, cg),
-              blue: mix(bg.b, ink.b, cb),
-            );
-          } else {
-            col = Color.lerp(bg, ink, cover(c.toDouble(), c + 1.0, r))!;
-          }
-          canvas.drawRect(rect, Paint()..color = col);
-          if (g == 0) {
-            final s = Paint()
-              ..color = BP.lineFaint.withValues(alpha: 0.5)
-              ..strokeWidth = 0.6;
-            canvas.drawLine(rect.topLeft + const Offset(cell / 3, 0), rect.bottomLeft + const Offset(cell / 3, 0), s);
-            canvas.drawLine(rect.topLeft + const Offset(2 * cell / 3, 0), rect.bottomLeft + const Offset(2 * cell / 3, 0), s);
-          }
-          canvas.drawRect(rect, grid);
-        }
-      }
-      // The ideal outline of the stroke.
-      final edge = _stroke(BP.amber.withValues(alpha: 0.8), 1);
-      for (final sgn in [-1.0, 1.0]) {
-        final path = Path()
-          ..moveTo(ox + (center(0) + sgn * _hw) * cell, y0)
-          ..lineTo(ox + (center(n.toDouble()) + sgn * _hw) * cell, y0 + gw);
-        canvas.drawPath(dashPath(path, dash: 3, gap: 3), edge);
-      }
-      canvas.drawRect(Rect.fromLTWH(ox, y0, gw, gw), _stroke(BP.lineDim));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SubpixelPainter old) => old.t != t || old.x0 != x0;
-}
-
-// 7 · find in page: the browser types a query and walks the matches.
+// 5 · find in page: the browser types a query and walks the matches, because
+// the page's text is real DOM text (so translate and search engines see it too).
 class _FindIllo extends StatelessWidget {
   const _FindIllo();
 
-  static const _lines = [
-    'the text on a page',
-    'is real DOM text',
-    'find · translate · index',
-    'every text node',
-  ];
+  static const _lines = ['the text on a page', 'is real DOM text:', 'find · translate', 'every text node'];
 
   @override
   Widget build(BuildContext context) {
-    return LoopBuilder(
-      period: const Duration(milliseconds: 6000),
-      builder: (context, t, _) {
-        final typed = t < 0.3 ? (t / 0.3 * 5).floor().clamp(0, 4) : 4;
+    return _Clock(
+      builder: (context, sec) {
+        final t = (sec / 8) % 1;
+        final typed = t > 0.96 ? 0 : (((t - 0.04) / 0.14) * 4).floor().clamp(0, 4);
         final q = 'text'.substring(0, typed);
         final hits = <(int, int)>[];
         if (q.isNotEmpty) {
@@ -1068,43 +796,40 @@ class _FindIllo extends StatelessWidget {
             }
           }
         }
-        final cur = hits.isEmpty || t < 0.36 ? -1 : ((t - 0.36) / 0.16).floor() % hits.length;
-        final caret = (t * 12).floor().isEven;
-        final style = BT.sample(18, color: BP.inkDim);
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  width: 190,
-                  height: 30,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(border: Border.all(color: BP.line)),
+        final cur = hits.isEmpty || t < 0.22 ? -1 : ((t - 0.22) / 0.1).floor() % hits.length;
+        final caret = (sec * 2.5).floor().isEven;
+        final style = BT.sample(25, color: BP.inkDim, height: 1.3);
+        return Center(
+          child: SizedBox(
+            width: 330,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 250,
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(border: Border.all(color: BP.line, width: 1.4)),
                   child: Row(
                     children: [
-                      const Icon(Icons.search, size: 15, color: BP.inkDim),
-                      const SizedBox(width: 6),
-                      Text(q, style: BT.mono(14, color: BP.ink)),
-                      Container(width: 1.5, height: 16, color: caret ? BP.amber : Colors.transparent),
+                      const Icon(Icons.search, size: 22, color: BP.inkDim),
+                      const SizedBox(width: 8),
+                      Text(q, style: BT.mono(22, color: BP.ink)),
+                      Container(width: 2, height: 24, color: caret ? BP.amber : Colors.transparent),
                       const Spacer(),
                       Text(
                         hits.isEmpty ? '' : '${cur < 0 ? 1 : cur + 1}/${hits.length}',
-                        style: BT.mono(12, color: BP.amber),
+                        style: BT.mono(18, color: BP.amber),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              for (var l = 0; l < _lines.length; l++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text.rich(_spans(l, q, hits, cur, style)),
-                ),
-            ],
+                const SizedBox(height: 14),
+                for (var l = 0; l < _lines.length; l++)
+                  Text.rich(_spans(l, q, hits, cur, style)),
+              ],
+            ),
           ),
         );
       },
@@ -1134,8 +859,8 @@ class _FindIllo extends StatelessWidget {
   }
 }
 
-// 8 · fonts on demand: DOM text shows up at once with local fonts; canvas
-// text shows tofu until a font file arrives.
+// 6 · fonts on demand: canvas text is tofu until the whole font file arrives
+// (the browser would have used a local font, or fetched just a subset).
 class _FontsIllo extends StatefulWidget {
   const _FontsIllo();
 
@@ -1144,7 +869,7 @@ class _FontsIllo extends StatefulWidget {
 }
 
 class _FontsIlloState extends State<_FontsIllo> {
-  static const _word = 'สวัสดี';
+  static const _word = '日本語';
 
   TextProbe? _probe;
   final _boxes = <Rect>[];
@@ -1169,7 +894,7 @@ class _FontsIlloState extends State<_FontsIllo> {
     }
     _boxes.clear();
     _hex.clear();
-    final p = TextProbe(TextSpan(text: _word, style: BT.sample(40)));
+    final p = TextProbe(TextSpan(text: _word, style: BT.sample(90, height: 1.2)));
     _probe = p;
     for (final (s, e) in p.graphemes()) {
       _boxes.add(p.rectFor(s, e) ?? Rect.zero);
@@ -1177,7 +902,7 @@ class _FontsIlloState extends State<_FontsIllo> {
       _hex.add(TextPainter(
         text: TextSpan(
           text: '${hex.substring(0, 2)}\n${hex.substring(2)}',
-          style: BT.mono(9, color: BP.inkDim, height: 1.1),
+          style: BT.mono(17, color: BP.inkDim, height: 1.15),
         ),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
@@ -1197,62 +922,52 @@ class _FontsIlloState extends State<_FontsIllo> {
 
   @override
   Widget build(BuildContext context) {
-    const yA = 10.0;
-    const yB = 98.0;
-    return LoopBuilder(
-      period: const Duration(milliseconds: 4600),
-      builder: (context, t, _) {
-        final tofu = t < 0.62 ? 1.0 : 1 - _ease((t - 0.62) / 0.06);
-        final glyph = _ease((t - 0.64) / 0.1);
-        final load = _ease((t - 0.2) / 0.4);
-        final showBar = t > 0.16 && t < 0.72;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _Fn((canvas, size) {
-                  final p = _probe!;
-                  final x = (size.width - p.size.width) / 2 + 26;
-                  p.paint(canvas, Offset(x, yA));
-                  final ob = Offset(x, yB);
-                  if (glyph > 0) {
-                    canvas.saveLayer(
-                      (ob & p.size).inflate(10),
-                      Paint()..color = Color.fromRGBO(0, 0, 0, glyph),
-                    );
-                    p.paint(canvas, ob);
-                    canvas.restore();
-                  }
-                  if (tofu > 0) {
-                    for (var i = 0; i < _boxes.length; i++) {
-                      final b = _boxes[i].shift(ob);
-                      final r = Rect.fromLTWH(b.left + 2, b.top + b.height * 0.2, b.width - 4, b.height * 0.6);
-                      canvas.drawRect(r, _stroke(BP.inkDim.withValues(alpha: tofu), 1.2));
-                      if (tofu > 0.5 && r.width > 14) {
-                        final h = _hex[i];
-                        h.paint(canvas, r.center - Offset(h.width / 2, h.height / 2));
-                      }
-                    }
-                  }
-                  if (showBar) {
-                    final by = yB + p.size.height + 6;
-                    canvas.drawLine(Offset(x, by), Offset(x + p.size.width, by), _stroke(BP.lineFaint, 3));
-                    canvas.drawLine(Offset(x, by), Offset(x + p.size.width * load, by), _stroke(BP.amber, 3));
-                    final ay = by - 14 + 4 * math.sin(t * 40);
-                    drawArrow(
-                      canvas,
-                      Offset(x + p.size.width + 16, ay - 12),
-                      Offset(x + p.size.width + 16, ay + 4),
-                      _stroke(BP.amber, 1.4),
-                      head: 5,
-                    );
-                  }
-                }),
-              ),
-            ),
-            Positioned(left: 8, top: yA + 20, child: Text('DOM', style: BT.mono(12, color: BP.green))),
-            Positioned(left: 8, top: yB + 20, child: Text('canvas', style: BT.mono(12, color: BP.inkFaint))),
-          ],
+    return _Clock(
+      builder: (context, sec) {
+        final t = (sec / 8) % 1;
+        final tofu = t < 0.74 ? 1.0 : 1 - _ease((t - 0.74) / 0.05);
+        final glyph = _ease((t - 0.76) / 0.08);
+        final load = _ease((t - 0.1) / 0.62);
+        final showBar = t > 0.06 && t < 0.78;
+        return CustomPaint(
+          painter: _Fn((canvas, size) {
+            final p = _probe!;
+            final o = Offset((size.width - p.size.width) / 2, (size.height - p.size.height) / 2 - 16);
+            if (glyph > 0) {
+              canvas.saveLayer(
+                (o & p.size).inflate(10),
+                Paint()..color = Color.fromRGBO(0, 0, 0, glyph),
+              );
+              p.paint(canvas, o);
+              canvas.restore();
+            }
+            if (tofu > 0) {
+              for (var i = 0; i < _boxes.length; i++) {
+                final b = _boxes[i].shift(o);
+                final r = Rect.fromLTWH(b.left + 5, b.top + b.height * 0.14, b.width - 10, b.height * 0.72);
+                canvas.drawRect(r, _stroke(BP.inkDim.withValues(alpha: tofu), 1.6));
+                if (tofu > 0.5) {
+                  final h = _hex[i];
+                  h.paint(canvas, r.center - Offset(h.width / 2, h.height / 2));
+                }
+              }
+            }
+            if (showBar) {
+              final by = o.dy + p.size.height + 14;
+              final x0 = o.dx;
+              final x1 = o.dx + p.size.width;
+              canvas.drawLine(Offset(x0, by), Offset(x1, by), _stroke(BP.lineFaint, 5));
+              canvas.drawLine(Offset(x0, by), Offset(x0 + (x1 - x0) * load, by), _stroke(BP.amber, 5));
+              final ay = by - 22 + 5 * math.sin(sec * 7);
+              drawArrow(
+                canvas,
+                Offset(x1 + 28, ay - 18),
+                Offset(x1 + 28, ay + 6),
+                _stroke(BP.amber, 2),
+                head: 8,
+              );
+            }
+          }),
         );
       },
     );

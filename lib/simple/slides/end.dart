@@ -1,16 +1,16 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../../deck/scripts.dart';
 import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 
 /// Closing slide: a balance between owning the stack (control, consistency,
-/// effects) and using the platform's (native features, fidelity). Each engine
-/// chip tips the beam to where it sits, on a spring. Then: "Text", cycling.
+/// effects) and using the platform's (native features, fidelity). Under it,
+/// a control ↔ native spectrum (blue ↔ coral, like the pans); each engine
+/// chip tips the beam to where it sits, on a spring. Flutter is picked first
+/// and held, so the still a few seconds in shows Flutter's side.
 class EndSlide extends StatefulWidget {
   const EndSlide({super.key});
 
@@ -38,14 +38,17 @@ const _engines = [
   _Engine('Flutter', -0.72, false),
 ];
 
-// Scale geometry (content coords).
-const _pivot = Offset(480, 118);
-const _arm = 300.0;
-const _hang = 190.0;
-const _maxAngle = 0.24;
-const _rulerY = 520.0;
-const _rulerX0 = 120.0;
-const _rulerX1 = 840.0;
+const _flutter = 4;
+
+// Scale geometry (content coords, 1472 × 612).
+const _pivot = Offset(736, 84);
+const _arm = 420.0;
+const _hang = 200.0;
+const _maxAngle = 0.2;
+const _foot = Offset(736, 410);
+const _rulerY = 522.0;
+const _rulerX0 = 236.0;
+const _rulerX1 = 1236.0;
 
 double _rulerX(double tilt) => _lerp(_rulerX0, _rulerX1, (tilt + 1) / 2);
 double _lerp(double a, double b, double t) => a + (b - a) * t;
@@ -70,7 +73,7 @@ class _Balance extends ChangeNotifier {
 }
 
 class _EndSlideState extends State<EndSlide> with SingleTickerProviderStateMixin {
-  static const _autoOrder = [4, 0, 1, 2, 3];
+  static const _autoOrder = [_flutter, 0, 1, 2, 3];
 
   final _bal = _Balance();
   final _labels = <String, TextPainter>{};
@@ -78,7 +81,7 @@ class _EndSlideState extends State<EndSlide> with SingleTickerProviderStateMixin
   Duration _last = Duration.zero;
   double _time = 0;
   double _userAt = -100;
-  double _nextAuto = 1.6;
+  double _nextAuto = 1.0;
   int _autoI = 0;
   int _sel = -1;
 
@@ -103,8 +106,10 @@ class _EndSlideState extends State<EndSlide> with SingleTickerProviderStateMixin
     _last = d;
     _time += dt;
     if (_time - _userAt > 10 && _time >= _nextAuto) {
-      setState(() => _sel = _autoOrder[_autoI++ % _autoOrder.length]);
-      _nextAuto = _time + 3.4;
+      final next = _autoOrder[_autoI++ % _autoOrder.length];
+      setState(() => _sel = next);
+      // Flutter stays on longer: it's the point (and the exported still).
+      _nextAuto = _time + (next == _flutter ? 6.0 : 3.4);
     }
     _bal.step(_sel < 0 ? 0 : _engines[_sel].tilt, dt);
   }
@@ -117,7 +122,7 @@ class _EndSlideState extends State<EndSlide> with SingleTickerProviderStateMixin
   TextPainter _label(String s) => _labels.putIfAbsent(
     s,
     () => TextPainter(
-      text: TextSpan(text: s, style: BT.mono(15, color: BP.ink)),
+      text: TextSpan(text: s, style: BT.mono(22, color: BP.ink)),
       textDirection: TextDirection.ltr,
     )..layout(),
   );
@@ -134,41 +139,22 @@ class _EndSlideState extends State<EndSlide> with SingleTickerProviderStateMixin
               painter: _ScalePainter(balance: _bal, label: _label, selected: _sel),
             ),
           ),
-          // Ends of the spectrum
-          Positioned(
-            right: 1472 - _rulerX0 + 16,
-            top: _rulerY - 11,
-            child: Text('control', style: BT.mono(16, color: BP.line)),
-          ),
-          Positioned(
-            left: _rulerX1 + 16,
-            top: _rulerY - 11,
-            child: Text('native', style: BT.mono(16, color: BP.coral)),
-          ),
           // Engine chips, sitting on the ruler where each engine sits
           for (var i = 0; i < _engines.length; i++)
             Positioned(
               left: _rulerX(_engines[i].tilt),
-              top: _engines[i].above ? _rulerY - 62 : _rulerY + 26,
+              top: _engines[i].above ? _rulerY - 74 : _rulerY + 30,
               child: FractionalTranslation(
                 translation: const Offset(-0.5, 0),
                 child: BpButton(
                   label: _engines[i].name,
                   selected: _sel == i,
-                  color: _engines[i].name == 'Flutter' ? BP.amber : BP.line,
+                  size: 21,
+                  color: i == _flutter ? BP.amber : BP.line,
                   onTap: () => _select(i),
                 ),
               ),
             ),
-          // Separator + finale
-          Positioned(
-            left: 968,
-            top: 0,
-            bottom: 0,
-            width: 2,
-            child: CustomPaint(painter: _VDashPainter()),
-          ),
-          const Positioned(left: 1000, top: 0, right: 0, bottom: 0, child: _Finale()),
         ],
       ),
     );
@@ -197,42 +183,41 @@ class _ScalePainter extends CustomPainter {
     final eR = _pivot + dir * _arm;
 
     // Stand
-    const foot = Offset(480, 424);
     canvas.drawPath(
       dashPath(Path()
-        ..moveTo(260, foot.dy + 16)
-        ..lineTo(700, foot.dy + 16), dash: 8, gap: 6),
+        ..moveTo(_foot.dx - 300, _foot.dy + 18)
+        ..lineTo(_foot.dx + 300, _foot.dy + 18), dash: 8, gap: 6),
       _stroke(BP.lineDim),
     );
     final base = Path()
-      ..moveTo(foot.dx - 80, foot.dy + 16)
-      ..lineTo(foot.dx - 26, foot.dy)
-      ..lineTo(foot.dx + 26, foot.dy)
-      ..lineTo(foot.dx + 80, foot.dy + 16)
+      ..moveTo(_foot.dx - 96, _foot.dy + 18)
+      ..lineTo(_foot.dx - 30, _foot.dy)
+      ..lineTo(_foot.dx + 30, _foot.dy)
+      ..lineTo(_foot.dx + 96, _foot.dy + 18)
       ..close();
     canvas.drawPath(base, Paint()..color = BP.panel);
-    canvas.drawPath(base, _stroke(BP.line, 1.5));
-    canvas.drawLine(_pivot, foot, _stroke(BP.line, 2));
-    canvas.drawLine(_pivot + const Offset(-6, 0), foot + const Offset(-6, 0), _stroke(BP.lineDim));
-    canvas.drawLine(_pivot + const Offset(6, 0), foot + const Offset(6, 0), _stroke(BP.lineDim));
+    canvas.drawPath(base, _stroke(BP.line, 1.6));
+    canvas.drawLine(_pivot, _foot, _stroke(BP.line, 2.4));
+    canvas.drawLine(_pivot + const Offset(-7, 0), _foot + const Offset(-7, 0), _stroke(BP.lineDim));
+    canvas.drawLine(_pivot + const Offset(7, 0), _foot + const Offset(7, 0), _stroke(BP.lineDim));
 
     // Dial + needle
-    const r = 66.0;
+    const r = 78.0;
     final arcRect = Rect.fromCircle(center: _pivot, radius: r);
-    canvas.drawArc(arcRect, -math.pi / 2 - 0.62, 1.24, false, _stroke(BP.lineDim));
+    canvas.drawArc(arcRect, -math.pi / 2 - 0.62, 1.24, false, _stroke(BP.lineDim, 1.2));
     for (var k = -4; k <= 4; k++) {
       final th = -math.pi / 2 + k * 0.15;
       final u = Offset(math.cos(th), math.sin(th));
-      final l = k == 0 ? 12.0 : (k.isEven ? 8.0 : 5.0);
-      canvas.drawLine(_pivot + u * r, _pivot + u * (r - l), _stroke(k == 0 ? BP.line : BP.lineDim));
+      final l = k == 0 ? 14.0 : (k.isEven ? 9.0 : 6.0);
+      canvas.drawLine(_pivot + u * r, _pivot + u * (r - l), _stroke(k == 0 ? BP.line : BP.lineDim, 1.2));
     }
-    final th = -math.pi / 2 + a * 2.4;
+    final th = -math.pi / 2 + a * 2.8;
     canvas.drawLine(
       _pivot,
       _pivot + Offset(math.cos(th), math.sin(th)) * (r - 4),
       Paint()
         ..color = BP.amber
-        ..strokeWidth = 2
+        ..strokeWidth = 2.5
         ..strokeCap = StrokeCap.round,
     );
 
@@ -244,51 +229,59 @@ class _ScalePainter extends CustomPainter {
     canvas.save();
     canvas.translate(_pivot.dx, _pivot.dy);
     canvas.rotate(a);
-    final beam = Rect.fromLTRB(-_arm - 12, -5, _arm + 12, 5);
+    final beam = Rect.fromLTRB(-_arm - 14, -6, _arm + 14, 6);
     canvas.drawRect(beam, Paint()..color = BP.panel);
-    canvas.drawRect(beam, _stroke(BP.line, 1.5));
+    canvas.drawRect(beam, _stroke(BP.line, 1.8));
     for (var x = -_arm + 30; x < _arm - 10; x += 30) {
       if (x.abs() < 20) continue;
-      canvas.drawLine(Offset(x, -5), Offset(x, x % 60 == 0 ? 3 : 0), _stroke(BP.lineDim));
+      canvas.drawLine(Offset(x, -6), Offset(x, x % 60 == 0 ? 3 : 0), _stroke(BP.lineDim));
     }
     for (final x in [-_arm, _arm]) {
-      canvas.drawCircle(Offset(x, 0), 6, Paint()..color = BP.paper);
-      canvas.drawCircle(Offset(x, 0), 6, _stroke(BP.line, 1.5));
+      canvas.drawCircle(Offset(x, 0), 7, Paint()..color = BP.paper);
+      canvas.drawCircle(Offset(x, 0), 7, _stroke(BP.line, 1.8));
     }
     canvas.restore();
 
     // Pivot
     final d = Path()
-      ..moveTo(_pivot.dx, _pivot.dy - 11)
-      ..lineTo(_pivot.dx + 11, _pivot.dy)
-      ..lineTo(_pivot.dx, _pivot.dy + 11)
-      ..lineTo(_pivot.dx - 11, _pivot.dy)
+      ..moveTo(_pivot.dx, _pivot.dy - 13)
+      ..lineTo(_pivot.dx + 13, _pivot.dy)
+      ..lineTo(_pivot.dx, _pivot.dy + 13)
+      ..lineTo(_pivot.dx - 13, _pivot.dy)
       ..close();
     canvas.drawPath(d, Paint()..color = BP.amber);
 
-    // Ruler
-    final rl = _stroke(BP.lineDim, 1.5);
-    canvas.drawLine(const Offset(_rulerX0, _rulerY), const Offset(_rulerX1, _rulerY), rl);
+    // Spectrum ruler: control (blue, like the left pan) ↔ native (coral).
+    const x0 = _rulerX0;
+    const x1 = _rulerX1;
+    final rl = Paint()
+      ..strokeWidth = 2.4
+      ..shader = const LinearGradient(
+        colors: [BP.line, BP.lineDim, BP.coral],
+      ).createShader(Rect.fromLTRB(x0, _rulerY - 1, x1, _rulerY + 1));
+    canvas.drawLine(const Offset(x0 - 16, _rulerY), const Offset(x1 + 16, _rulerY), rl);
+    drawArrowHead(canvas, const Offset(x0 - 18, _rulerY), const Offset(x0, _rulerY), _stroke(BP.line, 2.4), 11);
+    drawArrowHead(canvas, const Offset(x1 + 18, _rulerY), const Offset(x1, _rulerY), _stroke(BP.coral, 2.4), 11);
     for (var k = 0; k <= 20; k++) {
-      final x = _lerp(_rulerX0, _rulerX1, k / 20);
-      final h = k % 10 == 0 ? 10.0 : (k % 5 == 0 ? 7.0 : 4.0);
-      canvas.drawLine(Offset(x, _rulerY - h), Offset(x, _rulerY + h), _stroke(BP.lineDim));
+      final x = _lerp(x0, x1, k / 20);
+      final h = k % 10 == 0 ? 12.0 : (k % 5 == 0 ? 8.0 : 4.0);
+      canvas.drawLine(Offset(x, _rulerY - h), Offset(x, _rulerY + h), _stroke(BP.lineDim, 1.2));
     }
     for (var i = 0; i < _engines.length; i++) {
       final e = _engines[i];
       final x = _rulerX(e.tilt);
       final hot = i == selected;
-      final p = _stroke(hot ? BP.amber : BP.line, hot ? 2 : 1.2);
-      final y1 = e.above ? _rulerY - 24 : _rulerY + 24;
-      canvas.drawLine(Offset(x, _rulerY), Offset(x, y1), p);
-      canvas.drawCircle(Offset(x, _rulerY), hot ? 5 : 3.5, Paint()..color = hot ? BP.amber : BP.line);
+      final c = hot ? BP.amber : BP.line;
+      final y1 = e.above ? _rulerY - 30 : _rulerY + 30;
+      canvas.drawLine(Offset(x, _rulerY), Offset(x, y1), _stroke(c, hot ? 2.4 : 1.4));
+      canvas.drawCircle(Offset(x, _rulerY), hot ? 6.5 : 4.5, Paint()..color = c);
     }
     // Where the beam actually is right now
     final px = _rulerX(tau.clamp(-1.1, 1.1));
     final tri = Path()
-      ..moveTo(px, _rulerY - 3)
-      ..lineTo(px - 9, _rulerY - 17)
-      ..lineTo(px + 9, _rulerY - 17)
+      ..moveTo(px, _rulerY - 4)
+      ..lineTo(px - 11, _rulerY - 22)
+      ..lineTo(px + 11, _rulerY - 22)
       ..close();
     canvas.drawPath(tri, Paint()..color = BP.amber);
   }
@@ -299,8 +292,8 @@ class _ScalePainter extends CustomPainter {
     canvas.translate(hook.dx, hook.dy);
     canvas.rotate(swing);
     const rim = _hang;
-    const half = 118.0;
-    final string = _stroke(BP.lineDim);
+    const half = 156.0;
+    final string = _stroke(BP.lineDim, 1.2);
     canvas.drawLine(Offset.zero, const Offset(-half + 6, rim), string);
     canvas.drawLine(Offset.zero, const Offset(half - 6, rim), string);
 
@@ -308,183 +301,26 @@ class _ScalePainter extends CustomPainter {
     var y = rim - 2;
     for (final word in words.reversed) {
       final tp = label(word);
-      final h = 26 + 16 * w;
-      final bw = tp.width + 28;
+      final h = 36 + 16 * w;
+      final bw = tp.width + 36;
       final r = Rect.fromLTWH(-bw / 2, y - h, bw, h);
       canvas.drawRect(r, Paint()..color = BP.panel);
       canvas.drawRect(r, Paint()..color = c.withValues(alpha: 0.06 + 0.22 * w));
-      canvas.drawRect(r, _stroke(c, 1 + w));
+      canvas.drawRect(r, _stroke(c, 1.2 + w));
       tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
-      y -= h + 5;
+      y -= h + 6;
     }
 
     final bowl = Path()
-      ..moveTo(-half - 6, rim)
-      ..quadraticBezierTo(0, rim + 50, half + 6, rim)
+      ..moveTo(-half - 8, rim)
+      ..quadraticBezierTo(0, rim + 56, half + 8, rim)
       ..close();
     canvas.drawPath(bowl, Paint()..color = BP.panel);
-    canvas.drawPath(bowl, _stroke(BP.line, 1.5));
-    canvas.drawCircle(Offset.zero, 4, Paint()..color = BP.line);
+    canvas.drawPath(bowl, _stroke(BP.line, 1.8));
+    canvas.drawCircle(Offset.zero, 5, Paint()..color = BP.line);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_ScalePainter old) => old.selected != selected || old.balance != balance;
-}
-
-class _VDashPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawPath(
-      dashPath(Path()
-        ..moveTo(size.width / 2, 0)
-        ..lineTo(size.width / 2, size.height), dash: 6, gap: 6),
-      _stroke(BP.lineFaint),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_VDashPainter old) => false;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Finale: "Text" in many scripts, then questions.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Finale extends StatefulWidget {
-  const _Finale();
-
-  @override
-  State<_Finale> createState() => _FinaleState();
-}
-
-class _FinaleState extends State<_Finale> {
-  static const _words = ['Text', 'نص', 'टेक्स्ट', '文字', 'טקסט', 'ข้อความ', '텍스트', 'Текст'];
-
-  int _i = 0;
-  late final Timer _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(milliseconds: 2200), (_) {
-      setState(() => _i = (_i + 1) % _words.length);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final word = _words[_i];
-    final script = itemize(word).first.script;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 20,
-          height: 340,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 650),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            layoutBuilder: (cur, prev) => Stack(fit: StackFit.expand, children: [...prev, ?cur]),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: SlideTransition(
-                position: Tween(begin: const Offset(0, 0.05), end: Offset.zero).animate(anim),
-                child: child,
-              ),
-            ),
-            child: CustomPaint(key: ValueKey(word), painter: _WordPainter(word)),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          top: 372,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            child: Text(
-              script.label,
-              key: ValueKey(word),
-              style: BT.mono(15, color: script.color),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          top: 470,
-          child: LoopBuilder(
-            period: const Duration(milliseconds: 1100),
-            builder: (context, t, _) => Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text('questions?', style: BT.mono(34, color: BP.amber, weight: 500)),
-                const SizedBox(width: 8),
-                Opacity(
-                  opacity: t < 0.5 ? 1 : 0,
-                  child: Container(width: 18, height: 38, color: BP.amber),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The word on a baseline, with its grapheme boxes from the real layout.
-class _WordPainter extends CustomPainter {
-  _WordPainter(this.word);
-
-  final String word;
-
-  static const _baseline = 230.0;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    TextProbe make(double s) => TextProbe(
-      TextSpan(text: word, style: BT.sample(s, weight: 500)),
-      textDirection: itemize(word).first.rtl ? TextDirection.rtl : TextDirection.ltr,
-    );
-    var probe = make(150);
-    final maxW = size.width - 20;
-    if (probe.size.width > maxW) {
-      final s = 150 * maxW / probe.size.width;
-      probe.dispose();
-      probe = make(s);
-    }
-    final line = probe.lines.first;
-    final origin = Offset(0, _baseline - line.baseline);
-
-    final g = _stroke(BP.lineDim);
-    for (final y in [_baseline - line.ascent, _baseline + line.descent]) {
-      canvas.drawPath(
-        dashPath(Path()
-          ..moveTo(0, y)
-          ..lineTo(size.width, y), dash: 8, gap: 6),
-        g,
-      );
-    }
-    canvas.drawLine(Offset(0, _baseline), Offset(size.width, _baseline), _stroke(BP.line, 1.5));
-
-    final box = _stroke(BP.lineDim);
-    for (final (s, e) in probe.graphemes()) {
-      for (final b in probe.boxes(s, e)) {
-        canvas.drawPath(dashPath(Path()..addRect(b.toRect().shift(origin)), dash: 5, gap: 5), box);
-      }
-    }
-    probe.paint(canvas, origin);
-    probe.dispose();
-  }
-
-  @override
-  bool shouldRepaint(_WordPainter old) => old.word != word;
 }

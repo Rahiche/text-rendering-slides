@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../deck/deck.dart';
@@ -11,7 +10,8 @@ import '../../deck/widgets.dart';
 
 /// "Only in Flutter": five live playgrounds for things you get because
 /// Flutter owns the whole text stack. Tabs top-right; if the registry gives
-/// this slide steps, each step selects the matching tab.
+/// this slide steps, each step selects the matching tab. Each playground is
+/// one big demo with at most a couple of large controls.
 class CanSlide extends StatefulWidget {
   const CanSlide({super.key});
 
@@ -49,9 +49,11 @@ class _CanSlideState extends State<CanSlide> {
   Widget build(BuildContext context) {
     return SlideFrame(
       title: 'Only in Flutter',
+      contentBottom: 114,
       trailing: BpSegmented<_Tab>(
         values: _Tab.values,
         selected: _tab,
+        size: 18,
         labelOf: (t) => t.label,
         onChanged: (t) => setState(() => _tab = t),
       ),
@@ -114,20 +116,20 @@ const _sameText =
     'The five boxing wizards jump quickly. Sphinx of black quartz, judge my vow. '
     'How vexingly quick daft zebras jump!';
 
-const _flutterP = _P(20, 0, 250, 1.4);
+const _flutterP = _P(28, 0, 282, 1.4);
 
 /// Mimics of each native engine: slightly different size, tracking, width.
 const _devices = [
-  ('iOS', _P(21.4, -0.25, 246, 1.28)),
-  ('Android', _P(19.4, 0.2, 258, 1.5)),
-  ('web', _P(20, 0.4, 240, 1.45)),
-  ('macOS', _P(19.0, -0.1, 262, 1.34)),
+  ('iOS', _P(29.8, -0.3, 276, 1.28)),
+  ('Android', _P(27, 0.25, 290, 1.5)),
+  ('web', _P(28, 0.5, 272, 1.45)),
+  ('macOS', _P(26.6, -0.1, 292, 1.34)),
 ];
 
-const _devW = 332.0;
-const _devH = 470.0;
+const _devW = 344.0;
+const _devH = 474.0;
 const _devGap = (1472 - 4 * _devW) / 3;
-const _paraOrigin = Offset(36, 112);
+const _paraOrigin = Offset(28, 112);
 
 TextStyle _sameStyle(_P p) => BT.display(p.size, letterSpacing: p.spacing, weight: 400);
 
@@ -211,15 +213,16 @@ class _SameTabState extends State<_SameTab> {
             BpSegmented<bool>(
               values: const [false, true],
               selected: _native,
+              size: 20,
               labelOf: (v) => v ? 'native' : 'flutter',
               onChanged: (v) => setState(() => _native = v),
             ),
-            const SizedBox(width: 24),
+            const SizedBox(width: 28),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: _native
-                  ? BpTag('$distinct layouts', key: const ValueKey('n'), color: BP.red, size: 15)
-                  : const BpTag('1 layout', key: ValueKey('f'), color: BP.green, size: 15),
+                  ? BpTag('$distinct layouts', key: const ValueKey('n'), color: BP.red, size: 20)
+                  : const BpTag('1 layout', key: ValueKey('f'), color: BP.green, size: 20),
             ),
           ],
         ),
@@ -287,22 +290,10 @@ class _SameTabState extends State<_SameTab> {
           Positioned.fill(child: child!),
           for (var i = 0; i < _devices.length; i++)
             Positioned(
-              left: i * (_devW + _devGap) + 6,
-              width: _devW - 12,
-              top: _devH + 14,
-              child: Row(
-                children: [
-                  Text(_devices[i].$1, style: BT.display(24)),
-                  const Spacer(),
-                  AnimatedCount(
-                    value: layouts[i].lines.length,
-                    duration: const Duration(milliseconds: 400),
-                    style: BT.mono(18, color: BP.amber),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('lines', style: BT.mono(14, color: BP.inkDim)),
-                ],
-              ),
+              left: i * (_devW + _devGap),
+              width: _devW,
+              top: _devH + 12,
+              child: Center(child: Text(_devices[i].$1, style: BT.display(28))),
             ),
         ],
       ),
@@ -416,7 +407,7 @@ class _ChromePainter extends CustomPainter {
           ),
           faint,
         );
-        _label(canvas, '9:41', const Offset(46, 28));
+        canvas.drawLine(const Offset(46, 36), const Offset(80, 36), _stroke(BP.lineDim, 4));
         canvas.drawRRect(
           RRect.fromRectAndRadius(Rect.fromLTWH(w - 72, 30, 26, 12), const Radius.circular(3)),
           dim,
@@ -434,7 +425,7 @@ class _ChromePainter extends CustomPainter {
         canvas.drawRRect(outer, line);
         canvas.drawRRect(RRect.fromRectAndRadius(r.deflate(10), const Radius.circular(22)), dim);
         canvas.drawCircle(Offset(w / 2, 34), 8, dim);
-        _label(canvas, '12:30', const Offset(30, 26));
+        canvas.drawLine(const Offset(30, 35), const Offset(66, 35), _stroke(BP.lineDim, 4));
         final sig = Path()
           ..moveTo(w - 80, 42)
           ..lineTo(w - 64, 42)
@@ -484,15 +475,6 @@ class _ChromePainter extends CustomPainter {
     }
   }
 
-  void _label(Canvas canvas, String s, Offset at) {
-    final tp = TextPainter(
-      text: TextSpan(text: s, style: BT.mono(13, color: BP.inkDim, weight: 600)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, at);
-    tp.dispose();
-  }
-
   @override
   bool shouldRepaint(_ChromePainter old) => old.kind != kind;
 }
@@ -531,44 +513,32 @@ class _PaintTabState extends State<_PaintTab> {
                   child: const SizedBox.expand(),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  BpSlider(
+                  _Slider(
                     label: 'stroke',
                     value: _stroke,
                     min: 0,
                     max: 10,
-                    width: 260,
+                    width: 300,
                     format: (v) => v < 0.05 ? 'fill' : v.toStringAsFixed(1),
                     onChanged: (v) => setState(() => _stroke = v),
                   ),
-                  const SizedBox(width: 36),
-                  BpSlider(
-                    label: 'wght',
+                  const SizedBox(width: 72),
+                  _Slider(
+                    label: 'weight',
                     value: _breathe ? w : _weight,
                     min: 300,
                     max: 700,
-                    width: 340,
+                    width: 360,
                     format: (v) => v.round().toString(),
                     onChanged: (v) => setState(() {
                       _breathe = false;
                       _weight = v;
                     }),
                   ),
-                  const SizedBox(width: 8),
-                  BpButton(
-                    label: 'breathe',
-                    selected: _breathe,
-                    onTap: () => setState(() {
-                      _breathe = !_breathe;
-                      _weight = w;
-                    }),
-                  ),
-                  const Spacer(),
-                  const BpTag('foreground: Paint', color: BP.violet),
-                  const SizedBox(width: 10),
-                  const BpTag('FontVariation', color: BP.amber),
                 ],
               ),
             ],
@@ -595,7 +565,7 @@ class _ShaderTextPainter extends CustomPainter {
       style: TextStyle(
         fontFamily: BP.display,
         fontFamilyFallback: const [BP.arabic],
-        fontSize: 190,
+        fontSize: 230,
         foreground: fg,
         fontVariations: [FontVariation.weight(weight)],
       ),
@@ -606,7 +576,7 @@ class _ShaderTextPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final measure = _tp(null);
-    final o = Offset((size.width - measure.width) / 2, (size.height - measure.height) / 2 + 16);
+    final o = Offset((size.width - measure.width) / 2, (size.height - measure.height) / 2);
     final rect = o & measure.size;
     final lm = measure.computeLineMetrics().first;
     final base = o.dy + lm.baseline;
@@ -622,27 +592,6 @@ class _ShaderTextPainter extends CustomPainter {
         g,
       );
     }
-    // Advance width, measured live.
-    final dy = base - lm.ascent - 26;
-    final dp = _stroke(BP.inkDim, 1.2);
-    canvas.drawLine(Offset(rect.left, dy), Offset(rect.right, dy), dp);
-    canvas.drawLine(Offset(rect.left, dy - 8), Offset(rect.left, dy + 8), dp);
-    canvas.drawLine(Offset(rect.right, dy - 8), Offset(rect.right, dy + 8), dp);
-    drawArrowHead(canvas, Offset(rect.left, dy), Offset(rect.left + 10, dy), dp, 6);
-    drawArrowHead(canvas, Offset(rect.right, dy), Offset(rect.right - 10, dy), dp, 6);
-    final label = TextPainter(
-      text: TextSpan(
-        text: 'advance ${measure.width.toStringAsFixed(1)}',
-        style: BT.mono(14, color: BP.inkDim),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    canvas.drawRect(
-      Rect.fromCenter(center: Offset(rect.center.dx, dy), width: label.width + 16, height: label.height),
-      Paint()..color = BP.paper,
-    );
-    label.paint(canvas, Offset(rect.center.dx - label.width / 2, dy - label.height / 2));
-    label.dispose();
 
     Shader sweep(double a) => SweepGradient(
       colors: _colors,
@@ -672,6 +621,86 @@ class _ShaderTextPainter extends CustomPainter {
       old.t != t || old.weight != weight || old.stroke != stroke;
 }
 
+/// [BpSlider] with presentation-sized label and readout.
+class _Slider extends StatelessWidget {
+  const _Slider({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    required this.min,
+    required this.max,
+    required this.width,
+    required this.format,
+  });
+
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+  final double min;
+  final double max;
+  final double width;
+  final String Function(double v) format;
+
+  @override
+  Widget build(BuildContext context) {
+    void update(Offset p) => onChanged(min + (p.dx / width).clamp(0.0, 1.0) * (max - min));
+    final t = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: BT.mono(20, color: BP.inkDim)),
+        const SizedBox(width: 18),
+        SizedBox(
+          width: width,
+          height: 44,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanDown: (d) => update(d.localPosition),
+              onPanUpdate: (d) => update(d.localPosition),
+              child: CustomPaint(painter: _SliderPainter(t)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 18),
+        SizedBox(width: 64, child: Text(format(value), style: BT.mono(20, color: BP.amber))),
+      ],
+    );
+  }
+}
+
+class _SliderPainter extends CustomPainter {
+  _SliderPainter(this.t);
+
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height / 2;
+    final dim = _stroke(BP.lineDim, 1.2);
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), dim);
+    for (var i = 0; i <= 10; i++) {
+      final x = size.width * i / 10;
+      final h = i % 5 == 0 ? 10.0 : 5.0;
+      canvas.drawLine(Offset(x, y - h), Offset(x, y + h), dim);
+    }
+    final x = size.width * t;
+    canvas.drawLine(Offset(0, y), Offset(x, y), _stroke(BP.line, 2.5));
+    final d = Path()
+      ..moveTo(x, y - 12)
+      ..lineTo(x + 12, y)
+      ..lineTo(x, y + 12)
+      ..lineTo(x - 12, y)
+      ..close();
+    canvas.drawPath(d, Paint()..color = BP.paper);
+    canvas.drawPath(d, _stroke(BP.amber, 2.5));
+  }
+
+  @override
+  bool shouldRepaint(_SliderPainter old) => old.t != t;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // c) widgets in text
 // ─────────────────────────────────────────────────────────────────────────────
@@ -687,8 +716,8 @@ class _WidgetsTabState extends State<_WidgetsTab> with SingleTickerProviderState
   static const _pool = ['中文', 'ไทย', 'عربي', 'हिन्दी', '😀'];
 
   bool _bold = false;
-  double _size = 40;
-  double _width = 1000;
+  double _size = 54;
+  double _width = 1260;
   bool _fast = false;
   final _chips = <String>['中文'];
 
@@ -733,7 +762,6 @@ class _WidgetsTabState extends State<_WidgetsTab> with SingleTickerProviderState
     final em = _size;
     final style = BT.display(em, weight: _bold ? 680 : 360, height: 1.55);
     final canAdd = _chips.length < _pool.length;
-    final count = 3 + _chips.length + (canAdd ? 1 : 0);
     final para = Text.rich(
       TextSpan(
         style: style,
@@ -742,9 +770,9 @@ class _WidgetsTabState extends State<_WidgetsTab> with SingleTickerProviderState
           _ws(_Toggle(on: _bold, em: em, onTap: () => setState(() => _bold = !_bold))),
           const TextSpan(text: ' brown fox jumps over '),
           _ws(_MiniSlider(
-            value: (_size - 24) / 32,
+            value: (_size - 32) / 32,
             em: em,
-            onChanged: (v) => setState(() => _size = 24 + 32 * v),
+            onChanged: (v) => setState(() => _size = 32 + 32 * v),
           )),
           const TextSpan(text: ' the lazy dog. Five '),
           _ws(_Spinner(turns: _spin, em: em, fast: _fast, onTap: _toggleSpeed)),
@@ -767,37 +795,23 @@ class _WidgetsTabState extends State<_WidgetsTab> with SingleTickerProviderState
         Positioned(
           left: 0,
           top: 0,
-          child: DimensionLine(
-            length: _width,
-            label: 'maxWidth ${_width.round()}',
-            color: BP.inkDim,
-          ),
+          bottom: 0,
+          width: _width,
+          child: Align(alignment: Alignment.centerLeft, child: para),
         ),
-        Positioned(left: 0, top: 58, width: _width, child: para),
         Positioned(
           left: _width - 14,
-          top: 28,
-          bottom: 56,
+          top: 0,
+          bottom: 0,
           width: 28,
           child: MouseRegion(
             cursor: SystemMouseCursors.resizeLeftRight,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onHorizontalDragUpdate: (d) =>
-                  setState(() => _width = (_width + d.delta.dx).clamp(520.0, 1460.0)),
+                  setState(() => _width = (_width + d.delta.dx).clamp(600.0, 1460.0)),
               child: const CustomPaint(painter: _MarginPainter()),
             ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          bottom: 0,
-          child: Row(
-            children: [
-              BpTag('WidgetSpan × $count', color: BP.amber, size: 15),
-              const SizedBox(width: 12),
-              const BpTag('PlaceholderAlignment.middle', color: BP.inkDim, size: 15),
-            ],
           ),
         ),
       ],
@@ -819,13 +833,13 @@ class _MarginPainter extends CustomPainter {
     );
     final y = size.height / 2;
     final d = Path()
-      ..moveTo(x, y - 10)
-      ..lineTo(x + 10, y)
-      ..lineTo(x, y + 10)
-      ..lineTo(x - 10, y)
+      ..moveTo(x, y - 13)
+      ..lineTo(x + 13, y)
+      ..lineTo(x, y + 13)
+      ..lineTo(x - 13, y)
       ..close();
     canvas.drawPath(d, Paint()..color = BP.paper);
-    canvas.drawPath(d, _stroke(BP.amber, 2));
+    canvas.drawPath(d, _stroke(BP.amber, 2.5));
   }
 
   @override
@@ -1065,9 +1079,9 @@ class _GlyphTabState extends State<_GlyphTab> with SingleTickerProviderStateMixi
     final text = _ctrl.text.isEmpty ? ' ' : _ctrl.text;
     TextProbe make(double size) =>
         TextProbe(TextSpan(text: text, style: BT.sample(size, weight: 500)));
-    var p = make(150);
+    var p = make(190);
     if (p.size.width > _maxW) {
-      final size = 150 * _maxW / p.size.width;
+      final size = 190 * _maxW / p.size.width;
       p.dispose();
       p = make(size);
     }
@@ -1137,22 +1151,11 @@ class _GlyphTabState extends State<_GlyphTab> with SingleTickerProviderStateMixi
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            BpTextField(
-              controller: _ctrl,
-              width: 420,
-              style: BT.sample(28),
-              onChanged: (_) => setState(_relayout),
-            ),
-            const SizedBox(width: 24),
-            BpTag('${_blank.where((b) => !b).length} graphemes', color: BP.amber, size: 15),
-            const SizedBox(width: 12),
-            const BpTag('TextProbe.boxes', color: BP.inkDim, size: 15),
-            const Spacer(),
-            Text('hover · click', style: BT.mono(15, color: BP.inkFaint)),
-          ],
+        BpTextField(
+          controller: _ctrl,
+          width: 520,
+          style: BT.sample(34),
+          onChanged: (_) => setState(_relayout),
         ),
         const SizedBox(height: 16),
         Expanded(
@@ -1276,8 +1279,11 @@ class _GlyphPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// e) 3D: perspective transform, no relayout (counted for real)
+// e) 3D: a live Text under a perspective transform (no relayout)
 // ─────────────────────────────────────────────────────────────────────────────
+
+const _card3DWidth = 980.0;
+const _perspective = 0.001;
 
 class _ThreeDTab extends StatefulWidget {
   const _ThreeDTab();
@@ -1288,7 +1294,6 @@ class _ThreeDTab extends StatefulWidget {
 
 class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMixin {
   final _angles = ValueNotifier<Offset>(const Offset(-0.12, 0.45));
-  final _layouts = ValueNotifier<int>(0);
   final _alt = ValueNotifier<bool>(false);
 
   late final Ticker _ticker;
@@ -1298,11 +1303,10 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
   double _ry = 0.45;
   double _vx = 0;
   double _vy = 0;
-  double _scale = 1;
   bool _drag = false;
 
   /// Built once, so rotating never rebuilds (or relays out) the text.
-  late final Widget _card = _Card3D(alt: _alt, counter: _layouts);
+  late final Widget _card = _Card3D(alt: _alt);
 
   static double _wrap(double a) => math.atan2(math.sin(a), math.cos(a));
 
@@ -1316,7 +1320,6 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
   void dispose() {
     _ticker.dispose();
     _angles.dispose();
-    _layouts.dispose();
     _alt.dispose();
     super.dispose();
   }
@@ -1338,7 +1341,7 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
     _angles.value = Offset(_rx, _ry);
   }
 
-  static String _deg(double r) => '${(r * 180 / math.pi).round()}°'.padLeft(5);
+  static String _deg(double r) => '${(r * 180 / math.pi).round()}°'.padLeft(4);
 
   @override
   Widget build(BuildContext context) {
@@ -1371,14 +1374,22 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
                     child: _card,
                     builder: (context, child) {
                       final a = _angles.value;
-                      return Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.0012)
-                          ..rotateX(a.dx)
-                          ..rotateY(a.dy)
-                          ..scaleByDouble(_scale, _scale, _scale, 1),
-                        child: child,
+                      // Perspective grows the near side; shift back so the
+                      // projected card stays centred.
+                      const half = _card3DWidth / 2;
+                      final c = half * math.cos(a.dy);
+                      final z = _perspective * half * math.sin(a.dy);
+                      final shift = (c / (1 - z) - c / (1 + z)) / 2;
+                      return Transform.translate(
+                        offset: Offset(-shift, 0),
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, _perspective)
+                            ..rotateX(a.dx)
+                            ..rotateY(a.dy),
+                          child: child,
+                        ),
                       );
                     },
                   ),
@@ -1387,36 +1398,18 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           children: [
-            ValueListenableBuilder<int>(
-              valueListenable: _layouts,
-              builder: (context, n, _) => BpTag('layout × $n', color: BP.green, size: 16),
-            ),
-            const SizedBox(width: 20),
-            SizedBox(
-              width: 360,
-              child: AnimatedBuilder(
-                animation: _angles,
-                builder: (context, _) => Text(
-                  'rotateX ${_deg(_angles.value.dx)}   rotateY ${_deg(_angles.value.dy)}',
-                  style: BT.mono(16, color: BP.amber),
-                ),
+            AnimatedBuilder(
+              animation: _angles,
+              builder: (context, _) => Text(
+                'rotateX ${_deg(_angles.value.dx)}    rotateY ${_deg(_angles.value.dy)}',
+                style: BT.mono(20, color: BP.amber),
               ),
             ),
             const Spacer(),
-            BpSlider(
-              label: 'scale',
-              value: _scale,
-              min: 0.5,
-              max: 1.6,
-              width: 240,
-              format: (v) => '× ${v.toStringAsFixed(2)}',
-              onChanged: (v) => setState(() => _scale = v),
-            ),
-            const SizedBox(width: 8),
-            BpButton(label: 'edit text', onTap: () => _alt.value = !_alt.value),
+            BpButton(label: 'edit text', size: 20, onTap: () => _alt.value = !_alt.value),
           ],
         ),
       ],
@@ -1425,54 +1418,36 @@ class _ThreeDTabState extends State<_ThreeDTab> with SingleTickerProviderStateMi
 }
 
 class _Card3D extends StatelessWidget {
-  const _Card3D({required this.alt, required this.counter});
+  const _Card3D({required this.alt});
 
   final ValueNotifier<bool> alt;
-  final ValueNotifier<int> counter;
 
   @override
   Widget build(BuildContext context) {
-    final big = BT.display(170, weight: 600, height: 1.0);
+    final big = BT.display(210, weight: 600, height: 1.0);
     final probe = TextProbe(TextSpan(text: 'Text', style: big));
     final lm = probe.lines.first;
     final metrics = (lm.baseline, lm.ascent, lm.descent);
     probe.dispose();
     return BpPanel(
-      width: 760,
-      height: 420,
+      width: _card3DWidth,
+      height: 400,
       color: BP.line,
-      label: 'Transform · Matrix4',
-      padding: const EdgeInsets.fromLTRB(44, 28, 44, 28),
+      padding: const EdgeInsets.fromLTRB(56, 40, 56, 36),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CustomPaint(
             painter: _GuidesPainter(metrics),
-            child: _LayoutCounter(counter: counter, child: Text('Text', style: big)),
+            child: Text('Text', style: big),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           ValueListenableBuilder<bool>(
             valueListenable: alt,
-            builder: (context, a, _) => _LayoutCounter(
-              counter: counter,
-              child: Text(
-                a ? 'نص · 文字 · ข้อความ · 🙂' : 'نص · 文字 · ข้อความ',
-                style: BT.sample(44, color: BP.inkDim),
-              ),
+            builder: (context, a, _) => Text(
+              a ? 'نص · 文字 · ข้อความ · 🙂' : 'نص · 文字 · ข้อความ',
+              style: BT.sample(56, color: BP.inkDim),
             ),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              const BpTag('rotateX · rotateY', color: BP.amber),
-              const SizedBox(width: 10),
-              const BpTag('no relayout', color: BP.green),
-              const Spacer(),
-              _LayoutCounter(
-                counter: counter,
-                child: Text('SkParagraph', style: BT.mono(15, color: BP.inkDim)),
-              ),
-            ],
           ),
         ],
       ),
@@ -1489,13 +1464,15 @@ class _GuidesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final (base, asc, desc) = m;
-    canvas.drawLine(Offset(-24, base), Offset(size.width + 420, base), _stroke(BP.amber, 1.2));
-    final g = _stroke(BP.lineDim);
+    const x0 = -32.0;
+    const x1 = _card3DWidth - 56 - 24;
+    canvas.drawLine(Offset(x0, base), Offset(x1, base), _stroke(BP.amber, 1.6));
+    final g = _stroke(BP.lineDim, 1.2);
     for (final y in [base - asc, base + desc]) {
       canvas.drawPath(
         dashPath(Path()
-          ..moveTo(-24, y)
-          ..lineTo(size.width + 420, y), dash: 6, gap: 5),
+          ..moveTo(x0, y)
+          ..lineTo(x1, y), dash: 8, gap: 6),
         g,
       );
     }
@@ -1503,41 +1480,4 @@ class _GuidesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GuidesPainter old) => old.m != m;
-}
-
-/// Counts how many times its child is actually laid out.
-class _LayoutCounter extends SingleChildRenderObjectWidget {
-  const _LayoutCounter({required this.counter, super.child});
-
-  final ValueNotifier<int> counter;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) => _RenderLayoutCounter(counter);
-
-  @override
-  void updateRenderObject(BuildContext context, _RenderLayoutCounter renderObject) {
-    renderObject.counter = counter;
-  }
-}
-
-class _RenderLayoutCounter extends RenderProxyBox {
-  _RenderLayoutCounter(this.counter);
-
-  ValueNotifier<int> counter;
-  int _pending = 0;
-  bool _scheduled = false;
-
-  @override
-  void performLayout() {
-    super.performLayout();
-    _pending++;
-    if (_scheduled) return;
-    _scheduled = true;
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      _scheduled = false;
-      if (!attached) return;
-      counter.value += _pending;
-      _pending = 0;
-    });
-  }
 }

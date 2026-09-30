@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Text rendering · Flutter</title>
-  <meta name="description" content="Interactive slides: how text rendering works, and how Flutter does it. Three versions of the same talk.">
+  <title>Inside Flutter's Text Pipeline</title>
+  <meta name="description" content="Interactive slides: how text rendering works, and how Flutter's text pipeline does it.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
   <style>
@@ -26,6 +26,12 @@
     h1 { font-weight: 500; font-size: clamp(44px, 8vw, 88px); letter-spacing: -2px; line-height: 1; margin: 12px 0 10px; }
     .sub { font-family: 'JetBrains Mono', monospace; color: var(--ink-dim); font-size: 15px; margin: 0 0 6px; }
     .ja { color: var(--ink-dim); font-size: 18px; margin: 0 0 48px; }
+    a.card.hero { padding: 34px 32px 28px; margin-bottom: 44px; border-color: var(--line); }
+    a.card.hero h2 { font-size: 40px; }
+    .links { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: baseline; }
+    .links a { font-family: 'JetBrains Mono', monospace; color: var(--line); font-size: 14px; text-decoration: none; }
+    .links a:hover { color: var(--amber); }
+    h3 { font-family: 'JetBrains Mono', monospace; font-weight: 400; color: var(--ink-dim); font-size: 14px; margin: 0 0 16px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
     a.card { position: relative; display: block; text-decoration: none; color: inherit; background: rgba(12, 33, 55, .85);
              border: 1px solid var(--dim); padding: 26px 24px 22px; transition: border-color .15s, transform .15s; }
@@ -44,9 +50,19 @@
 <body>
   <main>
     <div class="kicker">flutter / text</div>
-    <h1>Text rendering</h1>
+    <h1>Inside Flutter's Text Pipeline</h1>
     <p class="sub">from code points to pixels · and how Flutter does it</p>
-    <p class="ja" lang="ja">テキストレンダリング</p>
+    <p class="ja" lang="ja">Flutterテキストパイプラインの内側</p>
+    <a class="card hero" href="factory-simple/">
+      <div class="num">the talk</div>
+      <h2>Inside Flutter's Text Pipeline</h2>
+      <p>The glyph factory, simplified: fewer slides, bigger demos, one idea per slide.</p>
+      <div class="links">
+        <span class="go">open slides →</span>
+        <!--PDF--><a href="inside-flutters-text-pipeline.pdf">printed version (PDF)</a><!--/PDF-->
+      </div>
+    </a>
+    <h3>other versions · experiments</h3>
     <div class="grid">
       <a class="card" href="factory/">
         <div class="num">01 / version</div>

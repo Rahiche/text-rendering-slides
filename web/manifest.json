@@ -1,6 +1,6 @@
 {
-    "name": "Text rendering · Flutter",
-    "short_name": "Text rendering",
+    "name": "Inside Flutter's Text Pipeline",
+    "short_name": "Flutter Text Pipeline",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0A1B2E",

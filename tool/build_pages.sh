@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the deck once as WebAssembly and assembles the GitHub Pages site:
 #   <base>/               landing page (pick a version)
+#   <base>/factory-simple/  the talk: "Inside Flutter's Text Pipeline"
 #   <base>/factory/       glyph factory
 #   <base>/construction/  construction site
 #   <base>/workers/       easy vs hard
@@ -10,7 +11,7 @@
 set -euo pipefail
 
 BASE="${BASE_PATH:-/text-rendering-slides/}"
-WORLDS=(factory construction workers detective classic)
+WORLDS=(factory-simple factory construction workers detective classic)
 PLACEHOLDER="/__world_base__/"
 
 flutter build web --wasm --release --base-href "$PLACEHOLDER"
@@ -24,6 +25,14 @@ for w in "${WORLDS[@]}"; do
   sed -i.bak "s#${PLACEHOLDER}#${BASE}${w}/#" "build/pages/$w/index.html"
   rm "build/pages/$w/index.html.bak"
 done
+# The printed deck (tool/export_slides.sh --pdf …), when it exists.
+PDF=build/slides/inside-flutters-text-pipeline.pdf
+if [ -f "$PDF" ]; then
+  cp "$PDF" build/pages/
+else
+  # No PDF: drop its link from the landing page.
+  sed -i.bak 's#<!--PDF-->.*<!--/PDF-->##' build/pages/index.html && rm build/pages/index.html.bak
+fi
 # The Chrome vs Flutter comparison page, when its renders exist
 # (./compare/capture.sh generates them).
 if [ -f compare/out/flutter/lines.json ] && [ -f compare/fonts/NotoSansJP.ttf ]; then

@@ -1,12 +1,21 @@
-# Text rendering — interactive slides (Flutter)
+# Inside Flutter's Text Pipeline — interactive slides (Flutter)
 
 **Live (WebAssembly):** https://rahiche.github.io/text-rendering-slides/
 
-Three versions of the same talk, each told inside one world:
+**The talk:** https://rahiche.github.io/text-rendering-slides/factory-simple/ —
+the Glyph factory, simplified: fewer slides, bigger demos, one idea per slide
+(`lib/simple/`). Printed version: `inside-flutters-text-pipeline.pdf` on the site.
+
+```bash
+flutter run -d macos -t lib/main_simple.dart              # just the talk, natively
+tool/export_slides.sh --pdf build/slides/inside-flutters-text-pipeline.pdf   # PNG per slide + PDF
+```
+
+Other versions and experiments, each told inside one world:
 
 | version | link |
 | --- | --- |
-| Glyph factory | https://rahiche.github.io/text-rendering-slides/factory/ |
+| Glyph factory (full) | https://rahiche.github.io/text-rendering-slides/factory/ |
 | Construction site | https://rahiche.github.io/text-rendering-slides/construction/ |
 | Easy vs hard (workers) | https://rahiche.github.io/text-rendering-slides/workers/ |
 | The case of 直 (detective) | https://rahiche.github.io/text-rendering-slides/detective/ |

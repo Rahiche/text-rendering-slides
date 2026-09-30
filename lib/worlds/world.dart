@@ -78,6 +78,9 @@ abstract class World {
 
   /// Replaces the blueprint wipe between slides.
   WorldTransition? get transition => null;
+
+  /// Quieter chrome for the simplified deck (e.g. no "03 / basics" kicker).
+  bool get minimal => false;
 }
 
 /// Makes the current [World] available to slides.

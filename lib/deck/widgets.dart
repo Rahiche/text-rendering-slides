@@ -39,7 +39,8 @@ class SlideFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = SlideScope.of(context);
     final n = (scope.index + 1).toString().padLeft(2, '0');
-    final ambient = WorldScope.maybeOf(context)?.ambient(context);
+    final world = WorldScope.maybeOf(context);
+    final ambient = world?.ambient(context);
     return Stack(
       children: [
         // The world's scenery lives behind the content, in the margins.
@@ -54,10 +55,12 @@ class SlideFrame extends StatelessWidget {
         Positioned(
           left: BP.margin,
           top: 44,
-          child: _TitleBlock(kicker: '$n / ${kicker ?? scope.section}', title: title),
+          child: _TitleBlock(
+            kicker: world?.minimal ?? false ? null : '$n / ${kicker ?? scope.section}',
+            title: title,
+          ),
         ),
-        if (trailing != null)
-          Positioned(right: BP.margin, top: 64, child: trailing!),
+        if (trailing != null) Positioned(right: BP.margin, top: 64, child: trailing!),
       ],
     );
   }
@@ -66,15 +69,14 @@ class SlideFrame extends StatelessWidget {
 class _TitleBlock extends StatefulWidget {
   const _TitleBlock({required this.kicker, required this.title});
 
-  final String kicker;
+  final String? kicker;
   final String title;
 
   @override
   State<_TitleBlock> createState() => _TitleBlockState();
 }
 
-class _TitleBlockState extends State<_TitleBlock>
-    with SingleTickerProviderStateMixin {
+class _TitleBlockState extends State<_TitleBlock> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -97,25 +99,30 @@ class _TitleBlockState extends State<_TitleBlock>
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(width: 28 * line, height: 1.5, color: BP.line),
-                SizedBox(width: 10 * line),
-                Opacity(
-                  opacity: line,
-                  child: Text(widget.kicker, style: BT.mono(16)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
+            if (widget.kicker case final kicker?) ...[
+              Row(
+                children: [
+                  Container(width: 28 * line, height: 1.5, color: BP.line),
+                  SizedBox(width: 10 * line),
+                  Opacity(
+                    opacity: line,
+                    child: Text(kicker, style: BT.mono(16)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ] else
+              Container(
+                width: 56 * line,
+                height: 2,
+                color: BP.amber,
+                margin: const EdgeInsets.only(bottom: 12),
+              ),
             ClipRect(
               child: Align(
                 alignment: Alignment.centerLeft,
                 widthFactor: text,
-                child: Text(
-                  widget.title,
-                  style: BT.display(58, height: 1.1, letterSpacing: -1),
-                ),
+                child: Text(widget.title, style: BT.display(58, height: 1.1, letterSpacing: -1)),
               ),
             ),
           ],
@@ -142,8 +149,7 @@ class SectionSlide extends StatefulWidget {
   State<SectionSlide> createState() => _SectionSlideState();
 }
 
-class _SectionSlideState extends State<SectionSlide>
-    with SingleTickerProviderStateMixin {
+class _SectionSlideState extends State<SectionSlide> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
@@ -171,12 +177,14 @@ class _SectionSlideState extends State<SectionSlide>
                 opacity: seg(0, 0.4),
                 child: Text(
                   widget.number,
-                  style: BT.display(260, weight: 700, height: 1).copyWith(
-                    foreground: Paint()
-                      ..style = PaintingStyle.stroke
-                      ..strokeWidth = 2
-                      ..color = BP.line,
-                  ),
+                  style: BT
+                      .display(260, weight: 700, height: 1)
+                      .copyWith(
+                        foreground: Paint()
+                          ..style = PaintingStyle.stroke
+                          ..strokeWidth = 2
+                          ..color = BP.line,
+                      ),
                 ),
               ),
             ),
@@ -258,10 +266,7 @@ class Reveal extends StatefulWidget {
 }
 
 class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: widget.duration,
-  );
+  late final AnimationController _c = AnimationController(vsync: this, duration: widget.duration);
 
   @override
   void initState() {
@@ -353,12 +358,9 @@ class LoopBuilder extends StatefulWidget {
   State<LoopBuilder> createState() => _LoopBuilderState();
 }
 
-class _LoopBuilderState extends State<LoopBuilder>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: widget.period,
-  )..repeat(reverse: widget.reverse);
+class _LoopBuilderState extends State<LoopBuilder> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: widget.period)
+    ..repeat(reverse: widget.reverse);
 
   @override
   void dispose() {
@@ -384,8 +386,7 @@ class ElapsedBuilder extends StatefulWidget {
   State<ElapsedBuilder> createState() => _ElapsedBuilderState();
 }
 
-class _ElapsedBuilderState extends State<ElapsedBuilder>
-    with SingleTickerProviderStateMixin {
+class _ElapsedBuilderState extends State<ElapsedBuilder> with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   Duration _elapsed = Duration.zero;
 
@@ -484,7 +485,10 @@ class BpPanel extends StatelessWidget {
                 child: Container(
                   color: BP.paper,
                   padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(label!, style: BT.mono(13, color: color == BP.lineDim ? BP.line : color)),
+                  child: Text(
+                    label!,
+                    style: BT.mono(13, color: color == BP.lineDim ? BP.line : color),
+                  ),
                 ),
               ),
           ],
@@ -559,12 +563,7 @@ class DashedBox extends StatelessWidget {
 }
 
 class DashedRectPainter extends CustomPainter {
-  DashedRectPainter({
-    this.color = BP.lineDim,
-    this.strokeWidth = 1,
-    this.dash = 6,
-    this.gap = 4,
-  });
+  DashedRectPainter({this.color = BP.lineDim, this.strokeWidth = 1, this.dash = 6, this.gap = 4});
 
   final Color color;
   final double strokeWidth;
@@ -583,8 +582,7 @@ class DashedRectPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(DashedRectPainter old) =>
-      old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(DashedRectPainter old) => old.color != color || old.strokeWidth != strokeWidth;
 }
 
 /// Small mono tag with a tinted fill.
@@ -627,12 +625,17 @@ class DimensionLine extends StatelessWidget {
     final lineBox = SizedBox(
       width: vertical ? 16 : length,
       height: vertical ? length : 16,
-      child: CustomPaint(painter: _DimPainter(vertical: vertical, color: color)),
+      child: CustomPaint(
+        painter: _DimPainter(vertical: vertical, color: color),
+      ),
     );
     final text = Text(label, style: BT.mono(13, color: color));
     return vertical
         ? Row(mainAxisSize: MainAxisSize.min, children: [lineBox, const SizedBox(width: 6), text])
-        : Column(mainAxisSize: MainAxisSize.min, children: [lineBox, const SizedBox(height: 2), text]);
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [lineBox, const SizedBox(height: 2), text],
+          );
   }
 }
 
@@ -709,7 +712,10 @@ class _BpButtonState extends State<BpButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: EdgeInsets.symmetric(horizontal: widget.size * 0.9, vertical: widget.size * 0.45),
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.size * 0.9,
+            vertical: widget.size * 0.45,
+          ),
           decoration: BoxDecoration(
             color: sel ? c : (_hover ? c.withValues(alpha: 0.14) : Colors.transparent),
             border: Border.all(color: sel || _hover ? c : c.withValues(alpha: 0.55)),
@@ -817,7 +823,9 @@ class BpSlider extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onPanDown: (d) => update(d.localPosition, width),
               onPanUpdate: (d) => update(d.localPosition, width),
-              child: CustomPaint(painter: _SliderPainter(t: t, ticks: ticks, color: color)),
+              child: CustomPaint(
+                painter: _SliderPainter(t: t, ticks: ticks, color: color),
+              ),
             ),
           ),
         ),
@@ -919,7 +927,9 @@ class BpTextField extends StatelessWidget {
         ),
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: BP.lineDim)),
-        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: BP.amber, width: 2)),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: BP.amber, width: 2),
+        ),
       ),
     ),
   );
@@ -1126,11 +1136,8 @@ class TextProbe {
     double maxWidth = double.infinity,
     TextAlign textAlign = TextAlign.start,
     TextDirection textDirection = TextDirection.ltr,
-  }) : painter = TextPainter(
-         text: span,
-         textAlign: textAlign,
-         textDirection: textDirection,
-       )..layout(maxWidth: maxWidth);
+  }) : painter = TextPainter(text: span, textAlign: textAlign, textDirection: textDirection)
+         ..layout(maxWidth: maxWidth);
 
   final TextPainter painter;
 

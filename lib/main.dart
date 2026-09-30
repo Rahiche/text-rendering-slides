@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'deck/deck.dart';
 import 'deck/theme.dart';
 import 'probe/slug_probe.dart';
+import 'simple/simple_deck.dart';
+import 'simple/simple_world.dart';
 import 'slides/registry.dart';
 import 'worlds/chooser.dart';
 import 'worlds/world.dart';
@@ -23,7 +25,7 @@ class SlidesApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Text rendering in Flutter',
+      title: "Inside Flutter's Text Pipeline",
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -63,6 +65,9 @@ class _HomeState extends State<_Home> {
     final w = _world;
     if (w == null) {
       return WorldChooser(worlds: worlds, onPick: (w) => setState(() => _world = w));
+    }
+    if (w is SimpleFactoryWorld) {
+      return Deck(worlds: [w], initial: w, slidesFor: buildSimpleSlides);
     }
     return Deck(worlds: worlds, initial: w, slidesFor: buildSlides);
   }

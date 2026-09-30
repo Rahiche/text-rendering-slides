@@ -1,3 +1,4 @@
+import '../simple/simple_world.dart';
 import 'classic.dart';
 import 'construction/construction_world.dart';
 import 'detective/detective_world.dart';
@@ -5,7 +6,9 @@ import 'factory/factory_world.dart';
 import 'workers/workers_world.dart';
 import 'world.dart';
 
-/// Every version of the deck. Order = the `w` key's cycle order.
+/// Every version of the deck. Order = the `w` key's cycle order. (The
+/// simplified deck, [SimpleFactoryWorld], has its own slide list and is only
+/// reached by its URL: `/factory-simple/`.)
 const worlds = <World>[
   FactoryWorld(),
   ConstructionWorld(),
@@ -18,12 +21,15 @@ const worlds = <World>[
 /// `/text-rendering-slides/factory/`, or `?deck=factory`; otherwise
 /// `--dart-define=WORLD=factory`. Null when nothing was asked for.
 World? requestedWorld() {
-  World? byId(String? id) {
+  World? inList(String? id) {
     for (final w in worlds) {
       if (w.id == id) return w;
     }
     return null;
   }
+
+  World? byId(String? id) =>
+      id == const SimpleFactoryWorld().id ? const SimpleFactoryWorld() : inList(id);
 
   final uri = Uri.base;
   return byId(uri.queryParameters['deck']) ??

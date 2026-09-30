@@ -129,12 +129,26 @@ class SlideScope extends InheritedWidget {
 }
 
 class Deck extends StatefulWidget {
-  const Deck({super.key, required this.worlds, required this.initial, required this.slidesFor});
+  const Deck({
+    super.key,
+    required this.worlds,
+    required this.initial,
+    required this.slidesFor,
+    this.onReady,
+    this.interactive = true,
+  });
+
+  /// False ignores the keyboard (used while exporting).
+  final bool interactive;
 
   /// All versions of the deck; `w` cycles through them while presenting.
   final List<World> worlds;
   final World initial;
   final List<SlideDef> Function(World world) slidesFor;
+
+  /// Called after the first frame with the controller and a key on the
+  /// 1600×900 canvas's RepaintBoundary (used to export slides as images).
+  final void Function(DeckController controller, GlobalKey canvasKey)? onReady;
 
   @override
   State<Deck> createState() => _DeckState();
@@ -143,6 +157,7 @@ class Deck extends StatefulWidget {
 class _DeckState extends State<Deck> {
   late World _world = widget.initial;
   late DeckController _c = DeckController(widget.slidesFor(_world));
+  final _canvasKey = GlobalKey();
 
   /// Switch to another world, staying on the same slide id when it exists.
   void _setWorld(World w) {
@@ -188,6 +203,10 @@ class _DeckState extends State<Deck> {
       final i = _c.slides.indexWhere((s) => s.id == id);
       if (i >= 0) _c.index = i;
     }
+    final onReady = widget.onReady;
+    if (onReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onReady(_c, _canvasKey));
+    }
   }
 
   @override
@@ -206,7 +225,7 @@ class _DeckState extends State<Deck> {
   }
 
   bool _onKey(KeyEvent e) {
-    if (e is KeyUpEvent) return false;
+    if (e is KeyUpEvent || !widget.interactive) return false;
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.escape) {
       if (_editingText()) {
@@ -271,28 +290,42 @@ class _DeckState extends State<Deck> {
                     const Positioned(left: 0, top: 0, child: _FontWarmup()),
                     Positioned.fill(
                       child: FittedBox(
-                        child: SizedBox.fromSize(
-                          size: BP.canvas,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned.fill(child: _slides()),
-                              const Positioned.fill(
-                                child: IgnorePointer(
-                                  child: CustomPaint(painter: CropMarksPainter()),
+                        child: RepaintBoundary(
+                          key: _canvasKey,
+                          child: SizedBox.fromSize(
+                            size: BP.canvas,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                // Exported images need the paper and grid
+                                // that the window paints outside the canvas.
+                                if (widget.onReady != null)
+                                  Positioned.fill(
+                                    child: ColoredBox(
+                                      color: BP.paper,
+                                      child: CustomPaint(
+                                        painter: GridPaperPainter(scale: 1, origin: Offset.zero),
+                                      ),
+                                    ),
+                                  ),
+                                Positioned.fill(child: _slides()),
+                                const Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: CustomPaint(painter: CropMarksPainter()),
+                                  ),
                                 ),
-                              ),
-                              ?worldRuler,
-                              if (worldRuler == null)
-                                Positioned(
-                                  left: BP.margin,
-                                  right: BP.margin,
-                                  bottom: 22,
-                                  height: 48,
-                                  child: _Ruler(controller: _c),
-                                ),
-                              if (_c.overview) Positioned.fill(child: _Overview(controller: _c)),
-                            ],
+                                ?worldRuler,
+                                if (worldRuler == null)
+                                  Positioned(
+                                    left: BP.margin,
+                                    right: BP.margin,
+                                    bottom: 22,
+                                    height: 48,
+                                    child: _Ruler(controller: _c),
+                                  ),
+                                if (_c.overview) Positioned.fill(child: _Overview(controller: _c)),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -312,7 +345,6 @@ class _DeckState extends State<Deck> {
     if (r == null) return null;
     return Positioned(left: 0, right: 0, bottom: 0, height: 110, child: r);
   }
-
 
   Widget _slides() {
     final def = _c.current;

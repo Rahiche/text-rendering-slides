@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../deck/scripts.dart';
 import '../../../deck/theme.dart';
@@ -10,8 +11,8 @@ import '../../../deck/widgets.dart';
 import '../../../slides/journey/journey.dart';
 import 'frame.dart';
 
-/// Stop 10: every glyph becomes a textured quad (2 triangles) sampling the
-/// glyph atlas; the whole frame is one draw call. A lens shows the actual
+/// Stop 6: every glyph becomes a textured quad (2 triangles) sampling the
+/// glyph atlas; the whole word is one draw call. A lens shows the actual
 /// pixels of the word rendered at 1×.
 class JGpuSlide extends StatelessWidget {
   const JGpuSlide({super.key});
@@ -25,23 +26,35 @@ class JGpuSlide extends StatelessWidget {
 }
 
 // Geometry (content-area coordinates, 1472 × 628).
-const _wordO = Offset(40, 52);
-const _atlasPanel = Rect.fromLTWH(1130, 12, 342, 372);
-const _bottomY = 408.0;
-const _lensR = 92.0;
+const _wordTop = 24.0;
+
+/// The word's ink is fitted into this box.
+const _wordMax = Size(920, 270);
+
+/// The word is centred in the space left of the atlas.
+const _wordArea = 1090.0;
+const _atlasPanel = Rect.fromLTWH(1136, 36, 336, 336);
+const _statsTop = 400.0;
+const _lensR = 126.0;
+const _lensGap = 26.0;
 const _zoom = 8.0;
-const _lensMaxX = 1100.0;
+const _lensMaxX = 1050.0;
 const _gutter = 2.0;
 
-String _f1(double v) => v.toStringAsFixed(1);
+// Timeline (seconds after arrival).
+const _flyStart = 0.3; // first quad leaves the atlas
+const _flySpread = 1.3; // …last one leaves this much later
+const _flyTime = 0.7; // one quad's flight
+const _introEnd = _flyStart + _flySpread + _flyTime;
+const _lensIn = _introEnd + 0.1; // lens fades in on the first glyph
+const _dwell = 2.5; // lens time per glyph
+const _move = 0.5; // …of which moving
 
 /// One glyph quad: a screen rectangle (paragraph coordinates, px) mapped onto
 /// a tile of the atlas.
 class _Quad {
   _Quad({
     required this.rect,
-    required this.label,
-    required this.id,
     required this.color,
     required this.tileKey,
     this.path,
@@ -49,8 +62,6 @@ class _Quad {
   });
 
   Rect rect;
-  final String label;
-  final int? id;
 
   /// Color glyph (emoji) → RGBA atlas; otherwise the A8 alpha atlas.
   final bool color;
@@ -61,6 +72,11 @@ class _Quad {
 
   /// Bounds still to be tightened from the rendered pixels.
   final bool scan;
+
+  /// Where the lens looks on this glyph (paragraph coordinates), and how
+  /// many anti-aliased pixels it sees there.
+  Offset? focus;
+  int focusScore = 0;
 }
 
 class _Atlas {
@@ -129,16 +145,23 @@ class _Gpu extends StatefulWidget {
 class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
   late final double _fs;
   late final TextProbe _probe;
+  late final Offset _wordO;
+
+  /// Bottom of the word's ink (paragraph coordinates): the lens hangs below.
+  late final double _inkBottom;
   late final ui.Image _word;
-  late final AnimationController _clock;
+  late final Ticker _ticker;
+  double _t = 0;
   final List<_Quad> _quads = [];
   List<_Atlas> _atlases = [];
-  Uint8List? _pixels;
 
   /// Pointer in paragraph coordinates (null → the lens scans on its own).
   Offset? _mouse;
   int? _mouseHot;
   int _lastHot = 0;
+
+  /// The lens starts on the glyph with the most anti-aliasing to show.
+  int _lensStart = 0;
 
   @override
   void initState() {
@@ -148,29 +171,66 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
       TextSpan(text: d.text, style: journeyStyle(fs)),
       textDirection: d.rtl ? TextDirection.rtl : TextDirection.ltr,
     );
-    final m = probe(170);
-    final fit = math.min(1.0, math.min(940 / math.max(m.size.width, 1), 280 / math.max(m.size.height, 1)));
+    const base = 360.0;
+    final m = probe(base);
+    final (t0, b0) = _inkY(m, base);
+    final fit = math.min(
+      1.0,
+      math.min(_wordMax.width / math.max(m.size.width, 1), _wordMax.height / math.max(b0 - t0, 1)),
+    );
     m.dispose();
-    _fs = (170 * fit).floorToDouble();
+    _fs = (base * fit).floorToDouble();
     _probe = probe(_fs);
+    final (inkTop, inkBottom) = _inkY(_probe, _fs);
+    _inkBottom = inkBottom;
+    _wordO = Offset(
+      math.max(20, (_wordArea - _probe.size.width) / 2).roundToDouble(),
+      (_wordTop - inkTop).roundToDouble(),
+    );
     _word = _render();
     _buildQuads();
     _atlases = _pack();
-    _clock = AnimationController(vsync: this, duration: _period)..repeat();
+    _ticker = createTicker((e) => setState(() => _t = e.inMicroseconds / 1e6))..start();
     _word.toByteData(format: ui.ImageByteFormat.rawRgba).then(_onPixels);
   }
 
-  Duration get _period => Duration(milliseconds: 1900 * math.max(1, _quads.length));
-
   @override
   void dispose() {
-    _clock.dispose();
+    _ticker.dispose();
     for (final a in _atlases) {
       a.image.dispose();
     }
     _word.dispose();
     _probe.dispose();
     super.dispose();
+  }
+
+  /// Top and bottom of the word's ink at [fs] (paragraph coordinates): from
+  /// the glyph outlines where we have them, the line box otherwise.
+  (double, double) _inkY(TextProbe p, double fs) {
+    final lines = p.lines;
+    if (lines.isEmpty) return (0, p.size.height);
+    final base = lines.first.baseline;
+    var top = double.infinity, bottom = double.negativeInfinity;
+    for (final g in widget.data.glyphs) {
+      final f = g.font;
+      if (f == null) {
+        final r = p.rectFor(g.start, g.end);
+        if (r == null || g.char.trim().isEmpty) continue;
+        top = math.min(top, r.top);
+        bottom = math.max(bottom, r.bottom);
+        continue;
+      }
+      final o = f.outline(g.glyphId);
+      if (o.contours.isEmpty) continue;
+      final k = fs / f.unitsPerEm;
+      // Arabic positional forms differ a little from the nominal outline.
+      final pad = g.script == Script.arabic ? 0.12 * fs : 0.0;
+      top = math.min(top, base - o.bounds.bottom * k - pad);
+      bottom = math.max(bottom, base - o.bounds.top * k + pad);
+    }
+    if (!top.isFinite || !bottom.isFinite) return (0, p.size.height);
+    return (math.max(0.0, top), math.min(p.size.height, bottom));
   }
 
   /// The word rendered once at 1× — the pixels the lens shows.
@@ -200,8 +260,6 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
         if (text.trim().isEmpty) continue;
         _quads.add(_Quad(
           rect: cluster,
-          label: text,
-          id: null,
           color: scriptOfCluster(text) == Script.emoji,
           tileKey: 'sys:$text',
           scan: true,
@@ -218,8 +276,6 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
           // Contextual forms: bounds come from the rendered pixels.
           _quads.add(_Quad(
             rect: r,
-            label: g.char,
-            id: g.glyphId,
             color: false,
             tileKey: 'ar:${g.codePoint}:${_form(d.glyphs, i)}',
             scan: true,
@@ -235,14 +291,14 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
         final q = ink.inflate(1);
         _quads.add(_Quad(
           rect: Rect.fromLTWH(q.left, q.top, q.width.ceilToDouble(), q.height.ceilToDouble()),
-          label: g.char,
-          id: g.glyphId,
           color: false,
           tileKey: '${f.name}:${g.glyphId}',
           path: o.toPath(scale: k, origin: pen),
         ));
       }
     }
+    // Reading order, for the fly-in and the lens.
+    _quads.sort((a, b) => d.rtl ? b.rect.left.compareTo(a.rect.left) : a.rect.left.compareTo(b.rect.left));
   }
 
   void _onPixels(ByteData? bd) {
@@ -278,21 +334,69 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
       );
       keep.add(q);
     }
+    _pickFocus(keep, px, w, h);
     final old = _atlases;
     setState(() {
-      _pixels = px;
       _quads
         ..clear()
         ..addAll(keep);
       _atlases = _pack();
-      _lastHot = _lastHot.clamp(0, math.max(0, _quads.length - 1));
+      var best = 0;
+      for (var i = 0; i < _quads.length; i++) {
+        if (_quads[i].focusScore > _quads[best].focusScore) best = i;
+      }
+      _lensStart = best;
+      _lastHot = best;
     });
     for (final a in old) {
       a.image.dispose();
     }
-    _clock
-      ..duration = _period
-      ..repeat();
+  }
+
+  /// For each glyph, the spot where the lens sees the most anti-aliasing on a
+  /// curve or a diagonal (partially covered pixels whose edge runs neither
+  /// straight across nor straight down) — from the real pixels, via a
+  /// summed-area table.
+  void _pickFocus(List<_Quad> quads, Uint8List px, int w, int h) {
+    int alpha(int x, int y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : px[(y * w + x) * 4 + 3];
+    final sat = Int32List((w + 1) * (h + 1));
+    for (var y = 0; y < h; y++) {
+      var row = 0;
+      for (var x = 0; x < w; x++) {
+        final a = alpha(x, y);
+        if (a > 24 && a < 232) {
+          final gx = (alpha(x + 1, y) - alpha(x - 1, y)).abs();
+          final gy = (alpha(x, y + 1) - alpha(x, y - 1)).abs();
+          if (gx > 16 && gy > 16) row++;
+        }
+        sat[(y + 1) * (w + 1) + x + 1] = sat[y * (w + 1) + x + 1] + row;
+      }
+    }
+    int sum(int x0, int y0, int x1, int y1) {
+      x0 = x0.clamp(0, w);
+      x1 = x1.clamp(0, w);
+      y0 = y0.clamp(0, h);
+      y1 = y1.clamp(0, h);
+      return sat[y1 * (w + 1) + x1] - sat[y0 * (w + 1) + x1] - sat[y1 * (w + 1) + x0] + sat[y0 * (w + 1) + x0];
+    }
+
+    final half = (_lensR / _zoom).round();
+    for (final q in quads) {
+      final r = q.rect;
+      var best = -1;
+      Offset? at;
+      for (var y = r.top.ceil() + half ~/ 2; y < r.bottom - half ~/ 2; y += 2) {
+        for (var x = r.left.ceil() + half ~/ 2; x < r.right - half ~/ 2; x += 2) {
+          final s = sum(x - half, y - half, x + half, y + half);
+          if (s > best) {
+            best = s;
+            at = Offset(x + 0.5, y + 0.5);
+          }
+        }
+      }
+      q.focus = at;
+      q.focusScore = math.max(0, best);
+    }
   }
 
   /// Shelf-pack unique tiles into power-of-two textures and render them.
@@ -357,27 +461,21 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
       out.add(_Atlas(color: color, tex: tex, image: img, tiles: tiles));
     }
     // Where each texture sits in the panel.
-    final inner = Rect.fromLTWH(_atlasPanel.left + 21, _atlasPanel.top + 30, 300, 300);
+    final inner = _atlasPanel.deflate(18);
     if (out.length == 1) {
       out.first.display = inner;
     } else {
+      final s = (inner.width - 12) / 2;
       for (var i = 0; i < out.length; i++) {
-        out[i].display = Rect.fromLTWH(inner.left + i * 155, inner.top, 145, 145);
+        out[i].display = Rect.fromLTWH(inner.left + i * (s + 12), inner.top + (inner.height - s) / 2, s, s);
       }
     }
     return out;
   }
 
-  _Atlas? _atlasOf(_Quad q) {
-    for (final a in _atlases) {
-      if (a.color == q.color) return a;
-    }
-    return null;
-  }
-
   Offset _scanTarget(int k) {
-    final r = _quads[k].rect;
-    return Offset(r.left + r.width * 0.28, r.top + r.height * 0.5);
+    final q = _quads[k];
+    return q.focus ?? Offset(q.rect.left + q.rect.width * 0.28, q.rect.top + q.rect.height * 0.5);
   }
 
   void _hover(Offset local) {
@@ -393,150 +491,130 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
     });
   }
 
+  /// Flight progress of quad [i]: <0 still in the atlas, 0..1 flying, 1 landed.
+  double _fly(int i, int n) {
+    final start = _flyStart + (n <= 1 ? 0 : _flySpread * i / (n - 1));
+    return (_t - start) / _flyTime;
+  }
+
   @override
   Widget build(BuildContext context) {
     final n = _quads.length;
     final ps = _probe.size;
-    return AnimatedBuilder(
-      animation: _clock,
-      builder: (context, _) {
-        // Auto mode: walk from glyph to glyph.
-        final t = _clock.value * math.max(1, n);
-        final seg = n == 0 ? 0 : t.floor().clamp(0, n - 1);
-        final local = t - t.floor();
-        Offset? pointer = _mouse;
-        int? hot;
-        if (_mouse != null) {
-          hot = _mouseHot;
-        } else if (n > 0) {
-          hot = seg;
-          final from = _scanTarget((seg - 1 + n) % n);
-          final to = _scanTarget(seg);
-          pointer = Offset.lerp(from, to, Curves.easeInOutCubic.transform((local / 0.3).clamp(0.0, 1.0)));
-        }
-        final shown = n == 0 ? null : (hot ?? _lastHot).clamp(0, n - 1);
-        final flash = n > 0 && seg == 0 && _mouse == null ? (1 - local / 0.3).clamp(0.0, 1.0) : 0.0;
-        final q = shown == null ? null : _quads[shown];
-        final atlas = q == null ? null : _atlasOf(q);
+    final fly = [for (var i = 0; i < n; i++) _fly(i, n)];
+    final landed = fly.where((f) => f >= 1).length;
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fromRect(
-              rect: _atlasPanel,
-              child: BpPanel(
-                label: 'glyph atlas · ${_atlases.fold<int>(0, (a, e) => a + e.tiles.length)} tiles',
-                child: const SizedBox.expand(),
+    // Lens: after the fly-in, walk from glyph to glyph (or follow the mouse).
+    Offset? pointer = _mouse;
+    int? hot;
+    var lensAlpha = 1.0;
+    if (_mouse != null) {
+      hot = _mouseHot;
+    } else if (n > 0 && _t >= _lensIn) {
+      final lt = (_t - _lensIn) / _dwell;
+      final seg = (_lensStart + lt.floor()) % n;
+      final local = (lt - lt.floor()) * _dwell;
+      hot = seg;
+      final to = _scanTarget(seg);
+      if (lt < 1) {
+        pointer = to;
+        lensAlpha = ((_t - _lensIn) / 0.4).clamp(0.0, 1.0);
+      } else {
+        final from = _scanTarget((seg - 1 + n) % n);
+        pointer = Offset.lerp(from, to, Curves.easeInOutCubic.transform((local / _move).clamp(0.0, 1.0)));
+      }
+    }
+    // The draw call: every triangle lights up once the last quad lands.
+    final flash = (1 - (_t - _introEnd) / 0.8).clamp(0.0, 1.0) * (_t >= _introEnd ? 1 : 0);
+    final atlasHot = hot ?? (_t < _introEnd ? null : _lastHot);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: _atlasPanel.left,
+          top: 0,
+          child: Text('glyph atlas', style: BT.mono(20, color: BP.inkDim)),
+        ),
+        Positioned.fromRect(
+          rect: _atlasPanel,
+          child: const BpPanel(padding: EdgeInsets.zero, child: SizedBox.expand()),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _ScenePainter(
+                origin: _wordO,
+                inkBottom: _inkBottom,
+                probe: _probe,
+                quads: _quads,
+                atlases: _atlases,
+                word: _word,
+                fly: fly,
+                hot: atlasHot == null || atlasHot >= n ? null : atlasHot,
+                pointer: pointer,
+                lensAlpha: lensAlpha,
+                flash: flash,
               ),
             ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _ScenePainter(
-                    probe: _probe,
-                    quads: _quads,
-                    atlases: _atlases,
-                    word: _word,
-                    pixels: _pixels,
-                    hot: hot,
-                    pointer: pointer,
-                    flash: flash,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: _wordO.dx - 24,
-              top: _wordO.dy - 24,
-              width: ps.width + 48,
-              height: ps.height + 48,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.precise,
-                onHover: (e) => _hover(e.localPosition),
-                onExit: (_) => setState(() {
-                  _mouse = null;
-                  _mouseHot = null;
-                }),
-                child: const SizedBox.expand(),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              top: _bottomY,
-              width: 470,
-              height: 628 - _bottomY,
-              child: _VertexTable(
-                index: shown,
-                quad: q,
-                tile: q == null ? null : atlas?.tiles[q.tileKey],
-                tex: atlas?.tex ?? 1,
-              ),
-            ),
-            Positioned(
-              left: 500,
-              top: _bottomY,
-              width: 590,
-              height: 136,
-              child: _ShaderPanel(color: q?.color ?? false),
-            ),
-            Positioned(
-              left: 500,
-              top: _bottomY + 160,
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 60,
-                    height: 20,
-                    child: DrawOn(
-                      arrow: true,
-                      color: BP.amber,
-                      path: (s) => Path()
-                        ..moveTo(4, s.height / 2)
-                        ..lineTo(s.width - 4, s.height / 2),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const BpTag('Metal / Vulkan → framebuffer', color: BP.amber, size: 15),
-                ],
-              ),
-            ),
-            Positioned(
-              left: _atlasPanel.left,
-              top: _bottomY,
-              width: _atlasPanel.width,
-              height: 628 - _bottomY,
-              child: _Stats(glyphs: n, flash: flash),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+        Positioned(
+          left: _wordO.dx - 24,
+          top: _wordO.dy - 24,
+          width: ps.width + 48,
+          height: ps.height + 48,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.precise,
+            onHover: (e) => _hover(e.localPosition),
+            onExit: (_) => setState(() {
+              _mouse = null;
+              _mouseHot = null;
+            }),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: _atlasPanel.left,
+          top: _statsTop,
+          width: _atlasPanel.width,
+          child: _Stats(glyphs: landed, flash: flash),
+        ),
+      ],
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scene: word, quads, atlas textures, UV links, lens
+// Scene: atlas texture, quads flying out of it, the word, the lens
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ScenePainter extends CustomPainter {
   _ScenePainter({
+    required this.origin,
+    required this.inkBottom,
     required this.probe,
     required this.quads,
     required this.atlases,
     required this.word,
-    required this.pixels,
+    required this.fly,
     required this.hot,
     required this.pointer,
+    required this.lensAlpha,
     required this.flash,
   });
 
+  /// Where the word sits (content coordinates).
+  final Offset origin;
+  final double inkBottom;
   final TextProbe probe;
   final List<_Quad> quads;
   final List<_Atlas> atlases;
   final ui.Image word;
-  final Uint8List? pixels;
+  final List<double> fly;
   final int? hot;
   final Offset? pointer;
+  final double lensAlpha;
   final double flash;
 
   static Paint _stroke(Color c, [double w = 1]) => Paint()
@@ -562,12 +640,12 @@ class _ScenePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final hq = hot == null || hot! >= quads.length ? null : quads[hot!];
+    final hq = hot == null ? null : quads[hot!];
 
     // Atlas textures + packer rects.
     for (final a in atlases) {
       final d = a.display;
-      canvas.drawRect(d, Paint()..color = BP.bg);
+      canvas.drawRect(d, Paint()..color = const Color(0xFF02070D));
       canvas.drawImageRect(
         a.image,
         Rect.fromLTWH(0, 0, a.tex, a.tex),
@@ -580,34 +658,50 @@ class _ScenePainter extends CustomPainter {
         final isHot = hq != null && hq.color == a.color && hq.tileKey == e.key;
         canvas.drawRect(
           r,
-          _stroke(isHot ? BP.amber : (a.color ? BP.violet : BP.lineDim).withValues(alpha: 0.9), isHot ? 2 : 0.8),
+          _stroke(isHot ? BP.amber : (a.color ? BP.violet : BP.lineDim).withValues(alpha: 0.9), isHot ? 2.5 : 1),
         );
       }
       canvas.drawRect(d, _stroke(a.color ? BP.violet : BP.lineFaint));
-      _text(canvas, '${a.color ? 'RGBA' : 'A8'} · ${a.tex.toInt()}²', Offset(d.left, d.bottom + 8), a.color ? BP.violet : BP.inkDim);
     }
 
-    // Quad → tile links (UVs), curving over the word.
-    for (var i = 0; i < quads.length; i++) {
-      final q = quads[i];
-      final t = _tileRect(q);
-      if (t == null || i == hot) continue;
-      final a = Offset(_wordO.dx + q.rect.center.dx, _wordO.dy + q.rect.top);
-      final b = t.center;
-      final path = Path()
-        ..moveTo(a.dx, a.dy)
-        ..cubicTo(a.dx, a.dy - 46, b.dx - 160, b.dy, b.dx, b.dy);
-      canvas.drawPath(dashPath(path, dash: 3, gap: 4), _stroke((q.color ? BP.violet : BP.line).withValues(alpha: 0.35)));
+    // The word: landed quads show the real paragraph, flying ones the texture.
+    final allLanded = fly.every((f) => f >= 1);
+    if (allLanded) {
+      probe.paint(canvas, origin);
+    } else {
+      for (var i = 0; i < quads.length; i++) {
+        if (fly[i] < 1) continue;
+        canvas.save();
+        canvas.clipRect(quads[i].rect.shift(origin));
+        probe.paint(canvas, origin);
+        canvas.restore();
+      }
     }
-
-    // The word, as the engine draws it.
-    probe.paint(canvas, _wordO);
 
     // Quads: 2 triangles each.
     for (var i = 0; i < quads.length; i++) {
       final q = quads[i];
-      final r = q.rect.shift(_wordO);
+      final f = fly[i];
+      if (f <= 0) continue;
+      final target = q.rect.shift(origin);
+      var r = target;
+      if (f < 1) {
+        final tile = _tileRect(q);
+        final a = _atlasOf(q);
+        if (tile == null || a == null) continue;
+        r = Rect.lerp(tile, target, Curves.easeInOutCubic.transform(f))!;
+        final src = a.tiles[q.tileKey]!;
+        canvas.drawImageRect(
+          a.image,
+          src,
+          r,
+          Paint()
+            ..filterQuality = FilterQuality.medium
+            ..colorFilter = q.color ? null : const ColorFilter.mode(BP.ink, BlendMode.srcIn),
+        );
+      }
       final isHot = i == hot;
+      final flying = f < 1;
       final t1 = Path()
         ..moveTo(r.left, r.top)
         ..lineTo(r.right, r.top)
@@ -619,63 +713,62 @@ class _ScenePainter extends CustomPainter {
         ..lineTo(r.left, r.bottom)
         ..close();
       if (flash > 0) {
-        canvas.drawPath(t1, Paint()..color = BP.line.withValues(alpha: 0.22 * flash));
-        canvas.drawPath(t2, Paint()..color = BP.line.withValues(alpha: 0.14 * flash));
+        canvas.drawPath(t1, Paint()..color = BP.amber.withValues(alpha: 0.26 * flash));
+        canvas.drawPath(t2, Paint()..color = BP.amber.withValues(alpha: 0.14 * flash));
       }
       if (isHot) {
-        canvas.drawPath(t1, Paint()..color = BP.amber.withValues(alpha: 0.16));
-        canvas.drawPath(t2, Paint()..color = BP.amber.withValues(alpha: 0.07));
+        canvas.drawPath(t1, Paint()..color = BP.amber.withValues(alpha: 0.14));
+        canvas.drawPath(t2, Paint()..color = BP.amber.withValues(alpha: 0.06));
       }
-      final c = isHot ? BP.amber : (q.color ? BP.violet : BP.line);
-      canvas.drawRect(r, _stroke(c.withValues(alpha: isHot ? 1 : 0.75), isHot ? 1.8 : 1));
-      canvas.drawLine(r.topLeft, r.bottomRight, _stroke(c.withValues(alpha: isHot ? 0.9 : 0.5), isHot ? 1.4 : 0.8));
-      final corners = [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft];
-      for (var v = 0; v < 4; v++) {
-        canvas.drawCircle(corners[v], isHot ? 3.5 : 2.2, Paint()..color = c);
-        if (isHot) {
-          final off = Offset(v == 1 || v == 2 ? 6 : -16, v < 2 ? -18 : 4);
-          _text(canvas, '$v', corners[v] + off, BP.amber);
+      final c = isHot || flying ? BP.amber : (q.color ? BP.violet : BP.line);
+      canvas.drawRect(r, _stroke(c.withValues(alpha: isHot ? 1 : 0.8), isHot ? 2.4 : 1.4));
+      canvas.drawLine(r.topLeft, r.bottomRight, _stroke(c.withValues(alpha: isHot ? 0.9 : 0.55), isHot ? 1.8 : 1.1));
+      for (final v in [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft]) {
+        canvas.drawCircle(v, isHot ? 4.5 : 3, Paint()..color = c);
+      }
+    }
+
+    // Hot quad → its tile, corner to corner (the UVs).
+    if (hq != null && fly[hot!] >= 1) {
+      final t = _tileRect(hq);
+      if (t != null) {
+        final r = hq.rect.shift(origin);
+        final pen = _stroke(BP.amber.withValues(alpha: 0.7), 1.4);
+        final from = [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft];
+        final to = [t.topLeft, t.topRight, t.bottomRight, t.bottomLeft];
+        for (var v = 0; v < 4; v++) {
+          canvas.drawLine(from[v], to[v], pen);
+          canvas.drawCircle(to[v], 3.5, Paint()..color = BP.amber);
         }
       }
     }
 
     // Lens: the actual 1× pixels, nearest-neighbour.
     final p = pointer;
-    if (p != null) _lens(canvas, p);
-
-    // Hot quad → its tile, corner to corner.
-    if (hq != null) {
-      final t = _tileRect(hq);
-      if (t != null) {
-        final r = hq.rect.shift(_wordO);
-        final pen = _stroke(BP.amber.withValues(alpha: 0.75), 1);
-        final from = [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft];
-        final to = [t.topLeft, t.topRight, t.bottomRight, t.bottomLeft];
-        for (var v = 0; v < 4; v++) {
-          canvas.drawLine(from[v], to[v], pen);
-          canvas.drawCircle(to[v], 2.5, Paint()..color = BP.amber);
-        }
+    if (p != null && lensAlpha > 0) {
+      if (lensAlpha < 1) {
+        canvas.saveLayer(Offset.zero & size, Paint()..color = Color.fromRGBO(0, 0, 0, lensAlpha));
       }
+      _lens(canvas, p);
+      if (lensAlpha < 1) canvas.restore();
     }
   }
 
+  /// A magnifier under the word, joined to the spot it samples.
   void _lens(Canvas canvas, Offset p) {
     const r = _lensR;
-    final sample = _wordO + p;
-    final right = sample.dx + 36 + 2 * r < _lensMaxX;
+    final sample = origin + p;
     final c = Offset(
-      right ? sample.dx + 36 + r : sample.dx - 36 - r,
-      sample.dy.clamp(r - 40, _bottomY - r - 20),
+      sample.dx.clamp(r + 8, _lensMaxX - r),
+      origin.dy + inkBottom + _lensGap + r,
     );
-    // The sampled region and the callout.
     final half = r / _zoom;
     final sq = Rect.fromCenter(center: sample, width: 2 * half, height: 2 * half);
-    final amber = _stroke(BP.amber, 1.3);
+    final amber = _stroke(BP.amber, 2);
     canvas.drawRect(sq, amber);
-    final edge = Offset(right ? sq.right : sq.left, sample.dy);
-    final dir = edge - c;
-    final rim = c + dir / dir.distance * r;
-    canvas.drawLine(edge, rim, amber);
+    final dir = sq.bottomCenter - c;
+    final rim = c + dir / dir.distance * (r + 4);
+    canvas.drawLine(sq.bottomCenter, rim, amber);
 
     final circle = Rect.fromCircle(center: c, radius: r);
     canvas.save();
@@ -697,38 +790,9 @@ class _ScenePainter extends CustomPainter {
       final y = c.dy + (iy - p.dy) * _zoom;
       canvas.drawLine(Offset(c.dx - r, y), Offset(c.dx + r, y), grid);
     }
-    // The pixel under the crosshair.
-    final px = p.dx.floorToDouble();
-    final py = p.dy.floorToDouble();
-    canvas.drawRect(
-      Rect.fromLTWH(c.dx + (px - p.dx) * _zoom, c.dy + (py - p.dy) * _zoom, _zoom, _zoom),
-      _stroke(BP.amber, 1.6),
-    );
     canvas.restore();
-    canvas.drawCircle(c, r, _stroke(BP.amber, 2));
-    canvas.drawCircle(c, r + 4, _stroke(BP.amber.withValues(alpha: 0.3), 1));
-
-    // Coverage of that pixel, from the real image bytes.
-    var label = 'pixels @1×';
-    final bytes = pixels;
-    if (bytes != null) {
-      final ix = px.toInt();
-      final iy = py.toInt();
-      if (ix >= 0 && iy >= 0 && ix < word.width && iy < word.height) {
-        final a = bytes[(iy * word.width + ix) * 4 + 3] / 255;
-        label = 'pixels @1×   α ${a.toStringAsFixed(2)}';
-      }
-    }
-    _text(canvas, label, Offset(c.dx, c.dy + r + 10), BP.amber, center: true);
-  }
-
-  void _text(Canvas c, String s, Offset at, Color color, {bool center = false}) {
-    final tp = TextPainter(
-      text: TextSpan(text: s, style: BT.mono(12, color: color)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(c, center ? at - Offset(tp.width / 2, 0) : at);
-    tp.dispose();
+    canvas.drawCircle(c, r, _stroke(BP.amber, 3));
+    canvas.drawCircle(c, r + 6, _stroke(BP.amber.withValues(alpha: 0.3), 1.5));
   }
 
   @override
@@ -736,112 +800,11 @@ class _ScenePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Panels
+// The punchline
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _VertexTable extends StatelessWidget {
-  const _VertexTable({required this.index, required this.quad, required this.tile, required this.tex});
-
-  final int? index;
-  final _Quad? quad;
-  final Rect? tile;
-  final double tex;
-
-  @override
-  Widget build(BuildContext context) {
-    final q = quad;
-    final t = tile;
-    final label = q == null ? 'vertices' : "quad $index · '${q.label}'${q.id == null ? '' : ' #${q.id}'}";
-    Widget cell(String s, double w, Color c, {double size = 15}) => SizedBox(
-      width: w,
-      child: Text(s, textAlign: TextAlign.right, style: BT.mono(size, color: c)),
-    );
-    final rows = <Widget>[
-      Row(
-        children: [
-          cell('', 30, BP.inkFaint, size: 13),
-          cell('x', 88, BP.inkFaint, size: 13),
-          cell('y', 88, BP.inkFaint, size: 13),
-          cell('u', 88, BP.inkFaint, size: 13),
-          cell('v', 88, BP.inkFaint, size: 13),
-        ],
-      ),
-      const SizedBox(height: 6),
-    ];
-    if (q != null && t != null) {
-      final r = q.rect;
-      final pos = [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft];
-      final uv = [
-        Offset(t.left / tex, t.top / tex),
-        Offset(t.right / tex, t.top / tex),
-        Offset(t.right / tex, t.bottom / tex),
-        Offset(t.left / tex, t.bottom / tex),
-      ];
-      for (var v = 0; v < 4; v++) {
-        rows.add(Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Row(
-            children: [
-              cell('$v', 30, BP.amber),
-              cell(_f1(pos[v].dx), 88, BP.ink),
-              cell(_f1(pos[v].dy), 88, BP.ink),
-              cell(uv[v].dx.toStringAsFixed(3), 88, q.color ? BP.violet : BP.line),
-              cell(uv[v].dy.toStringAsFixed(3), 88, q.color ? BP.violet : BP.line),
-            ],
-          ),
-        ));
-      }
-      rows.add(const SizedBox(height: 8));
-      rows.add(Text('triangles  0 1 2 · 0 2 3', style: BT.mono(13, color: BP.inkDim)));
-    }
-    return BpPanel(
-      label: label,
-      color: q == null ? BP.lineDim : BP.amber,
-      padding: const EdgeInsets.fromLTRB(18, 24, 18, 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
-    );
-  }
-}
-
-class _ShaderPanel extends StatelessWidget {
-  const _ShaderPanel({required this.color});
-
-  final bool color;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget line(String code, String note, bool active) => AnimatedOpacity(
-      duration: const Duration(milliseconds: 250),
-      opacity: active ? 1 : 0.4,
-      child: Row(
-        children: [
-          SizedBox(width: 22, child: Text(active ? '▸' : '', style: BT.mono(17, color: BP.amber))),
-          SizedBox(width: 330, child: Text(code, style: BT.mono(17, color: active ? BP.ink : BP.inkDim))),
-          Text(note, style: BT.mono(13, color: active ? (color ? BP.violet : BP.line) : BP.inkFaint)),
-        ],
-      ),
-    );
-    return BpPanel(
-      label: 'fragment shader',
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 12),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              line('color = text_color * atlas.r', '// A8 glyphs', !color),
-              const SizedBox(height: 14),
-              line('color = atlas.rgba', '// color glyphs', color),
-            ],
-          ),
-          const Positioned(right: 0, top: -24, child: BpTag('pseudo-code', color: BP.inkDim, size: 11)),
-        ],
-      ),
-    );
-  }
-}
-
+/// Glyphs and triangles count up as quads land; it is all one draw call,
+/// which flashes when the batch is complete.
 class _Stats extends StatelessWidget {
   const _Stats({required this.glyphs, required this.flash});
 
@@ -850,36 +813,35 @@ class _Stats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget stat(String label, int value, Color c, [double glow = 0]) => Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: BP.amber.withValues(alpha: 0.18 * glow),
-          border: Border.all(color: Color.lerp(BP.lineFaint, BP.amber, glow)!, width: 1 + glow),
-        ),
-        child: Column(
-          children: [
-            Text('$value', style: BT.display(48, color: c, weight: 400, height: 1.1)),
-            const SizedBox(height: 6),
-            Text(label, style: BT.mono(13, color: BP.inkDim)),
-          ],
-        ),
+    Widget stat(int value, String label, Color c, [double glow = 0]) => Container(
+      height: 64,
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: BP.amber.withValues(alpha: 0.18 * glow),
+        border: Border.all(color: BP.amber.withValues(alpha: glow), width: 1 + glow),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 116,
+            child: Text(
+              '$value',
+              textAlign: TextAlign.right,
+              style: BT.display(60, color: c, weight: 400, height: 1),
+            ),
+          ),
+          const SizedBox(width: 22),
+          Text(label, style: BT.display(30, color: c, weight: 400)),
+        ],
       ),
     );
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            stat('glyphs', glyphs, BP.ink),
-            stat('triangles', glyphs * 2, BP.line),
-            stat('draw calls', 1, BP.amber, flash),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text('one frame · one draw', style: BT.mono(13, color: BP.inkFaint)),
+        stat(glyphs, glyphs == 1 ? 'glyph' : 'glyphs', BP.ink),
+        stat(glyphs * 2, 'triangles', BP.line),
+        stat(1, 'draw call', BP.amber, flash),
       ],
     );
   }

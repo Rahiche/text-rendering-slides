@@ -10,20 +10,24 @@ import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 import '../../worlds/factory/factory_kit.dart';
 
-/// Title, option C: "The glyph factory".
+/// Title: "Inside Flutter's Text Pipeline", built by the glyph factory.
 ///
-/// An indexing assembly line (move, stop, work, move…) runs through the real
-/// pipeline: code points drop out of a `unicode` chute in crates; a mixed
-/// line such as "Flutterで文字をレンダリング" arrives chained and itemize splits
-/// it into runs, routing each onto its lane (latin · hiragana · katakana ·
-/// kanji · other). Fonts drops each glyph in (real TrueType outlines from
+/// The factory is already running when the slide appears: an indexing
+/// assembly line (move, stop, work, move…) carries the words of a
+/// multilingual marquee (Japanese first) through the real pipeline — a
+/// `unicode` chute drops code points in crates, itemize splits mixed lines
+/// into runs and routes each onto its lane (latin · hiragana · katakana ·
+/// kanji · other), fonts drops each glyph in (real TrueType outlines from
 /// [FontData], or the engine's own rendering, with `Locale('ja')` for
-/// Japanese); shape stamps glyph ids / joins Arabic / forms Devanagari
-/// conjuncts; wrap cuts the ribbon into lines greedily; raster bakes pixel
-/// tiles (real coverage from `Picture.toImageSync`). A bucket elevator lifts
-/// the tiles; a gantry drops them into the huge title, where they develop
-/// from coarse pixels into crisp text. Afterwards the factory keeps printing a
-/// multilingual marquee (Japanese first) forever.
+/// Japanese), shape stamps / joins / forms conjuncts, wrap cuts the ribbon
+/// into lines greedily, raster bakes pixel tiles (real coverage from
+/// `Picture.toImageSync`), a bucket elevator lifts the tiles to the print
+/// head, and the marquee scrolls forever.
+///
+/// Over the first ~3.5 s the gantry builds the two-line title: it sweeps
+/// along each line, dropping a pixel tile into every letter's slot, and each
+/// tile develops from coarse pixels into crisp text. Afterwards the gantry
+/// inspects a letter now and then and the shelf crew polishes them.
 ///
 /// Everything is a pure function of time (one ticker, seeded randomness), so
 /// nothing accumulates however long it stays on screen.
@@ -38,11 +42,16 @@ class TitleFactorySlide extends StatefulWidget {
 // Layout & timing
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _title = 'Text rendering';
-const _titleSize = 168.0;
+/// The title, one entry per line (a typographic apostrophe: it's display type).
+const _lines = ['Inside Flutter’s', 'Text Pipeline'];
+const _titleSize = 140.0;
 const _titleLeft = 66.0;
-const _baseline = 262.0;
-const _shelfY = 264.0;
+const _baselines = [206.0, 331.0]; // each line sits on its own shelf
+const _shelfH = 7.0;
+
+/// The Japanese title, on the second shelf after "Text Pipeline".
+const _jaTitle = 'Flutterテキストパイプラインの内側';
+const _jaSize = 27.0;
 
 /// Belt index cycle: move for [_mv] of it, then every machine works.
 const _tc = 1.2;
@@ -61,6 +70,15 @@ const _mid = 2; // unsorted crates ride the middle lane
 const _crateH = 38.0;
 const _floor = 790.0;
 
+// Marquee
+const _mLeft = 64.0;
+const _mRight = 1382.0;
+const _mTop = 376.0;
+const _mBot = 414.0;
+const _mMid = (_mTop + _mBot) / 2;
+const _ja = Locale('ja');
+const _zh = Locale('zh');
+
 // Bucket elevator (runs clockwise; tiles ride the left run up).
 const _exX = 1452.0;
 const _chainL = 1478.0;
@@ -70,24 +88,21 @@ const _sprR = 24.0;
 const _sprTop = 128.0;
 const _sprBot = 700.0;
 const _loadY = 681.0;
-const _rackY = 150.0; // tray level where title tiles leave
-const _tickY = 344.0; // tray level where marquee tiles leave
+const _tickY = _mTop + 6; // tray level where marquee tiles slide onto the print head
 const _buckets = 5;
 
 // Gantry
-const _pickX = 1262.0;
-const _carryTop = 78.0;
+const _railY = 24.0;
+const _pickX = 1262.0; // where it parks
+const _carryTop = _railY + 40;
 
-const _board = 1312.0; // glyph counter
-
-// Marquee
-const _mLeft = 64.0;
-const _mRight = 1382.0;
-const _mTop = 352.0;
-const _mBot = 402.0;
-const _kM = 17; // first marquee item on the belt
-const _ja = Locale('ja');
-const _zh = Locale('zh');
+/// The build: the gantry sweeps line 1, dashes back, sweeps line 2, parks.
+const _lead = 0.2; // slide seconds before the first sweep
+const _sweep = [1.15, 1.0];
+const _dash = 0.5;
+const _park = 0.7;
+const _unfold = 0.3; // a dropped tile grows into its slot
+const _develop = 0.45; // …then develops into crisp text
 
 /// The marquee, Japanese first. The locale picks the right glyph variants
 /// for unified Han characters (and the right fallback font).
@@ -125,6 +140,27 @@ double _eio(double t) => Curves.easeInOutCubic.transform(_c01(t));
 double _eo(double t) => Curves.easeOutCubic.transform(_c01(t));
 double _ei(double t) => Curves.easeInCubic.transform(_c01(t));
 double _bump(double t) => t <= 0 || t >= 1 ? 0 : math.sin(t * math.pi);
+
+/// A sweep's position profile: accelerate over [_ramp] of it, cruise,
+/// decelerate. Nearly constant speed, so the letters land at an even pace.
+const _ramp = 0.14;
+const _vmax = 1 / (1 - _ramp);
+
+double _trap(double u) {
+  u = _c01(u);
+  if (u < _ramp) return _vmax * u * u / (2 * _ramp);
+  if (u > 1 - _ramp) return 1 - _vmax * (1 - u) * (1 - u) / (2 * _ramp);
+  return _vmax * (u - _ramp / 2);
+}
+
+/// Inverse of [_trap]: when the sweep reaches fraction [y] of its way.
+double _trapInv(double y) {
+  y = _c01(y);
+  const y1 = _vmax * _ramp / 2;
+  if (y < y1) return math.sqrt(2 * _ramp * y / _vmax);
+  if (y > 1 - y1) return 1 - math.sqrt(2 * _ramp * (1 - y) / _vmax);
+  return y / _vmax + _ramp / 2;
+}
 
 /// Deterministic pseudo-random in [0, 1) (same sequence every run).
 double _rnd(int a, [int b = 0, int c = 0]) {
@@ -223,51 +259,14 @@ class _TitleFactorySlideState extends State<TitleFactorySlide>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: MouseRegion(
-            onHover: (e) => _io.mouse = e.localPosition,
-            onExit: (_) => _io.mouse = null,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (d) => _tap(d.localPosition),
-              child: CustomPaint(painter: _FactoryPainter(_clock, _model, _io)),
-            ),
-          ),
-        ),
-        Positioned(
-          left: _titleLeft,
-          top: 287,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(width: 36, height: 1.5, color: BP.amber),
-                  const SizedBox(width: 12),
-                  Text(
-                    'from code points to pixels · and how Flutter does it',
-                    style: BT.mono(20, color: BP.inkDim),
-                  ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 38, top: 2),
-                child: Text(
-                  '「テキストレンダリング」',
-                  style: BT.sample(17, color: BP.inkDim, height: 1.2).copyWith(locale: _ja, letterSpacing: 1),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          right: 64,
-          top: 11,
-          child: Text('flutter / text', style: BT.mono(16, color: BP.inkDim)),
-        ),
-      ],
+    return MouseRegion(
+      onHover: (e) => _io.mouse = e.localPosition,
+      onExit: (_) => _io.mouse = null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapUp: (d) => _tap(d.localPosition),
+        child: CustomPaint(size: Size.infinite, painter: _FactoryPainter(_clock, _model, _io)),
+      ),
     );
   }
 }
@@ -296,22 +295,20 @@ class _FactoryPainter extends CustomPainter {
 /// One glyph as drawn in a crate: a real outline, or (for scripts our bundled
 /// fonts don't cover) the engine's own stroked rendering.
 class _Glyph {
-  _Glyph.path(Path this.path, this.points, this.adv) : painter = null, base = 0;
-  _Glyph.text(TextPainter this.painter, this.base, this.adv) : path = null, points = const [];
+  _Glyph.path(Path this.path, this.adv) : painter = null, base = 0;
+  _Glyph.text(TextPainter this.painter, this.base, this.adv) : path = null;
 
   final Path? path;
-  final List<Offset> points;
   final TextPainter? painter;
   final double base;
   final double adv;
 
-  void draw(Canvas c, Offset pen, {required bool filled, required Paint stroke, required Paint fill, Paint? dots}) {
+  void draw(Canvas c, Offset pen, {required bool filled, required Paint stroke, required Paint fill}) {
     final p = path;
     if (p != null) {
       c.save();
       c.translate(pen.dx, pen.dy);
       c.drawPath(p, filled ? fill : stroke);
-      if (dots != null && !filled && points.isNotEmpty) c.drawPoints(ui.PointMode.points, points, dots);
       c.restore();
     } else {
       painter!.paint(c, Offset(pen.dx, pen.dy - base));
@@ -319,7 +316,8 @@ class _Glyph {
   }
 }
 
-/// What rides the belt: one title letter, one marquee word, or one " · ".
+/// What rides the belt (one marquee word, or one " · "), or a title letter's
+/// tile in the gantry's gripper.
 class _Unit {
   _Unit(
     this.text,
@@ -334,12 +332,6 @@ class _Unit {
       1 || 2 || 3 => _laneColor[lane],
       _ => script.color,
     };
-    label = switch (lane) {
-      1 => 'hiragana',
-      2 => 'katakana',
-      3 => locale == _ja ? 'kanji' : 'han',
-      _ => script.label,
-    };
   }
 
   final String text;
@@ -351,20 +343,15 @@ class _Unit {
   final Locale? locale;
   final int lane;
   late final Color color;
-  late final String label;
 
   bool get isTitle => titleIndex >= 0;
   bool get space => text.trim().isEmpty;
 
   double w = 46;
-  int glyphs = 1;
   bool lineEnd = false;
   double mx = 0; // left edge in the marquee layout
   int slot = -1;
 
-  late TextPainter stamp;
-  TextPainter? gid;
-  _Glyph? glyph; // title letters
   final minis = <_Glyph>[];
   TextPainter? plate;
   ui.Image? tile;
@@ -376,44 +363,38 @@ class _Letter {
   _Letter({
     required this.ch,
     required this.index,
+    required this.line,
+    required this.baseline,
     required this.box,
+    required this.band,
     required this.fill,
     required this.fillAt,
     required this.big,
     required this.bigDst,
     required this.space,
-  });
+  }) : inkTop = baseline - 0.72 * _titleSize;
 
   final String ch;
   final int index;
+  final int line;
+  final double baseline;
   final Rect box; // advance box on the shelf
+  final Rect band; // where this letter may draw while it develops
   final TextPainter fill;
   final Offset fillAt;
-  final ui.Image? big; // 14 px raster, blown up ×12 while it develops
+  final ui.Image? big; // 12 px raster, blown up ×12 while it develops
   final Rect bigDst;
   final bool space;
-  double inkTop = _baseline - 0.72 * _titleSize;
+  double inkTop;
+
+  /// When the gantry lets go of its tile (simulation seconds).
+  double release = double.infinity;
+
+  double get land => release + _unfold;
+  double get done => land + _develop;
 
   double get cx => box.center.dx;
-  Rect get hit => Rect.fromLTRB(box.left, box.top + 30, box.right, _baseline + 12);
-}
-
-class _Job {
-  _Job(this.i, this.arrive, this.start, this.x) {
-    final d = (x - _pickX).abs();
-    t1 = start + 0.2; // hook down + grab
-    t2 = t1 + 0.14; // lift
-    t3 = t2 + 0.16 + d / 4200; // travel out
-    t4 = t3 + 0.36; // unfold into the slot
-    t5 = t4 + 0.08; // release
-    end = t5 + 0.12 + d / 4800; // travel back
-  }
-
-  final int i;
-  final double arrive;
-  final double start;
-  final double x;
-  late final double t1, t2, t3, t4, t5, end;
+  Rect get hit => Rect.fromLTRB(box.left, inkTop - 8, box.right, baseline + 12);
 }
 
 class _Model {
@@ -468,75 +449,105 @@ class _Model {
 
   // ── Title ──────────────────────────────────────────────────────────────────
   final letters = <_Letter>[];
-  late final TextPainter plan;
-  late final Offset planAt;
-  late final double lineTop;
+  final plans = <(TextPainter, Offset)>[]; // each line's outline, where it goes
+  final lineRight = <double>[];
   late final List<int> solid; // non-space letter indices
+  late final List<int> solid1; // …on the first line (the gantry inspects these)
+  late final List<int> solid2; // …on the second line (the shelf crew polishes these)
+  late final TextPainter ja;
+  late final Offset jaAt;
+  late final List<double> shelfRight;
 
   static TextStyle _titleStyle(double size, {Paint? fg}) => TextStyle(
     fontFamily: BP.display,
     fontSize: size,
     fontWeight: FontWeight.w500,
     fontVariations: [FontVariation.weight(500)],
-    letterSpacing: -3 * size / _titleSize,
+    letterSpacing: -3 * size / 168,
+    // Letters are laid out one by one: no ligatures or contextual forms, so
+    // each one lands exactly where the whole line puts it.
+    fontFeatures: const [FontFeature.disable('liga'), FontFeature.disable('calt')],
     color: fg == null ? BP.ink : null,
     foreground: fg,
   );
 
   void _buildTitle() {
-    final full = TextPainter(
-      text: TextSpan(text: _title, style: _titleStyle(_titleSize)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final base = full.computeLineMetrics().first.baseline;
-    lineTop = _baseline - base;
-    planAt = Offset(_titleLeft, lineTop);
-    plan = _tp(TextSpan(
-      text: _title,
-      style: _titleStyle(
-        _titleSize,
-        fg: Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..color = BP.line.withValues(alpha: 0.5),
-      ),
-    ));
-    var i = 0;
     var n = 0;
-    for (final g in _title.characters) {
-      final r = full.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + g.length)).first.toRect();
-      final space = g.trim().isEmpty;
-      final fill = _tp(TextSpan(text: g, style: _titleStyle(_titleSize)));
-      final ownL = _boxLeft(fill, 0, g.length);
-      final fillBase = fill.computeLineMetrics().first.baseline;
-      final xl = _titleLeft + r.left;
-      ui.Image? big;
-      var dst = Rect.zero;
-      if (!space) {
-        final small = TextPainter(
-          text: TextSpan(text: g, style: _titleStyle(_titleSize / 12)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final sl = _boxLeft(small, 0, g.length);
-        final sb = small.computeLineMetrics().first.baseline;
-        big = _raster(small);
-        small.dispose();
-        dst = Rect.fromLTWH(xl - (1 + sl) * 12, _baseline - sb * 12, big.width * 12.0, big.height * 12.0);
-      }
-      letters.add(_Letter(
-        ch: g,
-        index: n++,
-        box: Rect.fromLTRB(xl, lineTop, xl + r.width, lineTop + full.height),
-        fill: fill,
-        fillAt: Offset(xl - ownL, _baseline - fillBase),
-        big: big,
-        bigDst: dst,
-        space: space,
+    for (var line = 0; line < _lines.length; line++) {
+      final text = _lines[line];
+      final baseline = _baselines[line];
+      final full = TextPainter(
+        text: TextSpan(text: text, style: _titleStyle(_titleSize)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final lineTop = baseline - full.computeLineMetrics().first.baseline;
+      lineRight.add(_titleLeft + full.width);
+      plans.add((
+        _tp(TextSpan(
+          text: text,
+          style: _titleStyle(
+            _titleSize,
+            fg: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.4
+              ..color = BP.line.withValues(alpha: 0.5),
+          ),
+        )),
+        Offset(_titleLeft, lineTop),
       ));
-      i += g.length;
+      // A developing letter stays within its own line's band.
+      final bandTop = baseline - 0.76 * _titleSize;
+      var bandBottom = baseline + 0.22 * _titleSize;
+      if (line + 1 < _lines.length) {
+        bandBottom = math.min(bandBottom, _baselines[line + 1] - 0.76 * _titleSize);
+      }
+      var i = 0;
+      for (final g in text.characters) {
+        final r = full.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + g.length)).first.toRect();
+        final space = g.trim().isEmpty;
+        final fill = _tp(TextSpan(text: g, style: _titleStyle(_titleSize)));
+        final ownL = _boxLeft(fill, 0, g.length);
+        final fillBase = fill.computeLineMetrics().first.baseline;
+        final xl = _titleLeft + r.left;
+        ui.Image? big;
+        var dst = Rect.zero;
+        if (!space) {
+          final small = TextPainter(
+            text: TextSpan(text: g, style: _titleStyle(_titleSize / 12)),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          final sl = _boxLeft(small, 0, g.length);
+          final sb = small.computeLineMetrics().first.baseline;
+          big = _raster(small);
+          small.dispose();
+          dst = Rect.fromLTWH(xl - (1 + sl) * 12, baseline - sb * 12, big.width * 12.0, big.height * 12.0);
+        }
+        letters.add(_Letter(
+          ch: g,
+          index: n++,
+          line: line,
+          baseline: baseline,
+          box: Rect.fromLTRB(xl, lineTop, xl + r.width, lineTop + full.height),
+          band: Rect.fromLTRB(dst.left, bandTop, dst.right, bandBottom),
+          fill: fill,
+          fillAt: Offset(xl - ownL, baseline - fillBase),
+          big: big,
+          bigDst: dst,
+          space: space,
+        ));
+        i += g.length;
+      }
+      full.dispose();
     }
-    full.dispose();
     solid = [for (final l in letters) if (!l.space) l.index];
+    solid1 = [for (final i in solid) if (letters[i].line == 0) i];
+    solid2 = [for (final i in solid) if (letters[i].line == 1) i];
+    ja = _tp(TextSpan(
+      text: _jaTitle,
+      style: BT.sample(_jaSize, weight: 500).copyWith(locale: _ja),
+    ));
+    jaAt = Offset(lineRight[1] + 34, _baselines[1] - ja.computeLineMetrics().first.baseline);
+    shelfRight = [lineRight[0] + 26, jaAt.dx + ja.width + 14];
   }
 
   // ── Units ─────────────────────────────────────────────────────────────────
@@ -547,20 +558,15 @@ class _Model {
   late final double vM;
   late final int nC; // belt slots per marquee repetition
   late final List<int> mSlots;
-  late final List<int> mPrefix;
 
   void _buildTitleUnits() {
     for (final l in letters) {
       final cp = l.ch.runes.first;
-      final u = _Unit(l.ch, [cp], l.space ? Script.common : Script.latin, titleIndex: l.index)
-        ..w = 46
-        ..lineEnd = l.index == letters.length - 1;
+      final u = _Unit(l.ch, [cp], l.space ? Script.common : Script.latin, titleIndex: l.index);
       final f = sg;
-      if (f != null && f.has(cp)) {
-        final gid = f.glyphId(cp);
-        u.gid = _tp(TextSpan(text: '#$gid', style: BT.mono(8, color: BP.amber)));
-        final o = f.outline(gid);
-        if (!l.space && o.contours.isNotEmpty) l.inkTop = _baseline - o.bounds.bottom * _titleSize / f.unitsPerEm;
+      if (f != null && f.has(cp) && !l.space) {
+        final o = f.outline(f.glyphId(cp));
+        if (o.contours.isNotEmpty) l.inkTop = l.baseline - o.bounds.bottom * _titleSize / f.unitsPerEm;
       }
       _prepUnit(u);
       tUnits.add(u);
@@ -568,7 +574,7 @@ class _Model {
   }
 
   void _buildMarquee() {
-    final style = BT.sample(30, height: 1.25);
+    final style = BT.sample(26, color: BP.inkDim.withValues(alpha: 0.75), height: 1.25);
     final spans = <InlineSpan>[];
     final ranges = <(int, int)>[];
     var at = 0;
@@ -600,8 +606,7 @@ class _Model {
         final run = text.substring(start, end);
         mUnits.add(
           _Unit(run, run.runes.toList(), scriptOfCluster(run.characters.first), group: e, locale: loc)
-            ..mx = _boxLeft(marquee, a + start, a + end)
-            ..glyphs = run.characters.length,
+            ..mx = _boxLeft(marquee, a + start, a + end),
         );
         start = end;
       }
@@ -616,14 +621,12 @@ class _Model {
       flush(i);
       mUnits.add(
         _Unit(' · ', const [0xB7], Script.common, sep: true, group: e)
-          ..mx = _boxLeft(marquee, b, b + 3)
-          ..glyphs = 3,
+          ..mx = _boxLeft(marquee, b, b + 3),
       );
     }
     nC = math.max(16, (mW / (46 * _tc)).round());
     vM = mW / (nC * _tc);
     mSlots = List<int>.filled(nC, -1);
-    mPrefix = List<int>.filled(nC + 1, 0);
     // Each run rides the slot that reaches the print head just before its
     // text has to come out; separators only where there's room.
     var last = -1;
@@ -670,10 +673,6 @@ class _Model {
         mUnits[j - 1].lineEnd = true;
       }
     }
-    for (var q = 0; q < nC; q++) {
-      final j = mSlots[q];
-      mPrefix[q + 1] = mPrefix[q] + (j < 0 ? 0 : mUnits[j].glyphs);
-    }
   }
 
   _Glyph _glyph(int cp, double em, {double stroke = 0.8, Locale? locale}) {
@@ -687,12 +686,7 @@ class _Model {
     if (f != null) {
       final k = em / f.unitsPerEm;
       final gid = f.glyphId(cp);
-      final o = f.outline(gid);
-      return _Glyph.path(
-        o.toPath(scale: k),
-        [for (final c in o.contours) for (final p in c) if (p.onCurve) Offset(p.x * k, -p.y * k)],
-        f.advance(gid) * k,
-      );
+      return _Glyph.path(f.outline(gid).toPath(scale: k), f.advance(gid) * k);
     }
     final p = _tp(TextSpan(
       text: String.fromCharCode(cp),
@@ -710,18 +704,11 @@ class _Model {
     return _Glyph.text(p, p.computeLineMetrics().first.baseline, p.width);
   }
 
-  String _hex(int cp) => 'U+${cp.toRadixString(16).toUpperCase().padLeft(4, '0')}';
-
   void _prepUnit(_Unit u) {
     final n = u.cps.length;
     if (!u.isTitle) u.w = u.sep ? 26 : (10.0 * n + 12).clamp(32.0, 64.0);
-    u.stamp = _tp(TextSpan(
-      text: n == 1 ? _hex(u.cps.first) : '${_hex(u.cps.first)} +${n - 1}',
-      style: BT.mono(8, color: BP.inkDim),
-    ));
     ui.Image? img;
     if (u.isTitle) {
-      u.glyph = _glyph(u.cps.first, 28, stroke: 0.9);
       if (!u.space) {
         final tp = TextPainter(text: TextSpan(text: u.text, style: _titleStyle(8)), textDirection: TextDirection.ltr)..layout();
         img = _raster(tp);
@@ -740,7 +727,6 @@ class _Model {
       img = _raster(tp);
       tp.dispose();
     }
-    labels.putIfAbsent(u.label, () => _tp(TextSpan(text: u.label, style: BT.mono(11, color: u.color))));
     u.tile = img;
     if (img != null) {
       final iw = img.width.toDouble(), ih = img.height.toDouble();
@@ -763,56 +749,74 @@ class _Model {
     }
   }
 
+  /// The marquee unit riding belt index [k] (the belt only carries marquee
+  /// words; the title comes from the gantry).
   _Unit? unitAt(int k) {
     if (k < 0) return null;
-    if (k < tUnits.length) return tUnits[k];
-    if (k < _kM) return null;
-    final j = mSlots[(k - _kM) % nC];
+    final j = mSlots[k % nC];
     return j < 0 ? null : mUnits[j];
   }
 
-  int glyphsUpTo(int n) {
-    if (n < 0) return 0;
-    var g = math.min(n + 1, tUnits.length);
-    if (n >= _kM) {
-      final nn = n - _kM + 1;
-      g += (nn ~/ nC) * mPrefix[nC] + mPrefix[nn % nC];
-    }
-    return g;
-  }
-
   // ── Schedule ─────────────────────────────────────────────────────────────
-  final jobs = <_Job>[];
   late final double s0;
   late final double sDone;
   late final double sM0;
 
+  /// The gantry's run: sweep i goes from [sweepX] i.0 to i.1 during
+  /// [sweepAt] i.0..i.1; then it parks at [_pickX] by [parkEnd].
+  final sweepX = <(double, double)>[];
+  final sweepAt = <(double, double)>[];
+  late final double parkEnd;
+  late final List<int> order; // solid letters by release time
+
   static double sLoad(int k) => (k + _slots + _mv) * _tc;
-  static double sTopOf(int k) => sLoad(k) + (_loadY - _rackY) / ve;
   static double sTickOf(int k) => sLoad(k) + (_loadY - _tickY) / ve;
 
   /// When unit [k]'s text starts coming out of the print head.
-  double tauOf(int k) => sM0 + (unitAt(k)!.mx + ((k - _kM) ~/ nC) * mW) / vM;
+  double tauOf(int k) => sM0 + (unitAt(k)!.mx + (k ~/ nC) * mW) / vM;
 
   void _schedule() {
-    var free = -1e9;
-    for (var i = 0; i < letters.length; i++) {
-      final arrive = sTopOf(i) + 0.35;
-      final j = _Job(i, arrive, math.max(arrive, free), letters[i].cx);
-      jobs.add(j);
-      free = j.end;
+    sM0 = sTickOf(0) + 0.45;
+    // The factory has been running for a while: the belt, the elevator and
+    // the marquee are all full when the slide appears.
+    s0 = sM0 + (_mRight - _mLeft) / vM + 3.0;
+    var at = s0 + _lead;
+    for (var line = 0; line < _lines.length; line++) {
+      final ids = line == 0 ? solid1 : solid2;
+      final xa = math.max(80.0, letters[ids.first].cx - 26);
+      final xb = letters[ids.last].cx + 30;
+      final a = at, b = at + _sweep[line];
+      sweepX.add((xa, xb));
+      sweepAt.add((a, b));
+      for (final i in ids) {
+        letters[i].release = a + _trapInv((letters[i].cx - xa) / (xb - xa)) * (b - a);
+      }
+      at = b + _dash;
     }
-    // Start the clock with the factory already running: the first tile is
-    // just reaching the rack.
-    s0 = jobs.first.arrive - 0.6;
-    sDone = jobs.last.t4 + 0.7;
-    sM0 = sTickOf(_kM) + 0.45;
+    parkEnd = sweepAt.last.$2 + _park;
+    order = [...solid]..sort((a, b) => letters[a].release.compareTo(letters[b].release));
+    sDone = letters[order.last].done + 0.3;
+  }
+
+  /// Where the gantry's trolley is during its run, or null once it's parked.
+  double? trolleyX(double s) {
+    if (s >= parkEnd) return null;
+    if (s < sweepAt.first.$1) return sweepX.first.$1;
+    for (var i = 0; i < sweepAt.length; i++) {
+      final (a, b) = sweepAt[i];
+      final (xa, xb) = sweepX[i];
+      if (s < b) return _lerp(xa, xb, _trap(_seg(s, a, b)));
+      final to = i + 1 < sweepAt.length ? sweepX[i + 1].$1 : _pickX;
+      final end = i + 1 < sweepAt.length ? sweepAt[i + 1].$1 : parkEnd;
+      if (s < end) return _lerp(xb, to, _eio(_seg(s, b, end)));
+    }
+    return null;
   }
 
   // Gantry inspections once the title is done.
   static const qcPeriod = 37.0;
   double get qcStart => sDone + 12;
-  int qcLetter(int q) => solid[(_rnd(q, 31) * solid.length).floor().clamp(0, solid.length - 1)];
+  int qcLetter(int q) => solid1[(_rnd(q, 31) * solid1.length).floor().clamp(0, solid1.length - 1)];
 
   /// Returns the chain point and the direction of travel [d] px along the loop
   /// from the loading point.
@@ -838,31 +842,13 @@ class _Model {
     return (Offset(_chainL, _sprBot - d), const Offset(0, -1));
   }
 
-  // ── Labels ───────────────────────────────────────────────────────────────
-  final labels = <String, TextPainter>{};
-  late final TextPainter hexRoll;
-  late final TextPainter glyphsLabel;
+  // ── Props ────────────────────────────────────────────────────────────────
   final fontCells = <TextPainter>[];
-  final plates = <TextPainter>[];
 
   void _buildMisc() {
-    final cps = <String>{};
-    for (final r in (_title + _mEntries.map((e) => e.$1).join()).runes) {
-      if (r != 0x20) cps.add(_hex(r));
-    }
-    hexRoll = _tp(TextSpan(text: '${cps.join('  ')}  ', style: BT.mono(10, color: BP.lineDim)));
-    glyphsLabel = _tp(TextSpan(text: 'glyphs', style: BT.mono(12, color: BP.inkDim)));
     for (final (g, loc) in _cells) {
-      fontCells.add(_tp(TextSpan(text: g, style: BT.sample(15, color: BP.inkDim).copyWith(locale: loc))));
+      fontCells.add(_tp(TextSpan(text: g, style: BT.sample(20, color: BP.inkDim).copyWith(locale: loc))));
     }
-    const names = ['itemize', 'fonts', 'shape', 'wrap', 'raster'];
-    for (var i = 0; i < names.length; i++) {
-      plates.add(_tp(TextSpan(children: [
-        TextSpan(text: '0${i + 1} ', style: BT.mono(13, color: BP.inkFaint)),
-        TextSpan(text: names[i], style: BT.mono(14, color: BP.line)),
-      ])));
-    }
-    plates.add(_tp(TextSpan(text: 'unicode', style: BT.mono(14, color: BP.line))));
   }
 
   /// The fonts machine's glass: one sample per font it can hand out.
@@ -890,23 +876,6 @@ class _Model {
     },
   };
 
-  int _count = -1;
-  TextPainter? _countTp;
-  double countChangedAt = -1e9;
-
-  TextPainter countPainter(int v, double t) {
-    if (v != _count || _countTp == null) {
-      if (_count >= 0) countChangedAt = t;
-      _countTp?.dispose();
-      _count = v;
-      _countTp = TextPainter(
-        text: TextSpan(text: AnimatedCount.format(v), style: BT.mono(18, color: BP.amber, weight: 500)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-    }
-    return _countTp!;
-  }
-
   void dispose() {
     for (final p in _painters) {
       p.dispose();
@@ -914,7 +883,6 @@ class _Model {
     for (final i in _images) {
       i.dispose();
     }
-    _countTp?.dispose();
     back.dispose();
     front.dispose();
   }
@@ -938,36 +906,34 @@ class _Model {
       c.drawRect(r, s(col, w));
     }
 
-    void plate(int i, double cx, double y) {
-      final t = plates[i];
-      final r = Rect.fromCenter(center: Offset(cx, y), width: t.width + 18, height: 22);
-      box(r, col: BP.lineDim, w: 1);
-      t.paint(c, Offset(r.left + 9, r.top + (22 - t.height) / 2));
-    }
-
     // Gantry rail (an I-beam hung from the ceiling).
     for (final x in [180.0, 580.0, 980.0, 1380.0]) {
-      c.drawLine(Offset(x, 0), Offset(x, 36), s(BP.lineDim, 1));
-      c.drawRect(Rect.fromLTWH(x - 8, 33, 16, 5), s(BP.lineDim, 1));
+      c.drawLine(Offset(x, 0), Offset(x, _railY - 2), s(BP.lineDim, 1));
+      c.drawRect(Rect.fromLTWH(x - 8, _railY - 5, 16, 5), s(BP.lineDim, 1));
     }
-    box(const Rect.fromLTRB(52, 38, 1548, 54), w: 1.2);
-    c.drawLine(const Offset(52, 42), const Offset(1548, 42), s(BP.lineDim, 1));
-    c.drawLine(const Offset(52, 50), const Offset(1548, 50), s(BP.lineDim, 1));
-    final rivets = <Offset>[for (var x = 68.0; x < 1540; x += 48) Offset(x, 46)];
+    box(const Rect.fromLTRB(52, _railY, 1548, _railY + 16), w: 1.2);
+    c.drawLine(const Offset(52, _railY + 4), const Offset(1548, _railY + 4), s(BP.lineDim, 1));
+    c.drawLine(const Offset(52, _railY + 12), const Offset(1548, _railY + 12), s(BP.lineDim, 1));
+    final rivets = <Offset>[for (var x = 68.0; x < 1540; x += 48) Offset(x, _railY + 8)];
     c.drawPoints(ui.PointMode.points, rivets, s(BP.lineDim, 2.4));
-    box(const Rect.fromLTRB(46, 36, 52, 58), w: 1);
-    box(const Rect.fromLTRB(1548, 36, 1554, 58), w: 1);
+    box(const Rect.fromLTRB(46, _railY - 2, 52, _railY + 20), w: 1);
+    box(const Rect.fromLTRB(1548, _railY - 2, 1554, _railY + 20), w: 1);
 
-    // The output shelf under the title (its top edge is the baseline).
-    for (final x in [44.0, 1226.0]) {
-      c.drawLine(Offset(x, 54), Offset(x, _shelfY), s(BP.lineDim, 1));
+    // The output shelves under the title lines (each top edge is a baseline),
+    // hung from the rail.
+    c.drawLine(const Offset(44, _railY + 16), Offset(44, _baselines.last), s(BP.lineDim, 1));
+    for (var line = 0; line < _lines.length; line++) {
+      final y = _baselines[line];
+      final right = shelfRight[line];
+      c.drawLine(Offset(right - 8, _railY + 16), Offset(right - 8, y), s(BP.lineDim, 1));
+      box(Rect.fromLTRB(36, y, right, y + _shelfH), w: 1.2);
+      c.drawPoints(ui.PointMode.points, [for (var x = 52.0; x < right - 4; x += 40) Offset(x, y + 3.5)], s(BP.lineDim, 2));
+      final ls = [for (final l in letters) if (l.line == line) l];
+      for (final l in ls) {
+        c.drawLine(Offset(l.box.left, y + _shelfH), Offset(l.box.left, y + _shelfH + 6), s(BP.lineDim, 1));
+      }
+      c.drawLine(Offset(ls.last.box.right, y + _shelfH), Offset(ls.last.box.right, y + _shelfH + 6), s(BP.lineDim, 1));
     }
-    box(const Rect.fromLTRB(36, _shelfY, 1234, _shelfY + 7), w: 1.2);
-    c.drawPoints(ui.PointMode.points, [for (var x = 52.0; x < 1230; x += 40) Offset(x, _shelfY + 3.5)], s(BP.lineDim, 2));
-    for (final l in letters) {
-      c.drawLine(Offset(l.box.left, _shelfY + 7), Offset(l.box.left, _shelfY + 13), s(BP.lineDim, 1));
-    }
-    c.drawLine(Offset(letters.last.box.right, _shelfY + 7), Offset(letters.last.box.right, _shelfY + 13), s(BP.lineDim, 1));
 
     // Marquee track + print head.
     c.drawLine(const Offset(_mLeft, _mTop), const Offset(_mRight, _mTop), s(BP.lineDim, 1.2));
@@ -975,24 +941,17 @@ class _Model {
     for (final y in [_mTop, _mBot]) {
       c.drawCircle(Offset(_mLeft, y), 3.5, s(BP.lineDim, 1));
     }
-    box(const Rect.fromLTRB(_mRight, _tickY, 1430, 410), w: 1.3);
+    box(const Rect.fromLTRB(_mRight, _tickY, 1430, _mBot + 8), w: 1.3);
     final nozzle = Path()
-      ..moveTo(_mRight, 366)
-      ..lineTo(_mRight - 8, 371)
-      ..lineTo(_mRight - 8, 383)
-      ..lineTo(_mRight, 388);
+      ..moveTo(_mRight, _mMid - 11)
+      ..lineTo(_mRight - 8, _mMid - 6)
+      ..lineTo(_mRight - 8, _mMid + 6)
+      ..lineTo(_mRight, _mMid + 11);
     c.drawPath(nozzle, s(BP.line, 1.2));
-    c.drawCircle(const Offset(1420, 354), 4, s(BP.lineDim, 1));
-    for (var y = 372.0; y < 404; y += 7) {
+    c.drawCircle(const Offset(1420, _tickY + 9), 4, s(BP.lineDim, 1));
+    for (var y = _tickY + 18; y < _mBot + 6; y += 6) {
       c.drawLine(Offset(1392, y), Offset(1420, y), s(BP.lineFaint, 1));
     }
-
-    // Rack for finished title tiles.
-    for (final x in [1240.0, 1404.0]) {
-      c.drawLine(Offset(x, 54), Offset(x, _rackY), s(BP.lineDim, 1));
-    }
-    c.drawLine(const Offset(1236, _rackY), const Offset(1428, _rackY), s(BP.line, 2));
-    c.drawLine(const Offset(1236, _rackY - 6), const Offset(1236, _rackY), s(BP.line, 2));
 
     // Elevator tower.
     for (final x in [1490.0, 1514.0]) {
@@ -1055,8 +1014,6 @@ class _Model {
     box(const Rect.fromLTRB(102, 524, 158, 600), w: 1.3);
     c.drawLine(const Offset(98, 600), const Offset(162, 600), s(BP.line, 2));
     c.drawRect(const Rect.fromLTRB(78, 447, 182, 469), s(BP.lineDim, 1));
-    final uni = plates[5];
-    uni.paint(c, Offset(130 - uni.width / 2, 477));
     c.drawCircle(const Offset(146, 540), 4, s(BP.lineDim, 1));
     for (final x in [28.0, 50.0]) {
       c.drawLine(Offset(x, 452), Offset(x, _floor), s(BP.lineDim, 1.3));
@@ -1074,7 +1031,7 @@ class _Model {
     c.drawPath(sack, s(BP.lineDim, 1.1));
     c.drawLine(const Offset(58, 544), const Offset(88, 544), s(BP.lineDim, 1.1));
 
-    // 01 itemize: sorter with a screen, lane lamps, a pick-and-place arm.
+    // Itemize: sorter with a screen, lane lamps, a pick-and-place arm.
     final sortRoof = Path()
       ..moveTo(292, 504)
       ..lineTo(310, 488)
@@ -1089,16 +1046,15 @@ class _Model {
       c.drawCircle(Offset(314.0 + i * 15, 590), 4, s(_laneColor[i].withValues(alpha: 0.7), 1));
     }
     c.drawRect(const Rect.fromLTRB(340, 606, 360, 612), s(BP.line, 1));
-    plate(0, 350, 468);
 
-    // 02 fonts: a vending machine of glyphs.
+    // Fonts: a vending machine of glyphs.
     box(const Rect.fromLTRB(512, 452, 630, 612));
     c.drawRect(const Rect.fromLTRB(516, 458, 620, 537), s(BP.lineDim, 1));
     for (var i = 0; i < _cells.length; i++) {
       final r = cellRect(i);
       c.drawRect(r.deflate(1.5), s(BP.lineFaint, 1));
       final t = fontCells[i];
-      final k = math.min(1.0, 19 / math.max(t.width, t.height));
+      final k = math.min(1.0, math.min(22 / t.width, 27 / t.height));
       c.save();
       c.translate(r.center.dx, r.center.dy);
       c.scale(k);
@@ -1117,9 +1073,8 @@ class _Model {
       ..lineTo(562, 612)
       ..close();
     c.drawPath(chute, s(BP.line, 1.2));
-    plate(1, 571, 432);
 
-    // 03 shape: stamping press.
+    // Shape: stamping press.
     box(const Rect.fromLTRB(742, 478, 840, 510));
     box(const Rect.fromLTRB(746, 510, 756, 612), w: 1.1);
     box(const Rect.fromLTRB(826, 510, 836, 612), w: 1.1);
@@ -1127,7 +1082,6 @@ class _Model {
     c.drawCircle(const Offset(822, 464), 14, s(BP.line, 1.3));
     c.drawLine(const Offset(822, 464), const Offset(800, 478), s(BP.lineDim, 1));
     c.drawCircle(const Offset(760, 494), 9, s(BP.lineDim, 1));
-    plate(2, 791, 432);
     final anvil = Path()
       ..moveTo(844, 772)
       ..lineTo(872, 772)
@@ -1141,7 +1095,7 @@ class _Model {
     c.drawPath(anvil, fl(BP.panel));
     c.drawPath(anvil, s(BP.line, 1.2));
 
-    // 04 wrap: guillotine with a width ruler.
+    // Wrap: guillotine with a width ruler.
     box(const Rect.fromLTRB(1004, 488, 1092, 514));
     for (final x in [1008.0, 1088.0]) {
       c.drawLine(Offset(x - 2, 514), Offset(x - 2, 612), s(BP.line, 1.2));
@@ -1154,7 +1108,6 @@ class _Model {
     }
     c.drawLine(const Offset(1092, 500), const Offset(1104, 500), s(BP.lineDim, 1.2));
     c.drawCircle(const Offset(1106, 500), 5, s(BP.line, 1.2));
-    plate(3, 1048, 468);
 
     // Consoles on the floor.
     box(const Rect.fromLTRB(380, 752, 406, _floor), w: 1.1);
@@ -1175,12 +1128,6 @@ class _Model {
     box(const Rect.fromLTRB(1196, 742, 1246, _floor), w: 1.2);
     c.drawRect(const Rect.fromLTRB(1206, 754, 1236, 772), s(BP.line, 1));
     c.drawLine(const Offset(1221, 742), const Offset(1221, 706), s(BP.lineDim, 1.2));
-
-    // Glyph counter board.
-    box(const Rect.fromLTRB(_board, 722, _board + 86, 772), w: 1.2);
-    c.drawLine(const Offset(_board + 8, 772), const Offset(_board + 8, _floor), s(BP.lineDim, 1.2));
-    c.drawLine(const Offset(_board + 78, 772), const Offset(_board + 78, _floor), s(BP.lineDim, 1.2));
-    glyphsLabel.paint(c, const Offset(_board + 8, 726));
 
     return rec.endRecording();
   }
@@ -1230,11 +1177,6 @@ class _Model {
     // Belt openings.
     c.drawRect(const Rect.fromLTRB(1186, 620, 1192, 703), s(BP.lineDim, 1));
     c.drawRect(const Rect.fromLTRB(1344, 620, 1350, 703), s(BP.lineDim, 1));
-    final t = plates[4];
-    final r = Rect.fromCenter(center: const Offset(1250, 468), width: t.width + 18, height: 22);
-    c.drawRect(r, Paint()..color = BP.panel);
-    c.drawRect(r, s(BP.lineDim, 1));
-    t.paint(c, Offset(r.left + 9, r.top + (22 - t.height) / 2));
     return rec.endRecording();
   }
 }
@@ -1292,10 +1234,9 @@ class _Frame extends FactoryInk {
     printHead();
     marquee();
     title();
-    rack();
+    m.ja.paint(c, m.jaAt);
     gantry();
     workers();
-    counter();
   }
 
   // ── Belt & items ───────────────────────────────────────────────────────────
@@ -1404,9 +1345,8 @@ class _Frame extends FactoryInk {
     final col = sortP >= 0.5 ? u.color : BP.inkDim;
     c.drawRect(r, fl(BP.panel));
     c.drawRect(r, st(col, 1.2));
-    final strip = r.top + 10;
+    final strip = r.top + 8;
     c.drawLine(Offset(r.left, strip), Offset(r.right, strip), st(col.withValues(alpha: 0.5), 0.8));
-    paintFit(pressed && u.gid != null ? u.gid! : u.stamp, Rect.fromLTRB(r.left + 3, r.top + 1, r.right - 3, strip));
     final body = Rect.fromLTRB(r.left, strip, r.right, r.bottom);
     if (fontP <= 0) {
       final b = body.deflate(4);
@@ -1418,25 +1358,7 @@ class _Frame extends FactoryInk {
     final dy = fontP >= 1 ? 0.0 : -(1 - _ei(fontP)) * (body.top - 604);
     c.save();
     c.translate(0, dy);
-    if (u.isTitle) {
-      final g = u.glyph!;
-      final pen = Offset(body.center.dx - g.adv / 2, body.bottom - 6);
-      if (u.space) {
-        c.drawPath(
-          dashPath(Path()..addRect(Rect.fromLTWH(pen.dx, body.top + 4, g.adv, body.height - 9)), dash: 2, gap: 2),
-          st(BP.lineDim, 1),
-        );
-      } else {
-        g.draw(
-          c,
-          pen,
-          filled: pressed,
-          stroke: st(BP.ink, 0.9),
-          fill: fl(BP.ink),
-          dots: _dots..color = BP.amber,
-        );
-      }
-    } else if (pressed) {
+    if (pressed) {
       // Shaped: one plate, glyphs joined / reordered by the engine.
       c.drawRect(body.deflate(2.5), st(col.withValues(alpha: 0.45), 1));
       paintFit(u.plate!, body.deflate(3));
@@ -1457,10 +1379,6 @@ class _Frame extends FactoryInk {
     }
     c.restore();
   }
-
-  static final _dots = Paint()
-    ..strokeWidth = 2.2
-    ..strokeCap = StrokeCap.round;
 
   void tile(_Unit u, Rect r) {
     c.drawRect(r, fl(BP.panel));
@@ -1486,13 +1404,15 @@ class _Frame extends FactoryInk {
   }
 
   void hopper() {
-    final roll = m.hexRoll;
-    final off = (s * 16) % roll.width;
+    // Code points scroll past the hopper's window, like a ticker tape.
+    final off = (s * 16) % 13;
+    final ticks = <Offset>[];
+    for (var x = 84 - off; x < 180; x += 13) {
+      ticks.add(Offset(x, 458));
+    }
     c.save();
     c.clipRect(const Rect.fromLTRB(79, 448, 181, 468));
-    for (var x = 80 - off; x < 181; x += roll.width) {
-      roll.paint(c, Offset(x, 458 - roll.height / 2));
-    }
+    c.drawPoints(ui.PointMode.points, ticks, st(BP.lineDim, 5));
     c.restore();
     final dropping = m.unitAt(cyc) != null && dwell && dw(0, 0.45) < 1;
     lamp(const Offset(146, 540), BP.amber, dropping || boost(0) > 0);
@@ -1514,12 +1434,13 @@ class _Frame extends FactoryInk {
     c.drawLine(Offset(cx - 16, gy - 3), Offset(cx + 16, gy - 3), st(BP.line, 1.8));
     c.drawLine(Offset(cx - 16, gy - 3), Offset(cx - 18, gy + 4), st(BP.line, 1.5));
     c.drawLine(Offset(cx + 16, gy - 3), Offset(cx + 18, gy + 4), st(BP.line, 1.5));
+    // The screen shows the run it just read: a bar in its lane's colour.
     final shown = dwell ? u : m.unitAt(k - 1);
     if (shown != null) {
-      final lab = m.labels[shown.label]!;
-      lab.paint(c, Offset(310, 529 - lab.height / 2));
+      final w = 20.0 + 8 * shown.lane;
+      c.drawRect(Rect.fromLTWH(311, 524, w, 10), fl(shown.color.withValues(alpha: 0.85)));
       if ((s * 2.5).floor().isEven) {
-        c.drawRect(Rect.fromLTWH(313 + lab.width, 524, 5, 10), fl(shown.color));
+        c.drawRect(Rect.fromLTWH(315 + w, 524, 5, 10), fl(shown.color));
       }
     }
     for (var i = 0; i < 5; i++) {
@@ -1663,11 +1584,11 @@ class _Frame extends FactoryInk {
     // Steam from the chimney.
     const per = 0.55;
     final extra = boost(5);
-    for (var n = ((s - 2.6) / per).floor(); n <= (s / per).floor(); n++) {
-      final age = (s - n * per) / 2.6;
+    for (var n = ((s - 2.2) / per).floor(); n <= (s / per).floor(); n++) {
+      final age = (s - n * per) / 2.2;
       if (age <= 0 || age >= 1) continue;
-      final o = Offset(1323 + (4 + 12 * _rnd(n, 41)) * age + 3 * math.sin(age * 6 + n), 442 - 38 * age);
-      puff(o, age, 3, 10 + 4 * _rnd(n, 42) + 10 * extra);
+      final o = Offset(1323 + (4 + 12 * _rnd(n, 41)) * age + 3 * math.sin(age * 6 + n), 442 - 20 * age);
+      puff(o, age, 3, 7 + 3 * _rnd(n, 42) + 10 * extra);
     }
     // Firebox glow, flaring after each shovel of coal.
     const shovel = 2.4;
@@ -1709,7 +1630,7 @@ class _Frame extends FactoryInk {
       final a = p + o * 52;
       final k = b0 - i - _slots;
       final u = m.unitAt(k);
-      if (u != null && d < (k < _kM ? _loadY - _rackY : _loadY - _tickY)) {
+      if (u != null && d < _loadY - _tickY) {
         tile(u, Rect.fromLTWH(p.dx - 26 - u.w / 2, p.dy - _crateH, u.w, _crateH));
       }
       final tray = Path()
@@ -1723,7 +1644,7 @@ class _Frame extends FactoryInk {
 
   void printHead() {
     var sinking = false;
-    for (var k = math.max(_kM, cyc - 24); k <= cyc - _slots; k++) {
+    for (var k = math.max(0, cyc - 24); k <= cyc - _slots; k++) {
       final u = m.unitAt(k);
       if (u == null) continue;
       final s0 = _Model.sTickOf(k);
@@ -1734,18 +1655,18 @@ class _Frame extends FactoryInk {
       final sink = _eio((s - tau) / 0.4);
       if (sink > 0) sinking = true;
       c.save();
-      c.clipRect(const Rect.fromLTRB(1300, 250, 1600, _tickY));
+      c.clipRect(const Rect.fromLTRB(1300, _tickY - 60, 1600, _tickY));
       tile(u, Rect.fromLTWH(x - u.w / 2, _tickY - _crateH + sink * _crateH, u.w, _crateH));
       c.restore();
     }
     final printing = s > m.sM0;
-    lamp(const Offset(1420, 354), BP.green, sinking || (printing && (s * 3).floor().isEven), 4);
+    lamp(const Offset(1420, _tickY + 9), BP.green, sinking || (printing && (s * 3).floor().isEven), 4);
     if (printing) {
       final dots = <Offset>[];
       for (var i = 0; i < 7; i++) {
         final q = s * 2.4 + i / 7;
         final a = q - q.floorToDouble();
-        dots.add(Offset(_mRight - 9 - a * 16, 377 + (_rnd(i, q.floor()) - 0.5) * 18));
+        dots.add(Offset(_mRight - 9 - a * 16, _mMid + (_rnd(i, q.floor()) - 0.5) * 18));
       }
       c.drawPoints(ui.PointMode.points, dots, st(BP.line.withValues(alpha: 0.7), 1.8));
     }
@@ -1756,7 +1677,7 @@ class _Frame extends FactoryInk {
     final u = m.vM * (s - m.sM0);
     final left = math.max(_mLeft, _mRight - u);
     final p = m.marquee;
-    final y = (_mTop + _mBot) / 2 - p.height / 2;
+    final y = _mMid - p.height / 2;
     c.save();
     c.clipRect(Rect.fromLTRB(left, _mTop + 1, _mRight, _mBot - 1));
     final r0 = math.max(0, ((u - (_mRight - _mLeft)) / m.mW).floor());
@@ -1767,9 +1688,7 @@ class _Frame extends FactoryInk {
     c.restore();
   }
 
-  // ── Title, rack, gantry ───────────────────────────────────────────────────
-
-  Rect slotRect(_Letter l) => l.space ? Rect.fromLTRB(l.box.left, _baseline - 112, l.box.right, _baseline) : l.bigDst;
+  // ── Title, gantry ─────────────────────────────────────────────────────────
 
   ({int letter, double trolley, double hook, double open, double dy})? qcJob() {
     if (s < m.qcStart) return null;
@@ -1805,18 +1724,19 @@ class _Frame extends FactoryInk {
     return (letter: li, trolley: x, hook: hook, open: open, dy: dy);
   }
 
-  // The shelf crew: every [_ep] seconds they pick a finished letter, walk
-  // over, polish it, and high-five.
+  // The shelf crew: every [_ep] seconds they pick a finished letter on the
+  // second line, walk over, polish it, and high-five.
   static const _ep = 8.0;
 
   int? crewTarget(int ep) {
     final t0 = ep * _ep;
     // A slow wander along the shelf (never more than ~300 px per episode).
     final v = 0.5 + 0.3 * math.sin(ep * 0.55) + 0.18 * math.sin(ep * 0.23 + 2);
-    final want = _lerp(m.letters.first.cx, m.letters.last.cx, v);
+    final ls = m.solid2;
+    final want = _lerp(m.letters[ls.first].cx, m.letters[ls.last].cx, v);
     int? best;
-    for (final i in m.solid) {
-      if (m.jobs[i].t4 + 0.8 > t0) continue;
+    for (final i in ls) {
+      if (m.letters[i].done + 0.8 > t0) continue;
       if (best == null || (m.letters[i].cx - want).abs() < (m.letters[best].cx - want).abs()) best = i;
     }
     return best;
@@ -1846,49 +1766,58 @@ class _Frame extends FactoryInk {
     );
   }
 
+  /// A dropped tile falling from the gripper and growing into its slot.
+  void drop(_Letter l) {
+    final big = l.big!;
+    final p = _eio(_seg(s, l.release, l.land));
+    final from = Rect.fromLTWH(l.cx - 23, _carryTop, 46, _crateH);
+    final r = Rect.lerp(from, l.bigDst, p)!;
+    final clip = Rect.lerp(from, l.band, p)!;
+    c.save();
+    c.clipRect(clip);
+    c.drawImageRect(big, Rect.fromLTWH(0, 0, big.width.toDouble(), big.height.toDouble()), r, _pix);
+    c.restore();
+    c.drawRect(clip, st(BP.amber.withValues(alpha: 1 - p * 0.6), 1.2));
+  }
+
   void title() {
-    m.plan.paint(c, m.planAt);
+    for (final (p, at) in m.plans) {
+      p.paint(c, at);
+    }
+    // Tiles falling into the second line pass behind the first line's letters.
+    for (final l in m.letters) {
+      if (l.line > 0 && !l.space && s >= l.release && s < l.land) drop(l);
+    }
     final qc = qcJob();
     final cr = crew(s);
     final clickP = _seg(t, io.letterAt, io.letterAt + 1.3);
     for (final l in m.letters) {
-      final j = m.jobs[l.index];
-      if (s < j.t3) continue;
-      final slot = slotRect(l);
-      if (l.space) {
-        final from = Rect.fromLTWH(j.x - 23, _carryTop, 46, _crateH);
-        final r = Rect.lerp(from, slot, _eio(_seg(s, j.t3, j.t4)))!;
-        final a = 1 - _seg(s, j.t4, j.t4 + 1.4);
-        if (a > 0) c.drawPath(dashPath(Path()..addRect(r), dash: 4, gap: 4), st(BP.amber.withValues(alpha: a), 1.2));
+      if (l.space || s < l.release) continue;
+      final big = l.big!;
+      final slot = l.bigDst;
+      final src = Rect.fromLTWH(0, 0, big.width.toDouble(), big.height.toDouble());
+      if (s < l.land) {
+        if (l.line == 0) drop(l);
         continue;
       }
-      final src = Rect.fromLTWH(0, 0, l.big!.width.toDouble(), l.big!.height.toDouble());
-      if (s < j.t4) {
-        // Unfolding: the coarse tile grows into its slot.
-        final p = _eio(_seg(s, j.t3, j.t4));
-        final r = Rect.lerp(Rect.fromLTWH(j.x - 23, _carryTop, 46, _crateH), slot, p)!;
-        c.drawImageRect(l.big!, src, r, _pix);
-        c.drawRect(r, st(BP.amber.withValues(alpha: 1 - p * 0.6), 1.2));
-        continue;
-      }
-      final dev = _seg(s, j.t4, j.t4 + 0.7);
+      final dev = _seg(s, l.land, l.done);
       if (dev < 1) {
         // Develop: crisp text above the scan line, raw pixels below it.
-        final y = _lerp(slot.top, slot.bottom, _eio(dev));
+        final band = l.band;
+        final y = _lerp(band.top, band.bottom, _eio(dev));
         c.save();
-        c.clipRect(Rect.fromLTRB(0, 0, 1600, y));
+        c.clipRect(Rect.fromLTRB(band.left - 20, band.top - 20, band.right + 20, y));
         l.fill.paint(c, l.fillAt);
         c.restore();
         c.save();
-        c.clipRect(Rect.fromLTRB(0, y, 1600, 900));
-        c.drawImageRect(l.big!, src, slot, _pix);
+        c.clipRect(Rect.fromLTRB(band.left, y, band.right, band.bottom));
+        c.drawImageRect(big, src, slot, _pix);
         bigGrid(slot);
         c.restore();
-        c.drawLine(Offset(slot.left + 4, y), Offset(slot.right - 4, y), st(BP.amber, 1.5));
-        final age = _seg(s, j.t4, j.t4 + 0.7);
+        c.drawLine(Offset(band.left + 4, y), Offset(band.right - 4, y), st(BP.amber, 1.5));
         for (final (x, sg) in [(l.box.left + 6, -1.0), (l.box.right - 6, 1.0)]) {
           for (var i = 0; i < 2; i++) {
-            puff(Offset(x + sg * (4 + age * (10 + 8 * i)), _shelfY - 4 - i * 5 - age * 6), _c01(age + i * 0.1), 2, 6 + 2.0 * i);
+            puff(Offset(x + sg * (4 + dev * (10 + 8 * i)), l.baseline - 4 - i * 5 - dev * 6), _c01(dev + i * 0.1), 2, 6 + 2.0 * i);
           }
         }
         continue;
@@ -1920,7 +1849,7 @@ class _Frame extends FactoryInk {
           final q = (s * 3).floor() + i * 7;
           final p = Offset(
             _lerp(l.box.left + 8, l.box.right - 8, _rnd(q, l.index)),
-            _lerp(l.inkTop + dy, _baseline - 10 + dy, _rnd(q, l.index, 3)),
+            _lerp(l.inkTop + dy, l.baseline - 10 + dy, _rnd(q, l.index, 3)),
           );
           star(p, 3 + 3 * _bump((s * 3) % 1), BP.ink);
         }
@@ -1945,63 +1874,37 @@ class _Frame extends FactoryInk {
     c.drawPath(g, st(BP.lineFaint, 0.8));
   }
 
-  void rack() {
-    for (var i = 0; i < m.jobs.length; i++) {
-      final j = m.jobs[i];
-      final top = j.arrive - 0.35;
-      if (s < top || s >= j.t1) continue;
-      var q = 0.0;
-      for (var h = 0; h < i; h++) {
-        final o = m.jobs[h];
-        if (s >= o.arrive - 0.35) q += 1 - _eio((s - o.t1) / 0.35);
-      }
-      final u = m.tUnits[i];
-      final x = _lerp(_exX, _pickX + 48 * q, _eio((s - top) / 0.35));
-      tile(u, Rect.fromLTWH(x - u.w / 2, _rackY - _crateH, u.w, _crateH));
-    }
-  }
-
   void gantry() {
     var x = _pickX, hook = _carryTop, open = 1.0;
     _Unit? carried;
-    for (final j in m.jobs) {
-      if (s < j.start || s >= j.end) continue;
-      const rackTop = _rackY - _crateH;
-      final slot = slotRect(m.letters[j.i]);
-      if (s < j.t1) {
-        final p = _seg(s, j.start, j.t1);
-        hook = _lerp(_carryTop, rackTop, _eio(p / 0.7));
-        open = 1 - _seg(p, 0.75, 1);
-      } else if (s < j.t2) {
-        hook = _lerp(rackTop, _carryTop, _eio(_seg(s, j.t1, j.t2)));
-        open = 0;
-        carried = m.tUnits[j.i];
-      } else if (s < j.t3) {
-        x = _lerp(_pickX, j.x, _eio(_seg(s, j.t2, j.t3)));
-        open = 0;
-        carried = m.tUnits[j.i];
-      } else if (s < j.t4) {
-        x = j.x;
-        open = 0;
-        hook = _lerp(_carryTop, slot.top, _eio(_seg(s, j.t3, j.t4)));
-      } else if (s < j.t5) {
-        x = j.x;
-        open = _seg(s, j.t4, j.t4 + 0.06);
-        hook = _lerp(slot.top, _carryTop, _eio(_seg(s, j.t4, j.t5)));
-      } else {
-        x = _lerp(j.x, _pickX, _eio(_seg(s, j.t5, j.end)));
+    var moving = false;
+    final run = m.trolleyX(s);
+    if (run != null) {
+      // The build: the gripper holds the next letter's tile and lets go
+      // right above its slot.
+      x = run;
+      moving = true;
+      double? last;
+      for (final i in m.order) {
+        final r = m.letters[i].release;
+        if (r <= s) {
+          last = r;
+        } else {
+          carried ??= m.tUnits[i];
+        }
       }
-      break;
+      if (carried != null) open = last == null ? 0 : 0.9 * (1 - _seg(s, last, last + 0.07));
     }
     final qc = qcJob();
     if (qc != null) {
       x = qc.trolley;
       hook = qc.hook;
       open = qc.open;
+      moving = (x - _pickX).abs() > 1;
     }
     if (carried != null) tile(carried, Rect.fromLTWH(x - carried.w / 2, hook, carried.w, _crateH));
     // Cable + gripper.
-    c.drawLine(Offset(x, 70), Offset(x, hook - 6), st(BP.inkDim, 1));
+    c.drawLine(Offset(x, _railY + 32), Offset(x, hook - 6), st(BP.inkDim, 1));
     c.drawLine(Offset(x - 26, hook - 6), Offset(x + 26, hook - 6), st(BP.line, 2));
     c.drawRect(Rect.fromCenter(center: Offset(x, hook - 8), width: 10, height: 5), fl(BP.line));
     final spread = 2 + 7 * open;
@@ -2018,23 +1921,22 @@ class _Frame extends FactoryInk {
     // Trolley on the lower flange, with a cab for its operator.
     final wa = x / 4.5;
     for (final wx in [x - 14, x + 14]) {
-      c.drawLine(Offset(wx, 50), Offset(wx, 58), st(BP.line, 1.4));
-      c.drawCircle(Offset(wx, 50), 4.5, fl(BP.panel));
-      c.drawCircle(Offset(wx, 50), 4.5, st(BP.line, 1.2));
-      c.drawLine(Offset(wx, 50), Offset(wx + math.cos(wa) * 4.5, 50 + math.sin(wa) * 4.5), st(BP.line, 1));
+      c.drawLine(Offset(wx, _railY + 12), Offset(wx, _railY + 20), st(BP.line, 1.4));
+      c.drawCircle(Offset(wx, _railY + 12), 4.5, fl(BP.panel));
+      c.drawCircle(Offset(wx, _railY + 12), 4.5, st(BP.line, 1.2));
+      c.drawLine(Offset(wx, _railY + 12), Offset(wx + math.cos(wa) * 4.5, _railY + 12 + math.sin(wa) * 4.5), st(BP.line, 1));
     }
-    final body = Rect.fromLTRB(x - 24, 57, x + 24, 70);
+    final body = Rect.fromLTRB(x - 24, _railY + 19, x + 24, _railY + 32);
     c.drawRect(body, fl(BP.panel));
     c.drawRect(body, st(BP.line, 1.3));
-    final cab = Rect.fromLTRB(x + 24, 54, x + 46, 78);
+    final cab = Rect.fromLTRB(x + 24, _railY + 16, x + 46, _railY + 40);
     c.drawRect(cab, fl(BP.panel));
     c.drawRect(cab, st(BP.line, 1.3));
     c.drawRect(Rect.fromLTRB(cab.left + 4, cab.top + 4, cab.right - 4, cab.top + 15), st(BP.lineDim, 1));
     final head = Offset(cab.center.dx, cab.top + 11);
     c.drawCircle(head, 3.2, st(BP.ink, 1.2));
     c.drawArc(Rect.fromCircle(center: head, radius: 4), math.pi, math.pi, true, fl(BP.amber));
-    final moving = (x - _pickX).abs() > 1 && carried == null ? true : carried != null;
-    lamp(Offset(x - 16, 63.5), BP.amber, moving && (s * 4).floor().isEven, 3.5);
+    lamp(Offset(x - 16, _railY + 25.5), BP.amber, moving && (s * 4).floor().isEven, 3.5);
   }
 
   // ── Workers ──────────────────────────────────────────────────────────────
@@ -2335,9 +2237,9 @@ class _Frame extends FactoryInk {
       final g = guy(const Offset(1276, _floor), 34, -1, f, seed: 9, machine: 5);
       if (wiping) sweat(g.head, u, 1);
     }
-    // 9 · Foreman with a clipboard, nodding at every glyph.
+    // 9 · Foreman with a clipboard, nodding at every tile that leaves the belt.
     {
-      final nod = _bump(_seg(t, m.countChangedAt, m.countChangedAt + 0.45));
+      final nod = m.unitAt(cyc - _slots) != null ? _bump(_seg(ph, 0.25, 0.6)) : 0.0;
       final f = Pose()
         ..upB = 0.55
         ..foB = 1.55
@@ -2354,11 +2256,12 @@ class _Frame extends FactoryInk {
       final g = guy(const Offset(1424, _floor), 35, -1, f, seed: 10);
       clipboard(g.handB, done: s > m.sDone);
     }
-    // 10, 11 · The shelf crew: polisher and inspector.
+    // 10, 11 · The shelf crew on the second shelf: polisher and inspector.
     {
       final a = crew(s);
       final b = crew(s - 0.35);
       const h = 28.0;
+      final shelf = _baselines.last;
       final fb = Pose();
       var dirB = b.dir;
       final atWork = b.walk < 0 && b.target != null;
@@ -2377,7 +2280,7 @@ class _Frame extends FactoryInk {
             ..head = -0.3;
         }
       }
-      final gb = guy(Offset(b.x - 22, _shelfY), h, dirB, fb, seed: 11);
+      final gb = guy(Offset(b.x - 22, shelf), h, dirB, fb, seed: 11);
       if (atWork && a.five <= 0) magnifier(gb.handA, gb.elbowA);
       final fa = Pose();
       var dirA = a.dir;
@@ -2394,22 +2297,11 @@ class _Frame extends FactoryInk {
           ..upA = 1.9 + 0.35 * math.sin(t * 9)
           ..foA = 2.4 + 0.45 * math.cos(t * 9);
       }
-      final ga = guy(Offset(a.x, _shelfY), h, dirA, fa, seed: 12);
+      final ga = guy(Offset(a.x, shelf), h, dirA, fa, seed: 12);
       if (polishing) c.drawRect(Rect.fromCenter(center: ga.handA, width: 5, height: 5), fl(BP.line));
       if (a.five > 0.3 && a.five < 0.9) {
         star(Offset.lerp(ga.handA, gb.handA, 0.5)! + const Offset(0, -3), 3 + 5 * _bump((a.five - 0.3) / 0.6), BP.amber);
       }
-    }
-  }
-
-  void counter() {
-    final n = ph > 0.25 ? cyc - 17 : cyc - 18;
-    final p = m.countPainter(1284 + m.glyphsUpTo(n), t);
-    const x = _board + 8.0;
-    p.paint(c, Offset(x, 755 - p.height / 2));
-    final flash = 1 - _seg(t, m.countChangedAt, m.countChangedAt + 0.6);
-    if (flash > 0 && flash < 1) {
-      c.drawLine(Offset(x, 767), Offset(x + p.width, 767), st(BP.amber.withValues(alpha: flash), 1.5));
     }
   }
 }

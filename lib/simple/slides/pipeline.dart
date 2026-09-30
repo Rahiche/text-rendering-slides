@@ -3,24 +3,24 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../deck/deck.dart';
-import '../../deck/font_data.dart';
 import '../../deck/scripts.dart';
 import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
-import '../../slides/journey/journey.dart' show JourneyData, arabicForm;
+import '../../slides/journey/journey.dart' show arabicForm;
 import '../../worlds/factory/factory_kit.dart';
 
 /// The pipeline as the factory's assembly line: seven machines on one belt,
 /// each powering on at its build step (0..6). Crates of "Hi كتاب" drop out of
-/// the unicode chute and ride through every powered machine; at the first
-/// dark machine they tip into a waiting bin. Each crate's label strip shows
-/// the data it carries after the last machine it passed (real values: script
-/// runs, the font that has the glyph, cmap glyph ids / Arabic joining forms,
-/// the greedy line it lands on, its x in the laid-out paragraph), and the
+/// the text chute and ride through every powered machine; at the first dark
+/// machine they tip into a waiting bin. What each machine did shows on the
+/// crate itself, not in labels: itemize paints it in its script's colour,
+/// fonts drops the glyph in, shape swaps in the joined Arabic form, and the
 /// oven turns it into pixels for the screen at the end of the line.
 ///
-/// The tour group watches from the catwalk; operators sleep at dark machines
-/// and wake up when the power comes on. Click a machine → its deep-dive slide.
+/// Only the machine names are text, big; the newest machine (this step's
+/// stage) is lit amber. The tour group watches it from the catwalk;
+/// operators sleep at dark machines and wake up when the power comes on.
+/// Click a machine → its deep-dive slide.
 class FactoryPipeline extends StatefulWidget {
   const FactoryPipeline({super.key});
 
@@ -30,7 +30,6 @@ class FactoryPipeline extends StatefulWidget {
 
 const _ids = ['string', 'itemize', 'fallback', 'shaping', 'linebreak', 'bidi', 'raster'];
 const _names = ['text', 'itemize', 'fonts', 'shape', 'wrap', 'position', 'raster'];
-const _libs = ['unicode', 'ICU', 'font manager', 'HarfBuzz', 'ICU · UAX #14', 'layout', 'Skia · GPU'];
 
 const _sample = 'Hi كتاب';
 
@@ -44,7 +43,7 @@ const _walkY = 104.0; // catwalk floor
 const _endSlot = 14; // the screen's intake
 
 /// Indexing belt: move for [_mv] of every [_per] seconds, then all machines work.
-const _per = 1.3;
+const _per = 1.1;
 const _mv = 0.4;
 
 double _sx(double slot) => 84 + _pitch * slot;
@@ -63,24 +62,14 @@ Rect _target(int i) => Rect.fromLTRB(_vx(i) - 80, 196, _vx(i) + (i == 6 ? 84 : 8
 
 class _FactoryPipelineState extends State<FactoryPipeline> {
   final _power = _Power();
-  (FontData, FontData)? _fonts;
-
-  @override
-  void initState() {
-    super.initState();
-    JourneyData.loadFonts().then((f) {
-      if (mounted) setState(() => _fonts = f);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     final step = SlideScope.of(context).step.clamp(0, 6);
-    final fonts = _fonts;
     return SlideFrame(
       title: 'The pipeline',
       child: FactoryScene(
-        painter: (clock, text, io) => _PipelinePainter(clock, text, io, step, _power, fonts),
+        painter: (clock, text, io) => _PipelinePainter(clock, text, io, step, _power),
         onTarget: (context, i) => DeckScope.read(context).goToId(_ids[i]),
       ),
     );
@@ -114,7 +103,7 @@ class _Power {
     if (step < 0) {
       // Arriving on the slide: power up in a quick cascade after the transition.
       for (var i = 0; i <= s; i++) {
-        on[i] = now + 0.7 + 0.3 * i;
+        on[i] = now + 0.35 + 0.3 * i;
       }
       groupFrom = groupX(s) - 160;
       groupTo = groupX(s);
@@ -145,14 +134,13 @@ class _Power {
 }
 
 class _PipelinePainter extends CustomPainter {
-  _PipelinePainter(this.clock, this.text, this.io, this.step, this.power, this.fonts) : super(repaint: clock);
+  _PipelinePainter(this.clock, this.text, this.io, this.step, this.power) : super(repaint: clock);
 
   final SceneClock clock;
   final TextCache text;
   final SceneInput io;
   final int step;
   final _Power power;
-  final (FontData, FontData)? fonts;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -160,11 +148,11 @@ class _PipelinePainter extends CustomPainter {
     io.targets
       ..clear()
       ..addAll([for (var i = 0; i < 7; i++) _target(i)]);
-    _Line(canvas, clock.local, text, io, power, fonts).draw();
+    _Line(canvas, clock.local, text, io, power).draw();
   }
 
   @override
-  bool shouldRepaint(_PipelinePainter old) => old.step != step || old.fonts != fonts;
+  bool shouldRepaint(_PipelinePainter old) => old.step != step;
 }
 
 /// One unit on the line: a code point of the sample and what each machine
@@ -186,7 +174,6 @@ class _Unit {
   }
 
   bool get rtl => script.rtl;
-  String get hex => 'U+${cp.toRadixString(16).toUpperCase().padLeft(4, '0')}';
 }
 
 final _units = () {
@@ -206,7 +193,7 @@ final _units = () {
 final _boxCache = Expando<List<Rect>>();
 
 class _Line extends FactoryInk {
-  _Line(super.c, this.t, this.txt, this.io, this.pw, this.fonts) : cyc = (t / _per).floor() {
+  _Line(super.c, this.t, this.txt, this.io, this.pw) : cyc = (t / _per).floor() {
     ph = t / _per - cyc;
     e = ph < _mv ? eio(ph / _mv) : 1.0;
   }
@@ -215,7 +202,6 @@ class _Line extends FactoryInk {
   final TextCache txt;
   final SceneInput io;
   final _Power pw;
-  final (FontData, FontData)? fonts;
   final int cyc;
   late final double ph;
   late final double e;
@@ -382,49 +368,32 @@ class _Line extends FactoryInk {
     }
   }
 
-  /// A crate at belt position [pos], showing what the machines it passed know.
+  /// A crate at belt position [pos]. What the machines it passed did shows
+  /// on the crate itself: its script's colour (itemize), the glyph (fonts),
+  /// the joined form (shape), a tab for the second line (wrap), pixels (raster).
   void unitCrate(Rect r, _Unit u, double pos) {
     final sorted = done(pos, 1, 0, 0.35);
     final fonted = done(pos, 2, 0, 0.42);
     final shaped = done(pos, 3, 0, 0.2);
     final wrapped = done(pos, 4, 0, 0.3);
-    final placed = done(pos, 5, 0, 0.5);
     final baked = done(pos, 6, 0, 0.62);
     final sc = u.script.color;
     final col = baked ? BP.line : (sorted ? sc : BP.inkDim);
-    String stamp;
-    var stampCol = BP.inkDim;
-    if (placed) {
-      stamp = 'x ${boxes[u.index].left.round()}';
-      stampCol = BP.ink;
-    } else if (wrapped) {
-      stamp = 'line ${lineOf(u)}';
-      stampCol = lineOf(u) == 2 ? BP.violet : BP.ink;
-    } else if (shaped) {
-      stamp = u.formName.isNotEmpty ? u.formName : '#${fonts?.$1.glyphId(u.cp) ?? '?'}';
-      stampCol = BP.amber;
-    } else if (fonted) {
-      stamp = u.rtl ? 'Kufi' : 'Grotesk';
-      stampCol = sc;
-    } else if (sorted) {
-      stamp = '${u.script.label} ${u.rtl ? '←' : '→'}';
-      stampCol = sc;
-    } else {
-      stamp = u.hex;
-    }
     c.drawRect(r, fl(BP.panel));
-    c.drawRect(r, st(col, sorted ? 1.5 : 1.2));
-    final strip = r.top + 12;
+    c.drawRect(r, st(col, sorted ? 1.8 : 1.2));
+    final strip = r.top + 7;
     c.drawLine(Offset(r.left, strip), Offset(r.right, strip), st(col.withValues(alpha: 0.5), 0.8));
-    paintFit(mono(stamp, 9, stampCol, 500), Rect.fromLTRB(r.left + 3, r.top + 1, r.right - 3, strip));
-    final body = Rect.fromLTRB(r.left + 4, strip + 2, r.right - 4, r.bottom - 3);
+    if (wrapped && lineOf(u) == 2) {
+      c.drawRect(Rect.fromLTRB(r.right - 16, r.top + 2, r.right - 4, strip - 2), fl(BP.violet));
+    }
+    final body = Rect.fromLTRB(r.left + 3, strip + 1, r.right - 3, r.bottom - 2);
     if (baked) {
-      pixels(txt.raster(u.space ? '·' : (shaped ? u.form : u.char), BT.sample(12)), body);
+      pixels(txt.raster(u.space ? '·' : (shaped ? u.form : u.char), BT.sample(14)), body);
     } else if (fonted) {
       if (u.space) {
         c.drawLine(body.bottomLeft.translate(18, -6), body.bottomRight.translate(-18, -6), st(BP.inkFaint, 1));
       } else {
-        paintFit(sample(shaped ? u.form : u.char, 26, shaped ? BP.ink : BP.inkDim), body, fitHeight: true);
+        paintFit(sample(shaped ? u.form : u.char, 34, shaped ? BP.ink : BP.inkDim), body, fitHeight: true);
       }
     } else {
       final b = body.deflate(5);
@@ -453,7 +422,8 @@ class _Line extends FactoryInk {
     oven();
   }
 
-  /// 0 · text: the unicode chute, with a roll of code points.
+  /// 0 · text: the chute the string goes into; the character whose crate is
+  /// dropping lights up in its window.
   void hopper() {
     final x = _mx(0);
     machine(0, (on) {
@@ -467,16 +437,25 @@ class _Line extends FactoryInk {
       c.drawPath(funnel, st(BP.line, 1.4));
       box(Rect.fromLTRB(x - 36, 330, x + 36, 392));
       c.drawLine(Offset(x - 40, 392), Offset(x + 40, 392), st(BP.line, 2));
-      final win = Rect.fromLTRB(x - 52, 270, x + 52, 290);
+      final win = Rect.fromLTRB(x - 48, 268, x + 48, 300);
       c.drawRect(win, st(BP.lineDim, 1));
-      final roll = mono(_units.map((u) => u.hex).join('  '), 10, BP.lineDim);
-      final off = on > 0 ? ((t - pw.on[0]) * (18 + 60 * boost(0))) % (roll.width + 20) : 0.0;
-      c.save();
-      c.clipRect(win.deflate(1));
-      for (var xx = win.left + 2 - off; xx < win.right; xx += roll.width + 20) {
-        roll.paint(c, Offset(xx, win.center.dy - roll.height / 2));
+      final style = BT.sample(22, color: on > 0.5 ? BP.inkDim : BP.inkFaint);
+      final str = txt.get(_sample, style);
+      final at = Offset(win.center.dx - str.width / 2, win.center.dy - str.height / 2);
+      str.paint(c, at);
+      // The character going down the chute right now (or the last one).
+      final k = dwell ? cyc : cyc - 1;
+      if (on >= 1 && k >= 0 && reach(k) >= 0 && !unit(k).space) {
+        final hot = txt.get(_sample, BT.sample(22, color: BP.amber));
+        final u = unit(k);
+        final b = hot.getBoxesForSelection(TextSelection(baseOffset: u.index, extentOffset: u.index + 1));
+        if (b.isNotEmpty) {
+          c.save();
+          c.clipRect(b.map((e) => e.toRect()).reduce((a, c) => a.expandToInclude(c)).shift(at));
+          hot.paint(c, at);
+          c.restore();
+        }
       }
-      c.restore();
       final dropping = on > 0 && crateAt(cyc, 0) && dwell && dw(0, 0.4) < 1;
       lamp(Offset(x + 22, 346), BP.amber, dropping || boost(0) > 0);
       lamp(Offset(x + 22, 362), BP.green, on >= 1, 3.5);
@@ -509,11 +488,20 @@ class _Line extends FactoryInk {
         if (k >= 0 && reach(k) >= 2) u = unit(k);
       }
       if (u != null) {
-        final lab = mono('${u.script.label} ${u.rtl ? '←' : '→'}', 13, u.script.color, 500);
-        lab.paint(c, Offset(scr.left + 8, scr.center.dy - lab.height / 2));
-        if ((t * 2.5).floor().isEven) {
-          c.drawRect(Rect.fromLTWH(scr.left + 10 + lab.width, scr.center.dy - 5, 5, 10), fl(u.script.color));
-        }
+        // The run's direction, in its script's colour.
+        final col = u.script.color;
+        final d = u.rtl ? -1.0 : 1.0;
+        final y = scr.center.dy;
+        final tip = Offset(x + d * 30, y);
+        c.drawRect(scr.deflate(3), fl(col.withValues(alpha: 0.14)));
+        c.drawLine(Offset(x - d * 30, y), tip, st(col, 3));
+        c.drawPath(
+          Path()
+            ..moveTo(tip.dx - d * 10, y - 8)
+            ..lineTo(tip.dx, y)
+            ..lineTo(tip.dx - d * 10, y + 8),
+          st(col, 3),
+        );
       }
       // Run lamps: latin, arabic.
       for (var j = 0; j < 2; j++) {
@@ -572,11 +560,10 @@ class _Line extends FactoryInk {
           paintFit(sample(g, 18, hot ? BP.amber : BP.inkDim), r.deflate(4), fitHeight: true);
         }
       }
-      // Which family answered: the first one, or the fallback.
+      // Which shelf (font) answered: the first one, or the fallback.
       final shown = u ?? (on >= 1 && cyc >= 5 && reach(cyc - 5) >= 4 ? unit(cyc - 5) : null);
-      if (shown != null) {
-        final l = mono(shown.rtl ? 'Noto Kufi Arabic' : 'Space Grotesk', 9, shown.rtl ? BP.amber : BP.inkDim, 500);
-        paintFit(l, Rect.fromLTRB(x - 50, 342, x + 50, 356));
+      for (var row = 0; row < 2; row++) {
+        lamp(Offset(x - 40 + row * 16.0, 349), row == 0 ? BP.line : BP.amber, shown != null && shown.rtl == (row == 1), 4);
       }
       c.drawRect(Rect.fromLTRB(x - 14, 364, x + 14, 382), st(BP.line, 1.2));
       if (boost(2) > 0) {
@@ -848,12 +835,14 @@ class _Line extends FactoryInk {
         break;
       }
     }
-    if (last < 0 || on < 1) {
+    if (on < 1) {
       for (var y = inner.top + 4; y < inner.bottom; y += 6) {
         c.drawLine(Offset(inner.left + 2, y), Offset(inner.right - 2, y), st(BP.lineFaint.withValues(alpha: 0.6), 1));
       }
       return;
     }
+    // The laid-out paragraph waits on the screen, faint; each glyph lights up
+    // as its crate arrives (the newest one amber).
     final p = para;
     final style = BT.sample(32, color: BP.inkFaint);
     final w = math.max(txt.get('Hi ', style).width, txt.get('كتاب', style).width) + 6;
@@ -863,22 +852,22 @@ class _Line extends FactoryInk {
     final s = math.min((inner.width - 16) / p.width, (inner.height - 12) / p.height);
     final o = Offset(inner.center.dx - p.width * s / 2, inner.center.dy - p.height * s / 2);
     final n = _units.length;
-    final rep = last ~/ n, idx = last % n;
-    final age = t - (last + _endSlot + _mv) * _per;
+    final rep = last < 0 ? 0 : last ~/ n, idx = last < 0 ? -1 : last % n;
+    final age = last < 0 ? 1e9 : t - (last + _endSlot + _mv) * _per;
     c.save();
     c.translate(o.dx, o.dy);
     c.scale(s);
     for (var j = 0; j < n; j++) {
-      final k = j <= idx ? rep * n + j : (rep - 1) * n + j;
-      if (k < 0 || reach(k) != _endSlot || _units[j].space) continue;
+      if (_units[j].space) continue;
+      final arrived = j <= idx && reach(rep * n + j) == _endSlot;
       final b = boxes[j].inflate(1);
       c.save();
       c.clipRect(b);
-      (j <= idx ? (j == idx && age < 0.5 ? hot : p) : ghost).paint(c, Offset.zero);
+      (arrived ? (j == idx && age < 0.5 ? hot : p) : ghost).paint(c, Offset.zero);
       c.restore();
     }
     c.restore();
-    lamp(Offset(scr.right - 12, scr.bottom - 7), BP.green, age < 0.3 || (t * 1.5) % 2 < 1.4, 3);
+    lamp(Offset(scr.right - 12, scr.bottom - 7), BP.green, last >= 0 && (age < 0.3 || (t * 1.5) % 2 < 1.4), 3);
   }
 
   // ── People ────────────────────────────────────────────────────────────────
@@ -1091,7 +1080,19 @@ class _Line extends FactoryInk {
     }
     for (var i = 0; i < 7; i++) {
       final x = _vx(i);
-      machine(i, (on) => hangingLamp(Offset(x, _walkY + 2), _walkY + 44, 250, on, spread: 50));
+      machine(i, (on) {
+        hangingLamp(Offset(x, _walkY + 2), _walkY + 44, 250, on, spread: 50);
+        if (i == pw.step && on > 0) {
+          // This step's stage: its lamp throws a spotlight down to the belt.
+          final cone = Path()
+            ..moveTo(x - 9, _walkY + 52)
+            ..lineTo(x + 9, _walkY + 52)
+            ..lineTo(x + 96, _beltTop + 10)
+            ..lineTo(x - 96, _beltTop + 10)
+            ..close();
+          c.drawPath(cone, fl(BP.amber.withValues(alpha: 0.07 * on)));
+        }
+      });
     }
   }
 
@@ -1163,14 +1164,18 @@ class _Line extends FactoryInk {
     for (var i = 0; i < 7; i++) {
       final x = _vx(i);
       final on = lit(i);
-      final hot = hv == i || (i == pw.step && t - pw.on[i] < 2.5 && on > 0);
+      final current = i == pw.step && on > 0;
+      final hot = hv == i || current;
       final col = hot ? BP.amber : (on > 0.5 ? BP.ink : BP.inkFaint);
-      final name = mono(_names[i], 16, col, 500);
-      final r = Rect.fromCenter(center: Offset(x, 214), width: name.width + 18, height: 24);
-      box(r, col: hot ? BP.amber : BP.lineDim, w: 1);
-      name.paint(c, Offset(r.left + 9, r.center.dy - name.height / 2));
-      final lib = mono(_libs[i], 12, on > 0.5 ? BP.inkDim : BP.inkFaint);
-      lib.paint(c, Offset(x - lib.width / 2, 231));
+      final name = mono(_names[i], 24, col, 600);
+      final r = Rect.fromCenter(center: Offset(x, 212), width: name.width + 28, height: 40);
+      box(
+        r,
+        col: hot ? BP.amber : (on > 0.5 ? BP.lineDim : BP.lineFaint),
+        w: current ? 2 : 1.2,
+        fill: current ? Color.alphaBlend(BP.amber.withValues(alpha: 0.1), BP.panel) : BP.panel,
+      );
+      name.paint(c, Offset(r.center.dx - name.width / 2, r.center.dy - name.height / 2));
       if (hv == i) {
         c.drawPath(dashPath(Path()..addRect(_target(i).inflate(4)), dash: 5, gap: 4), st(BP.amber.withValues(alpha: 0.6), 1));
       }

@@ -32,16 +32,47 @@ class _Lang {
 
 const _langs = [
   _Lang('English', 'Greedy line breaking puts as many words on each line as will fit, then moves on to the next.'),
+  _Lang(
+    'Japanese',
+    '日本語の文章には単語の間にスペースがありません。それでも句読点は行頭に来ません。',
+    spaces: false,
+  ),
   _Lang('German', 'Der Donaudampfschifffahrtsgesellschaftskapitän sucht vergeblich nach einer Silbentrennung.'),
   _Lang('Thai', 'ภาษาไทยไม่มีช่องว่างระหว่างคำแต่ก็ยังตัดบรรทัดได้ ตัวตัดคำใช้พจนานุกรม', spaces: false),
-  _Lang('Japanese', '日本語の文章は単語の間にスペースがありません。改行はどこでもできます。', spaces: false),
-  _Lang('Arabic', 'النص العربي يكتب من اليمين إلى اليسار ويقسم إلى أسطر عند المسافات بين الكلمات', rtl: true, height: 2.0),
+  _Lang('Arabic', 'النص العربي يكتب من اليمين إلى اليسار ويقسم إلى أسطر عند المسافات بين الكلمات', rtl: true, height: 1.9),
 ];
 
-const _boxX = 56.0;
-const _boxY = 92.0;
-const _minW = 200.0;
-const _maxW = 1100.0;
+/// The paragraph box is centred on the stage; this is its top.
+const _boxY = 124.0;
+const _minW = 380.0;
+const _maxW = 1420.0;
+const _fontSize = 44.0;
+
+/// Auto sweep over one 14 s cycle: (time, width) keys, eased between. The
+/// width holds still between moves so the text settles (and a still taken
+/// ~4 s after arriving shows a settled, several-line paragraph).
+const _autoKeys = [
+  (0.0, 820.0),
+  (0.8, 820.0),
+  (2.0, 520.0),
+  (5.8, 520.0),
+  (7.0, 1180.0),
+  (9.4, 1180.0),
+  (10.6, 420.0),
+  (12.4, 420.0),
+  (13.6, 820.0),
+  (14.0, 820.0),
+];
+
+double _autoWidth(double t) {
+  final c = t % _autoKeys.last.$1;
+  for (var i = 0; i < _autoKeys.length - 1; i++) {
+    final (t0, w0) = _autoKeys[i];
+    final (t1, w1) = _autoKeys[i + 1];
+    if (c <= t1) return w0 + (w1 - w0) * Curves.easeInOutCubic.transform((c - t0) / (t1 - t0));
+  }
+  return _autoKeys.last.$2;
+}
 
 class _Break {
   const _Break(this.line, this.x, this.forced);
@@ -54,7 +85,7 @@ class _Break {
 /// Everything the painter needs; notifies once per frame.
 class _Flow extends ChangeNotifier {
   TextProbe? probe;
-  double width = 640;
+  double width = 820;
   double fade = 1;
   bool rtl = false;
 
@@ -68,7 +99,8 @@ class _Flow extends ChangeNotifier {
   final bandAlpha = <double>[];
   final lineSpan = <(double, double)>[];
   final breaks = <_Break>[];
-  int lineCount = 0;
+  /// Bottom of the lowest (animated) line band.
+  double get paragraphHeight => bandShown.fold<double>(0, (a, r) => math.max(a, r.bottom));
 
   void notify() => notifyListeners();
 }
@@ -95,7 +127,7 @@ class _LineBreakSlideState extends State<LineBreakSlide> with SingleTickerProvid
     final lang = _langs[i];
     _flow.rtl = lang.rtl;
     _flow.probe = TextProbe(
-      TextSpan(text: lang.text, style: BT.sample(34, color: BP.ink, height: lang.height)),
+      TextSpan(text: lang.text, style: BT.sample(_fontSize, color: BP.ink, height: lang.height)),
       textDirection: lang.rtl ? TextDirection.rtl : TextDirection.ltr,
     );
     _flow.ranges
@@ -121,7 +153,6 @@ class _LineBreakSlideState extends State<LineBreakSlide> with SingleTickerProvid
     final p = f.probe!;
     p.painter.layout(minWidth: f.width, maxWidth: f.width);
     final lines = p.lines;
-    f.lineCount = lines.length;
 
     f.target
       ..clear()
@@ -176,7 +207,7 @@ class _LineBreakSlideState extends State<LineBreakSlide> with SingleTickerProvid
     final f = _flow;
     if (_auto) {
       _phase += dt;
-      final w = 640 + 400 * math.sin(_phase * 2 * math.pi / 11);
+      final w = _autoWidth(_phase);
       if ((w - f.width).abs() > 0.25) {
         f.width = w;
         _relayout();
@@ -204,9 +235,10 @@ class _LineBreakSlideState extends State<LineBreakSlide> with SingleTickerProvid
     f.notify();
   }
 
+  /// The box is centred, so its right edge moves half as fast as the width.
   void _drag(double dx) {
     final f = _flow;
-    f.width = (f.width + dx).clamp(_minW, _maxW);
+    f.width = (f.width + 2 * dx).clamp(_minW, _maxW);
     _relayout();
     if (_auto) setState(() => _auto = false);
   }
@@ -236,82 +268,44 @@ class _LineBreakSlideState extends State<LineBreakSlide> with SingleTickerProvid
               values: const [0, 1, 2, 3, 4],
               selected: _lang,
               labelOf: (i) => _langs[i].name,
+              size: 20,
+              spacing: 12,
               onChanged: (i) => setState(() {
                 _lang = i;
                 _load(i);
               }),
             ),
           ),
-          // Drag handle on the width limit.
-          AnimatedBuilder(
-            animation: _flow,
-            builder: (context, _) => Positioned(
-              left: _boxX + _flow.width - 22,
-              top: _boxY - 8,
-              width: 44,
-              height: 540,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.resizeLeftRight,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragUpdate: (d) => _drag(d.delta.dx),
-                  child: CustomPaint(painter: _HandlePainter(active: !_auto)),
+          // Drag handle on the width limit (tap it to toggle the auto sweep).
+          Positioned.fill(
+            child: LayoutBuilder(
+              builder: (context, box) => AnimatedBuilder(
+                animation: _flow,
+                builder: (context, _) => Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: (box.maxWidth + _flow.width) / 2 - 28,
+                      top: _boxY - 12,
+                      width: 56,
+                      height: math.max(64.0, _flow.paragraphHeight) + 24,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() {
+                            _auto = !_auto;
+                            if (_auto) _phase = 0;
+                          }),
+                          onHorizontalDragUpdate: (d) => _drag(d.delta.dx),
+                          child: CustomPaint(painter: _HandlePainter(active: !_auto)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-          // Readout
-          Positioned(
-            left: _boxX + _maxW + 44,
-            top: _boxY,
-            right: 0,
-            child: AnimatedBuilder(
-              animation: _flow,
-              builder: (context, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('maxWidth', style: BT.mono(14, color: BP.inkDim)),
-                  const SizedBox(height: 4),
-                  Text('${_flow.width.round()} px', style: BT.mono(36, color: BP.amber, weight: 500)),
-                  const SizedBox(height: 28),
-                  Text('lines', style: BT.mono(14, color: BP.inkDim)),
-                  const SizedBox(height: 4),
-                  AnimatedCount(
-                    value: _flow.lineCount,
-                    duration: const Duration(milliseconds: 300),
-                    style: BT.display(48, color: BP.ink),
-                  ),
-                  const SizedBox(height: 28),
-                  Row(
-                    children: [
-                      Container(width: 12, height: 3, color: BP.amber),
-                      const SizedBox(width: 8),
-                      Text('break', style: BT.mono(13, color: BP.inkDim)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(width: 12, height: 3, color: BP.red),
-                      const SizedBox(width: 8),
-                      Text('forced', style: BT.mono(13, color: BP.inkDim)),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  BpButton(
-                    label: 'auto',
-                    selected: _auto,
-                    size: 14,
-                    onTap: () => setState(() => _auto = !_auto),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Positioned(
-            right: 0,
-            bottom: 0,
-            child: BpTag('greedy · UAX #14 · ICU dictionaries', color: BP.inkDim),
           ),
         ],
       ),
@@ -328,10 +322,9 @@ class _FlowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final probe = f.probe;
     if (probe == null) return;
-    const o = Offset(_boxX, _boxY);
     final w = f.width;
-    final bottom = f.bandShown.isEmpty ? 60.0 : f.bandShown.fold<double>(0, (a, r) => math.max(a, r.bottom));
-    final box = Rect.fromLTWH(o.dx, o.dy, w, math.max(60.0, bottom));
+    final o = Offset((size.width - w) / 2, _boxY);
+    final box = Rect.fromLTWH(o.dx, o.dy, w, math.max(60.0, f.paragraphHeight));
 
     // Paper box
     canvas.drawRect(box.inflate(12), Paint()..color = BP.panel.withValues(alpha: 0.7));
@@ -357,8 +350,6 @@ class _FlowPainter extends CustomPainter {
           Paint()..color = (i.isEven ? BP.line : BP.violet).withValues(alpha: 0.09 * a),
         );
       }
-      _label(canvas, (i + 1).toString().padLeft(2, '0'), BT.mono(13, color: BP.inkFaint.withValues(alpha: a)),
-          Offset(o.dx - 36, r.center.dy));
     }
 
     // Text: settled graphemes in one pass, moving ones one by one.
@@ -402,13 +393,13 @@ class _FlowPainter extends CustomPainter {
       final c = b.forced ? BP.red : BP.amber;
       final p = Paint()
         ..color = c
-        ..strokeWidth = 2.5;
+        ..strokeWidth = 3.5;
       canvas.drawLine(Offset(x, r.top + 8), Offset(x, r.bottom - 8), p);
       final dir = f.rtl ? -1.0 : 1.0;
       final tri = Path()
         ..moveTo(x + dir * 3, r.bottom - 8)
-        ..lineTo(x + dir * 11, r.bottom - 8)
-        ..lineTo(x + dir * 3, r.bottom - 16)
+        ..lineTo(x + dir * 15, r.bottom - 8)
+        ..lineTo(x + dir * 3, r.bottom - 20)
         ..close();
       canvas.drawPath(tri, Paint()..color = c);
     }
@@ -418,7 +409,7 @@ class _FlowPainter extends CustomPainter {
     canvas.drawPath(
       dashPath(Path()
         ..moveTo(lx, o.dy - 40)
-        ..lineTo(lx, size.height - 30), dash: 7, gap: 5),
+        ..lineTo(lx, box.bottom + 56), dash: 7, gap: 5),
       Paint()
         ..color = BP.amber
         ..style = PaintingStyle.stroke
@@ -427,27 +418,27 @@ class _FlowPainter extends CustomPainter {
     canvas.drawPath(
       dashPath(Path()
         ..moveTo(o.dx, o.dy - 40)
-        ..lineTo(o.dx, size.height - 30), dash: 7, gap: 5),
+        ..lineTo(o.dx, box.bottom + 56), dash: 7, gap: 5),
       Paint()
         ..color = BP.lineDim
         ..style = PaintingStyle.stroke,
     );
     // Dimension across the top.
-    final dy = o.dy - 28;
+    final dy = o.dy - 34;
     final dp = Paint()
       ..color = BP.amber
-      ..strokeWidth = 1.2;
+      ..strokeWidth = 1.6;
     canvas.drawLine(Offset(o.dx, dy), Offset(lx, dy), dp);
-    drawArrowHead(canvas, Offset(o.dx, dy), Offset(o.dx + 10, dy), dp, 5);
-    drawArrowHead(canvas, Offset(lx, dy), Offset(lx - 10, dy), dp, 5);
-    final label = '${w.round()} px';
+    drawArrowHead(canvas, Offset(o.dx, dy), Offset(o.dx + 10, dy), dp, 8);
+    drawArrowHead(canvas, Offset(lx, dy), Offset(lx - 10, dy), dp, 8);
+    final label = 'maxWidth ${w.round()}';
     final tp = TextPainter(
-      text: TextSpan(text: label, style: BT.mono(14, color: BP.amber)),
+      text: TextSpan(text: label, style: BT.mono(24, color: BP.amber, weight: 500)),
       textDirection: TextDirection.ltr,
     )..layout();
-    final tr = Rect.fromCenter(center: Offset((o.dx + lx) / 2, dy), width: tp.width + 16, height: tp.height);
+    final tr = Rect.fromCenter(center: Offset((o.dx + lx) / 2, dy), width: tp.width + 24, height: tp.height);
     canvas.drawRect(tr, Paint()..color = BP.paper);
-    tp.paint(canvas, tr.topLeft + const Offset(8, 0));
+    tp.paint(canvas, tr.topLeft + const Offset(12, 0));
     tp.dispose();
   }
 
@@ -471,12 +462,6 @@ class _FlowPainter extends CustomPainter {
     return r;
   }
 
-  static void _label(Canvas canvas, String text, TextStyle style, Offset center) {
-    final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr)..layout();
-    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
-    tp.dispose();
-  }
-
   @override
   bool shouldRepaint(_FlowPainter old) => old.f != f;
 }
@@ -489,26 +474,27 @@ class _HandlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
-    final r = Rect.fromCenter(center: Offset(cx, 150), width: 16, height: 64);
+    final cy = size.height / 2;
+    final r = Rect.fromCenter(center: Offset(cx, cy), width: 20, height: 76);
     canvas.drawRect(r, Paint()..color = BP.paper);
     canvas.drawRect(
       r,
       Paint()
         ..color = BP.amber
         ..style = PaintingStyle.stroke
-        ..strokeWidth = active ? 2.5 : 1.5,
+        ..strokeWidth = active ? 3 : 2,
     );
     final g = Paint()
       ..color = BP.amber
-      ..strokeWidth = 1.5;
-    for (final dy in [-8.0, 0.0, 8.0]) {
-      canvas.drawLine(Offset(cx - 4, 150 + dy), Offset(cx + 4, 150 + dy), g);
+      ..strokeWidth = 2;
+    for (final dy in [-10.0, 0.0, 10.0]) {
+      canvas.drawLine(Offset(cx - 5, cy + dy), Offset(cx + 5, cy + dy), g);
     }
     final a = Paint()
-      ..color = BP.amber.withValues(alpha: 0.8)
-      ..strokeWidth = 1.5;
-    drawArrowHead(canvas, Offset(cx - 18, 150), Offset(cx - 10, 150), a, 5);
-    drawArrowHead(canvas, Offset(cx + 18, 150), Offset(cx + 10, 150), a, 5);
+      ..color = BP.amber.withValues(alpha: 0.85)
+      ..strokeWidth = 2;
+    drawArrowHead(canvas, Offset(cx - 24, cy), Offset(cx - 14, cy), a, 7);
+    drawArrowHead(canvas, Offset(cx + 24, cy), Offset(cx + 14, cy), a, 7);
   }
 
   @override

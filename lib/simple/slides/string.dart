@@ -18,13 +18,10 @@ class StringSlide extends StatefulWidget {
 class _StringSlideState extends State<StringSlide> {
   static const _presets = [
     'Hello',
-    'é',
-    'é',
+    'か\u3099', // が, decomposed: か + combining dakuten
+    '🇯🇵',
     '👨‍👩‍👧‍👦',
-    '🇩🇿',
     'नमस्ते',
-    'كتاب',
-    '👋🏽',
   ];
 
   late final _ctrl = TextEditingController(text: '👨‍👩‍👧‍👦');
@@ -59,33 +56,27 @@ class _StringSlideState extends State<StringSlide> {
             children: [
               BpTextField(
                 controller: _ctrl,
-                width: 460,
-                style: BT.sample(34),
+                width: 380,
+                style: BT.sample(40),
                 onChanged: (_) => setState(() => _hover = null),
               ),
-              const SizedBox(width: 40),
-              Expanded(
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final p in _presets)
-                      _PresetChip(text: p, selected: p == text, onTap: () => _set(p)),
-                  ],
-                ),
-              ),
+              const Spacer(),
+              for (final p in _presets) ...[
+                const SizedBox(width: 12),
+                _PresetChip(text: p, selected: p == text, onTap: () => _set(p)),
+              ],
             ],
           ),
-          const SizedBox(height: 44),
+          const SizedBox(height: 40),
           Expanded(
             child: LayoutBuilder(
               builder: (context, box) {
-                const labelW = 250.0;
-                const countW = 130.0;
-                final avail = box.maxWidth - labelW - countW - 24;
+                const labelW = 220.0;
+                const countW = 340.0;
+                final avail = box.maxWidth - labelW - countW - 48 - 18.0 * (clusters.length - 1);
                 final cell = bytes == 0
-                    ? 44.0
-                    : math.min(44.0, math.max(10.0, avail / bytes - _gap));
+                    ? 72.0
+                    : math.min(72.0, math.max(10.0, avail / bytes - _gap));
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -93,32 +84,40 @@ class _StringSlideState extends State<StringSlide> {
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (var i = 0; i < clusters.length; i++)
-                              MouseRegion(
-                                key: ValueKey('$i:${clusters[i]}'),
-                                onEnter: (_) => setState(() => _hover = i),
-                                onExit: (_) => setState(() => _hover = null),
-                                child: Reveal(
-                                  visible: true,
-                                  delay: Duration(milliseconds: 60 * math.min(i, 12)),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 18),
-                                    child: _ClusterColumn(
-                                      cluster: clusters[i],
-                                      cell: cell,
-                                      hot: _hover == i,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: box.maxWidth - labelW - countW - 48,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (var i = 0; i < clusters.length; i++)
+                                MouseRegion(
+                                  key: ValueKey('$i:${clusters[i]}'),
+                                  onEnter: (_) => setState(() => _hover = i),
+                                  onExit: (_) => setState(() => _hover = null),
+                                  child: Reveal(
+                                    visible: true,
+                                    delay: Duration(milliseconds: 60 * math.min(i, 12)),
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        right: i < clusters.length - 1 ? 18 : 0,
+                                      ),
+                                      child: _ClusterColumn(
+                                        cluster: clusters[i],
+                                        cell: cell,
+                                        hot: _hover == i,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 24),
+                    const SizedBox(width: 48),
                     SizedBox(
                       width: countW,
                       child: _Counts(
@@ -140,43 +139,37 @@ class _StringSlideState extends State<StringSlide> {
 }
 
 const _gap = 4.0;
-const _rowH = [150.0, 84.0, 60.0, 60.0];
-const _rowGap = 34.0;
+const _rowH = [170.0, 96.0, 66.0, 66.0];
+const _rowGap = 30.0;
+const _rowColor = [BP.ink, BP.inkDim, BP.amber, BP.inkDim];
 
+/// One plain name per row.
 class _Labels extends StatelessWidget {
   const _Labels();
 
   @override
   Widget build(BuildContext context) {
-    const rows = [
-      ('graphemes', 's.characters.length', BP.ink),
-      ('code points', 's.runes.length', BP.inkDim),
-      ('UTF-16 units', 's.length', BP.amber),
-      ('UTF-8 bytes', 'utf8.encode(s).length', BP.inkDim),
-    ];
+    const names = ['graphemes', 'code points', 'UTF-16 units', 'UTF-8 bytes'];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var r = 0; r < rows.length; r++) ...[
+        for (var r = 0; r < names.length; r++) ...[
           SizedBox(
             height: _rowH[r],
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(rows[r].$1, style: BT.display(22, color: rows[r].$3)),
-                const SizedBox(height: 4),
-                Text(rows[r].$2, style: BT.mono(13, color: BP.inkFaint)),
-              ],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(names[r], style: BT.display(28, color: _rowColor[r])),
             ),
           ),
-          if (r < rows.length - 1) const SizedBox(height: _rowGap),
+          if (r < names.length - 1) const SizedBox(height: _rowGap),
         ],
       ],
     );
   }
 }
 
+/// The counts. The two that matter to a Dart developer carry their API:
+/// what you see (`s.characters.length`) vs what `s.length` says.
 class _Counts extends StatelessWidget {
   const _Counts({
     required this.graphemes,
@@ -193,20 +186,34 @@ class _Counts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final values = [graphemes, runes, units, bytes];
-    final colors = [BP.ink, BP.inkDim, BP.amber, BP.inkDim];
+    const api = ['s.characters.length', null, 's.length', null];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         for (var r = 0; r < 4; r++) ...[
           SizedBox(
             height: _rowH[r],
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: AnimatedCount(
-                value: values[r],
-                duration: const Duration(milliseconds: 500),
-                style: BT.display(r == 2 ? 56 : 44, color: colors[r], weight: 500),
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (api[r] case final a?) ...[
+                  Text(a, style: BT.mono(22, color: _rowColor[r])),
+                  const SizedBox(width: 18),
+                ],
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 72),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    widthFactor: 1,
+                    child: AnimatedCount(
+                      value: values[r],
+                      duration: const Duration(milliseconds: 500),
+                      style: BT.display(r == 2 ? 64 : 52, color: _rowColor[r], weight: 500),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (r < 3) const SizedBox(height: _rowGap),
@@ -254,7 +261,7 @@ class _ClusterColumn extends StatelessWidget {
                     padding: const EdgeInsets.all(6),
                     child: Text(
                       cluster == ' ' ? '␠' : cluster,
-                      style: BT.sample(80, color: hot ? BP.amber : BP.ink),
+                      style: BT.sample(120, color: hot ? BP.amber : BP.ink),
                     ),
                   ),
                 ),
@@ -337,7 +344,8 @@ class _ClusterColumn extends StatelessWidget {
         (cp >= 0x093A && cp <= 0x094F) ||
         (cp >= 0x0951 && cp <= 0x0957) ||
         (cp >= 0x0900 && cp <= 0x0903) ||
-        (cp >= 0x064B && cp <= 0x065F);
+        (cp >= 0x064B && cp <= 0x065F) ||
+        (cp >= 0x3099 && cp <= 0x309A);
     return combining ? '◌$s' : s;
   }
 }
@@ -415,8 +423,8 @@ class _Cell extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (top != null)
-            Text(top!, style: BT.sample(24, color: BP.ink)),
-          Text(bottom, style: BT.mono(14, color: textColor)),
+            Text(top!, style: BT.sample(34, color: BP.ink)),
+          Text(bottom, style: BT.mono(18, color: textColor)),
         ],
       ),
     ),

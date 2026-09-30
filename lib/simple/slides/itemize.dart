@@ -22,12 +22,16 @@ class ItemizeSlide extends StatefulWidget {
 
 const _presets = [
   'Hello مرحبا 世界 👋 123',
+  'Flutter で 日本語 🇯🇵',
   'Hi كتاب 2026',
   'नमस्ते Привет שלום',
-  'ไทย 한국어 かな 漢字',
 ];
 
-const _textTop = 190.0;
+/// Top of the stage, below the text field and sample chips.
+const _stageTop = 84.0;
+
+/// Height of the brackets and labels under the text.
+const _below = 172.0;
 
 Color _colorOf(Script s) => s == Script.common ? BP.inkDim : s.color;
 
@@ -101,13 +105,8 @@ class _ItemizeSlideState extends State<ItemizeSlide> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final step = SlideScope.of(context).step;
     return SlideFrame(
       title: 'Itemize',
-      trailing: Reveal(
-        visible: step >= 1,
-        child: BpTag('${_layout.runs.length} runs', color: BP.amber, size: 15),
-      ),
       child: Stack(
         children: [
           Positioned.fill(
@@ -133,21 +132,15 @@ class _ItemizeSlideState extends State<ItemizeSlide> with TickerProviderStateMix
               children: [
                 BpTextField(
                   controller: _ctrl,
-                  width: 500,
-                  style: BT.sample(28),
+                  width: 420,
+                  style: BT.sample(32),
                   onChanged: _setText,
                 ),
-                const SizedBox(width: 36),
-                Expanded(
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final p in _presets)
-                        _Chip(text: p, selected: p == _ctrl.text, onTap: () => _setText(p)),
-                    ],
-                  ),
-                ),
+                const Spacer(),
+                for (final p in _presets) ...[
+                  const SizedBox(width: 12),
+                  _Chip(text: p, selected: p == _ctrl.text, onTap: () => _setText(p)),
+                ],
               ],
             ),
           ),
@@ -171,12 +164,12 @@ class _Chip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? BP.line.withValues(alpha: 0.16) : Colors.transparent,
           border: Border.all(color: selected ? BP.amber : BP.lineDim, width: selected ? 2 : 1),
         ),
-        child: Text(text, style: BT.sample(19, color: selected ? BP.ink : BP.inkDim)),
+        child: Text(text, style: BT.sample(22, color: selected ? BP.ink : BP.inkDim)),
       ),
     ),
   );
@@ -195,11 +188,10 @@ class _Seg {
 }
 
 class _Cluster {
-  _Cluster(this.script, this.rect, this.cp, this.seg);
+  _Cluster(this.script, this.rect, this.seg);
 
   final Script script;
   final Rect rect;
-  final String cp;
   final int seg;
 }
 
@@ -215,10 +207,10 @@ class _Layout {
   });
 
   factory _Layout.of(String text) {
-    var fs = 72.0;
+    var fs = 124.0;
     var plain = TextProbe(TextSpan(text: text, style: BT.sample(fs)));
-    if (plain.size.width > 1400) {
-      fs = math.max(24.0, fs * 1400 / plain.size.width);
+    if (plain.size.width > 1360) {
+      fs = math.max(32.0, fs * 1360 / plain.size.width);
       plain.dispose();
       plain = TextProbe(TextSpan(text: text, style: BT.sample(fs)));
     }
@@ -229,7 +221,7 @@ class _Layout {
           for (final r in runs)
             TextSpan(
               text: r.text,
-              style: BT.sample(fs, color: Color.lerp(BP.ink, _colorOf(r.script), 0.7)!),
+              style: BT.sample(fs, color: Color.lerp(BP.ink, _colorOf(r.script), 0.8)!),
             ),
         ],
       ),
@@ -278,8 +270,7 @@ class _Layout {
             break;
           }
         }
-        final cp = g.runes.first.toRadixString(16).toUpperCase().padLeft(4, '0');
-        clusters.add(_Cluster(scriptOfCluster(g), r, 'U+$cp', seg));
+        clusters.add(_Cluster(scriptOfCluster(g), r, seg));
       }
       i += g.length;
     }
@@ -338,7 +329,12 @@ class _ItemizePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final l = layout;
     if (l.runs.isEmpty) return;
-    final origin = Offset((size.width - l.plain.size.width) / 2, _textTop);
+    // Center the whole block (scanner head, text, brackets, labels) on stage.
+    final blockH = 24 + l.plain.size.height + _below;
+    final origin = Offset(
+      (size.width - l.plain.size.width) / 2,
+      _stageTop + 24 + math.max(0.0, (size.height - _stageTop - blockH) / 2),
+    );
     final e = enter.value;
     // Runs pull apart, then settle back onto their real positions.
     final sep = Curves.easeOutCubic.transform((e / 0.3).clamp(0.0, 1.0)) * (1 - _win(e, 0.6, 1));
@@ -368,7 +364,7 @@ class _ItemizePainter extends CustomPainter {
       final r = Rect.fromLTRB(s.rect.left, top, s.rect.right, bottom).shift(Offset(origin.dx, 0) + shift(k));
       canvas.drawRect(
         r.deflate(2),
-        Paint()..color = _colorOf(l.runs[s.run].script).withValues(alpha: 0.07 * p),
+        Paint()..color = _colorOf(l.runs[s.run].script).withValues(alpha: 0.1 * p),
       );
     }
 
@@ -405,21 +401,20 @@ class _ItemizePainter extends CustomPainter {
         Paint()
           ..color = col
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
+          ..strokeWidth = 2,
       );
       final prev = i > 0 ? l.clusters[i - 1].rect.shift(origin + shift(l.clusters[i - 1].seg)).center.dx : r.center.dx;
       final x = lerpDouble(prev, r.center.dx, Curves.easeOutCubic.transform(((pos - i) / 0.45).clamp(0.0, 1.0)))!;
       final head = Path()
-        ..moveTo(x - 7, top - 14)
-        ..lineTo(x + 7, top - 14)
-        ..lineTo(x, top - 4)
+        ..moveTo(x - 10, top - 20)
+        ..lineTo(x + 10, top - 20)
+        ..lineTo(x, top - 6)
         ..close();
       canvas.drawPath(head, Paint()..color = BP.amber);
-      _label(canvas, c.cp, BT.mono(15, color: col), Offset(x, top - 32));
     }
 
     // Brackets under every visual segment.
-    final y0 = bottom + 16;
+    final y0 = bottom + 18;
     for (var k = 0; k < n; k++) {
       final s = l.segs[k];
       final p = _win(e, 0.18 + k * st, 0.58 + k * st);
@@ -429,10 +424,10 @@ class _ItemizePainter extends CustomPainter {
       final left = r.left + 4;
       final right = math.max(left + 2, r.right - 4);
       final cx = (left + right) / 2;
-      final yb = y0 + 14;
+      final yb = y0 + 16;
       final paint = Paint()
         ..color = col
-        ..strokeWidth = 2
+        ..strokeWidth = 2.5
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.square;
       for (final end in [left, right]) {
@@ -443,7 +438,7 @@ class _ItemizePainter extends CustomPainter {
         canvas.drawPath(partialPath(half, p), paint);
       }
       if (l.mainSeg[s.run] == k) {
-        canvas.drawLine(Offset(cx, yb), Offset(cx, yb + 8 * p), paint..strokeWidth = 1.5);
+        canvas.drawLine(Offset(cx, yb), Offset(cx, yb + 10 * p), paint..strokeWidth = 2);
       }
     }
 
@@ -456,27 +451,24 @@ class _ItemizePainter extends CustomPainter {
       final r = l.segs[k].rect.shift(origin + shift(k));
       final la = _win(e, 0.38 + k * st, 0.78 + k * st);
       if (la <= 0) continue;
-      final maxW = math.max(r.width + 16, 84.0);
-      _label(canvas, run.script.label, BT.mono(19, color: col, weight: 500), Offset(r.center.dx, y0 + 44 + 8 * (1 - la)),
+      final maxW = math.max(r.width + 24, 120.0);
+      _label(canvas, run.script.label, BT.mono(26, color: col, weight: 500), Offset(r.center.dx, y0 + 56 + 8 * (1 - la)),
           alpha: la, maxWidth: maxW);
 
       final at = _ease(arrows.value) * la;
-      if (at > 0) {
-        _dirArrow(canvas, r, y0 + 78, run.rtl, col, at, march.value);
-        _label(canvas, run.rtl ? 'rtl' : 'ltr', BT.mono(12, color: col), Offset(r.center.dx, y0 + 96), alpha: at * 0.8);
-      }
+      if (at > 0) _dirArrow(canvas, r, y0 + 100, run.rtl, col, at, march.value);
 
       final ft = _ease(fonts.value) * la;
       if (ft > 0) {
-        _label(canvas, run.script.font, BT.mono(15, color: BP.ink), Offset(r.center.dx, y0 + 132 - 22 * (1 - ft)),
+        _label(canvas, run.script.font.replaceAll('*', ''), BT.display(22, color: BP.ink), Offset(r.center.dx, y0 + 146 - 22 * (1 - ft)),
             alpha: ft, maxWidth: maxW);
-        final w = math.min(maxW, 150.0) * ft;
+        final w = math.min(maxW, 180.0) * ft;
         canvas.drawLine(
-          Offset(r.center.dx - w / 2, y0 + 146),
-          Offset(r.center.dx + w / 2, y0 + 146),
+          Offset(r.center.dx - w / 2, y0 + 164),
+          Offset(r.center.dx + w / 2, y0 + 164),
           Paint()
             ..color = col.withValues(alpha: 0.6 * ft)
-            ..strokeWidth = 1,
+            ..strokeWidth = 1.5,
         );
       }
     }
@@ -529,22 +521,22 @@ class _ItemizePainter extends CustomPainter {
     final end = from + (to - from) * t;
     final line = Paint()
       ..color = col.withValues(alpha: 0.9 * t)
-      ..strokeWidth = 1.6
+      ..strokeWidth = 2.2
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(Offset(from, y), Offset(end, y), line);
-    drawArrowHead(canvas, Offset(end, y), Offset(from, y), line, 9);
+    drawArrowHead(canvas, Offset(end, y), Offset(from, y), line, 12);
     // Marching chevrons in the reading direction.
     final len = (to - from).abs() * t;
-    const gap = 20.0;
+    const gap = 26.0;
     final dir = rtl ? -1.0 : 1.0;
-    for (var d = phase * gap; d < len - 14; d += gap) {
+    for (var d = phase * gap; d < len - 18; d += gap) {
       final x = from + dir * d;
-      final fade = math.min(1.0, math.min(d, len - d) / 20);
+      final fade = math.min(1.0, math.min(d, len - d) / 24);
       final p = Paint()
         ..color = col.withValues(alpha: 0.7 * t * fade)
-        ..strokeWidth = 1.4;
-      drawArrowHead(canvas, Offset(x, y - 7), Offset(x - dir, y - 7), p, 5);
+        ..strokeWidth = 1.8;
+      drawArrowHead(canvas, Offset(x, y - 10), Offset(x - dir, y - 10), p, 7);
     }
   }
 

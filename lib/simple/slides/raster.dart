@@ -20,15 +20,14 @@ class RasterSlide extends StatefulWidget {
 
 enum _Mode { aliased, grayscale, subpixel }
 
-const _glyphs = ['a', 'g', 'ع', '字', '&'];
+const _glyphs = ['a', 'g', 'ع', 'あ', '字'];
 
 const _ss = 12; // supersampling per pixel edge
-const _panelTop = 76.0;
-const _panelH = 468.0;
-const _panelW = 610.0;
+const _panelTop = 100.0;
+const _panelH = 504.0;
+const _panelW = 712.0;
 const _leftPanel = Rect.fromLTWH(0, _panelTop, _panelW, _panelH);
-const _rightPanel = Rect.fromLTWH(640, _panelTop, _panelW, _panelH);
-const _colX = 1284.0;
+const _rightPanel = Rect.fromLTWH(1472 - _panelW, _panelTop, _panelW, _panelH);
 
 // Subpixel stripe colors (R, G, B) drawn from the palette.
 const _stripe = [BP.red, BP.green, BP.line];
@@ -44,7 +43,7 @@ class _RasterSlideState extends State<RasterSlide> with TickerProviderStateMixin
   )..repeat();
 
   String _glyph = 'a';
-  double _size = 16;
+  double _size = 14;
   _Mode _mode = _Mode.grayscale;
   _Raster? _r;
 
@@ -126,14 +125,15 @@ class _RasterSlideState extends State<RasterSlide> with TickerProviderStateMixin
     return SlideFrame(
       title: 'Rasterization',
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Positioned.fromRect(
             rect: _leftPanel,
-            child: const BpPanel(label: 'outline', child: SizedBox.expand()),
+            child: const BpPanel(child: SizedBox.expand()),
           ),
           Positioned.fromRect(
             rect: _rightPanel,
-            child: BpPanel(label: _mode.name, color: BP.amber, child: const SizedBox.expand()),
+            child: const BpPanel(color: BP.amber, child: SizedBox.expand()),
           ),
           Positioned.fill(
             child: IgnorePointer(
@@ -144,6 +144,16 @@ class _RasterSlideState extends State<RasterSlide> with TickerProviderStateMixin
               ),
             ),
           ),
+          Positioned(
+            left: _leftPanel.left + 18,
+            top: _panelTop - 16,
+            child: const _PanelLabel('outline', color: BP.line),
+          ),
+          Positioned(
+            left: _rightPanel.left + 18,
+            top: _panelTop - 16,
+            child: const _PanelLabel('pixels', color: BP.amber),
+          ),
           // Controls
           Positioned(
             left: 0,
@@ -153,43 +163,20 @@ class _RasterSlideState extends State<RasterSlide> with TickerProviderStateMixin
               children: [
                 for (final g in _glyphs) ...[
                   _GlyphChip(glyph: g, selected: g == _glyph, onTap: () => _setGlyph(g)),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                 ],
-                const SizedBox(width: 30),
+                const SizedBox(width: 34),
                 BpSegmented<_Mode>(
                   values: _Mode.values,
                   selected: _mode,
                   onChanged: _setMode,
                   color: BP.amber,
+                  size: 20,
+                  spacing: 12,
                   labelOf: (m) => m.name,
                 ),
                 const Spacer(),
-                BpSlider(
-                  label: 'px / em',
-                  value: _size,
-                  min: 8,
-                  max: 48,
-                  width: 300,
-                  ticks: 8,
-                  onChanged: _setSize,
-                  format: (v) => '${v.round()} px',
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: _colX,
-            top: _panelTop - 6,
-            child: Text('actual size', style: BT.mono(14, color: BP.inkDim)),
-          ),
-          const Positioned(
-            left: 0,
-            bottom: 0,
-            child: Row(
-              children: [
-                BpTag('Flutter / Impeller: grayscale AA', color: BP.green),
-                SizedBox(width: 14),
-                BpTag('macOS: subpixel off since 10.14', color: BP.inkDim),
+                _SizeSlider(value: _size, min: 8, max: 48, width: 300, onChanged: _setSize),
               ],
             ),
           ),
@@ -197,6 +184,21 @@ class _RasterSlideState extends State<RasterSlide> with TickerProviderStateMixin
       ),
     );
   }
+}
+
+/// A label notched into a panel's top edge.
+class _PanelLabel extends StatelessWidget {
+  const _PanelLabel(this.text, {required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: BP.paper,
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    child: Text(text, style: BT.mono(24, color: color, weight: 500, height: 1.25)),
+  );
 }
 
 class _GlyphChip extends StatelessWidget {
@@ -213,17 +215,106 @@ class _GlyphChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 56,
-        height: 48,
+        width: 64,
+        height: 56,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? BP.line.withValues(alpha: 0.16) : Colors.transparent,
           border: Border.all(color: selected ? BP.amber : BP.lineDim, width: selected ? 2 : 1),
         ),
-        child: Text(glyph, style: BT.sample(26, color: selected ? BP.ink : BP.inkDim, height: 1.1)),
+        child: Text(glyph, style: BT.sample(30, color: selected ? BP.ink : BP.inkDim, height: 1.1)),
       ),
     ),
   );
+}
+
+/// The deck's ruler slider, with a readout big enough to read from the back.
+class _SizeSlider extends StatelessWidget {
+  const _SizeSlider({
+    required this.value,
+    required this.onChanged,
+    required this.min,
+    required this.max,
+    required this.width,
+  });
+
+  final double value;
+  final double min;
+  final double max;
+  final double width;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    void update(Offset p) => onChanged(min + (p.dx / width).clamp(0.0, 1.0) * (max - min));
+    final t = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: width,
+          height: 44,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanDown: (d) => update(d.localPosition),
+              onPanUpdate: (d) => update(d.localPosition),
+              child: CustomPaint(painter: _SliderPainter(t: t)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 18),
+        SizedBox(
+          width: 86,
+          child: Text('${value.round()} px', style: BT.mono(26, color: BP.amber, weight: 500)),
+        ),
+      ],
+    );
+  }
+}
+
+class _SliderPainter extends CustomPainter {
+  _SliderPainter({required this.t});
+
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height / 2;
+    final dim = Paint()
+      ..color = BP.lineDim
+      ..strokeWidth = 1.5;
+    final hot = Paint()
+      ..color = BP.line
+      ..strokeWidth = 2.5;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), dim);
+    const ticks = 8;
+    for (var i = 0; i <= ticks; i++) {
+      final x = size.width * i / ticks;
+      final h = i % 4 == 0 ? 10.0 : 5.0;
+      canvas.drawLine(Offset(x, y - h), Offset(x, y + h), dim);
+    }
+    final x = size.width * t;
+    canvas.drawLine(Offset(0, y), Offset(x, y), hot);
+    final d = Path()
+      ..moveTo(x, y - 12)
+      ..lineTo(x + 12, y)
+      ..lineTo(x, y + 12)
+      ..lineTo(x - 12, y)
+      ..close();
+    canvas.drawPath(d, Paint()..color = BP.paper);
+    canvas.drawPath(
+      d,
+      Paint()
+        ..color = BP.amber
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SliderPainter old) => old.t != t;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,10 +331,8 @@ class _Raster {
     required this.glyphOrigin,
     required this.baseline,
     required this.outline,
-    required this.engine,
     required this.covImage,
     required this.pixels,
-    required this.previews,
   });
 
   final int size;
@@ -261,10 +350,8 @@ class _Raster {
   final double baseline;
 
   final TextPainter outline;
-  final TextPainter engine;
   final ui.Image covImage;
   final Map<_Mode, ui.Image> pixels;
-  final Map<_Mode, ui.Image> previews;
 
   static Future<_Raster> compute(String glyph, int px) async {
     final style = BT.sample(px.toDouble(), color: const Color(0xFFFFFFFF));
@@ -354,14 +441,10 @@ class _Raster {
         style: BT.sample(px.toDouble()).copyWith(
           foreground: Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6 / cell
+            ..strokeWidth = 2.2 / cell
             ..color = BP.line,
         ),
       ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final engine = TextPainter(
-      text: TextSpan(text: glyph, style: BT.sample(px.toDouble(), color: BP.ink)),
       textDirection: TextDirection.ltr,
     )..layout();
 
@@ -378,20 +461,6 @@ class _Raster {
         _mix(out, BP.bg, _stripe[k], thirds[i]);
       }),
     };
-    // Actual-size previews: true per-channel coverage for subpixel.
-    final previews = <_Mode, ui.Image>{
-      _Mode.aliased: await _image(cols, rows, (i, out) => _mix(out, BP.paper, BP.ink, cov[i] >= 0.5 ? 1 : 0)),
-      _Mode.grayscale: await _image(cols, rows, (i, out) => _mix(out, BP.paper, BP.ink, cov[i])),
-      _Mode.subpixel: await _image(cols, rows, (i, out) {
-        const bg = BP.paper;
-        const ink = BP.ink;
-        out[0] = _ch(bg.r, ink.r, thirds[i * 3]);
-        out[1] = _ch(bg.g, ink.g, thirds[i * 3 + 1]);
-        out[2] = _ch(bg.b, ink.b, thirds[i * 3 + 2]);
-        out[3] = 255;
-      }),
-    };
-
     return _Raster._(
       size: px,
       cols: cols,
@@ -401,10 +470,8 @@ class _Raster {
       glyphOrigin: Offset(pad - c0 * 1.0, pad - r0 * 1.0),
       baseline: baseline - r0,
       outline: outline,
-      engine: engine,
       covImage: covImage,
       pixels: pixels,
-      previews: previews,
     );
   }
 
@@ -431,9 +498,8 @@ class _Raster {
 
   void dispose() {
     outline.dispose();
-    engine.dispose();
     covImage.dispose();
-    for (final i in [...pixels.values, ...previews.values]) {
+    for (final i in pixels.values) {
       i.dispose();
     }
   }
@@ -479,7 +545,6 @@ class _RasterPainter extends CustomPainter {
         ..color = BP.amber.withValues(alpha: 0.8)
         ..style = PaintingStyle.stroke,
     );
-    _text(canvas, 'baseline', BT.mono(11, color: BP.amber), Offset(_leftPanel.left + 14, by - 16));
     canvas.save();
     canvas.clipRect(_leftPanel.deflate(2));
     canvas.translate(lo.dx + r.glyphOrigin.dx * cell, lo.dy + r.glyphOrigin.dy * cell);
@@ -488,8 +553,8 @@ class _RasterPainter extends CustomPainter {
     canvas.restore();
 
     // Coverage values ride the beam.
-    if (cell >= 22) {
-      final fs = math.min(12.0, cell * 0.34);
+    final fs = math.min(18.0, cell * 0.4);
+    if (fs >= 16) {
       for (var row = beam.floor(); row <= beam.ceil(); row++) {
         if (row < 0 || row >= r.rows) continue;
         final a = (1 - (row - beam).abs()).clamp(0.0, 1.0);
@@ -539,32 +604,6 @@ class _RasterPainter extends CustomPainter {
           ..strokeWidth = 2,
       );
     }
-    _text(canvas, '${r.cols} × ${r.rows} px', BT.mono(13, color: BP.inkDim), Offset(_rightPanel.left + 16, _rightPanel.bottom - 28));
-
-    // ── Actual size ──
-    final pv = r.previews[mode]!;
-    var y = _panelTop + 30;
-    _text(canvas, '1×', BT.mono(12, color: BP.inkFaint), Offset(_colX, y));
-    y += 20;
-    canvas.drawImageRect(pv, Rect.fromLTWH(0, 0, pv.width * 1.0, pv.height * 1.0),
-        Rect.fromLTWH(_colX, y, r.cols * 1.0, r.rows * 1.0), nearest);
-    // The engine's own rendering, same size, for comparison.
-    final ex = _colX + r.cols + 30;
-    _text(canvas, 'engine', BT.mono(12, color: BP.inkFaint), Offset(ex, y - 20));
-    final engineTop = r.baseline - r.engine.computeDistanceToActualBaseline(TextBaseline.alphabetic);
-    r.engine.paint(canvas, Offset(ex, y + engineTop));
-    y += math.max(r.rows * 1.0, engineTop + r.engine.height) + 30;
-    final zoom = math.max(1, math.min(4, math.min(170 / r.cols, 200 / r.rows).floor()));
-    _text(canvas, '$zoom×', BT.mono(12, color: BP.inkFaint), Offset(_colX, y));
-    y += 20;
-    final zr = Rect.fromLTWH(_colX, y, r.cols * zoom * 1.0, r.rows * zoom * 1.0);
-    canvas.drawImageRect(pv, Rect.fromLTWH(0, 0, pv.width * 1.0, pv.height * 1.0), zr, nearest);
-    canvas.drawRect(
-      zr.inflate(0.5),
-      Paint()
-        ..color = BP.lineFaint
-        ..style = PaintingStyle.stroke,
-    );
   }
 
   void _grid(Canvas canvas, Rect g, _Raster r, Color color) {

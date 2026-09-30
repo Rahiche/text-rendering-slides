@@ -7,6 +7,10 @@ import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 
 /// Shaping: five before → after demos, all rendered by the real shaper.
+///
+/// Each demo loops: a short "before", the change, then a long hold on the
+/// shaped result (so a still taken a few seconds in shows the shaped text).
+/// Tap the stage to replay.
 class ShapingSlide extends StatefulWidget {
   const ShapingSlide({super.key});
 
@@ -15,11 +19,11 @@ class ShapingSlide extends StatefulWidget {
 }
 
 enum _Tab {
-  join('join', 'isolated', 'joined'),
-  ligature('ligature', 'calt off', 'calt on'),
-  kerning('kerning', 'kern off', 'kern on'),
-  reorder('reorder', 'code points', 'glyphs'),
-  zwj('emoji ZWJ', 'sequence', 'cluster');
+  join('joining', 'isolated', 'joined'),
+  ligature('ligatures', "FontFeature.disable('calt')", "FontFeature.enable('calt')"),
+  kerning('kerning', "FontFeature.disable('kern')", "FontFeature.enable('kern')"),
+  reorder('reordering', 'code point order', 'glyph order'),
+  zwj('emoji ZWJ', '5 code points', '1 glyph');
 
   const _Tab(this.label, this.before, this.after);
 
@@ -28,32 +32,29 @@ enum _Tab {
   final String after;
 }
 
-class _ShapingSlideState extends State<ShapingSlide> with TickerProviderStateMixin {
+class _ShapingSlideState extends State<ShapingSlide> with SingleTickerProviderStateMixin {
+  // 8 s loop: 0.9 s before, 1.5 s change, 4.6 s shaped, 1 s back.
   late final AnimationController _loop = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 3400),
+    duration: const Duration(milliseconds: 8000),
   )..repeat();
-  late final AnimationController _manual = AnimationController(vsync: this);
-  late final Animation<double> _auto = _loop.drive(
+  late final Animation<double> _m = _loop.drive(
     TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween(0), weight: 18),
+      TweenSequenceItem(tween: ConstantTween(0), weight: 11),
       TweenSequenceItem(
         tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 34,
+        weight: 19,
       ),
-      TweenSequenceItem(tween: ConstantTween(1), weight: 34),
+      TweenSequenceItem(tween: ConstantTween(1), weight: 58),
       TweenSequenceItem(
         tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 14,
+        weight: 12,
       ),
     ]),
   );
 
   _Tab _tab = _Tab.join;
-  int _mode = 0; // 0 auto · 1 before · 2 after
   late _Demo _demo = _make(_tab);
-
-  Animation<double> get _m => _mode == 0 ? _auto : _manual;
 
   static _Demo _make(_Tab t) => switch (t) {
     _Tab.join => _JoinDemo(),
@@ -63,6 +64,11 @@ class _ShapingSlideState extends State<ShapingSlide> with TickerProviderStateMix
     _Tab.zwj => _ZwjDemo(),
   };
 
+  void _replay() {
+    _loop.value = 0;
+    _loop.repeat();
+  }
+
   void _select(_Tab t) {
     if (t == _tab) return;
     final old = _demo;
@@ -71,32 +77,12 @@ class _ShapingSlideState extends State<ShapingSlide> with TickerProviderStateMix
       _tab = t;
       _demo = _make(t);
     });
-    if (_mode == 0) {
-      _loop.value = 0;
-      _loop.repeat();
-    }
-  }
-
-  void _setMode(int mode) {
-    if (mode == _mode) return;
-    if (mode == 0) {
-      _loop.repeat();
-    } else {
-      _manual.value = _m.value;
-      _loop.stop();
-      _manual.animateTo(
-        mode == 2 ? 1 : 0,
-        duration: const Duration(milliseconds: 1100),
-        curve: Curves.easeInOutCubic,
-      );
-    }
-    setState(() => _mode = mode);
+    _replay();
   }
 
   @override
   void dispose() {
     _loop.dispose();
-    _manual.dispose();
     _demo.dispose();
     super.dispose();
   }
@@ -110,11 +96,15 @@ class _ShapingSlideState extends State<ShapingSlide> with TickerProviderStateMix
           Positioned(
             left: 0,
             right: 0,
-            top: 84,
-            bottom: 34,
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: _StagePainter(demo: _demo, m: _m, tab: _tab),
+            top: 80,
+            bottom: 16,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _replay,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _StagePainter(demo: _demo, m: _m, tab: _tab),
+                ),
               ),
             ),
           ),
@@ -126,32 +116,8 @@ class _ShapingSlideState extends State<ShapingSlide> with TickerProviderStateMix
               selected: _tab,
               onChanged: _select,
               labelOf: (t) => t.label,
-            ),
-          ),
-          Positioned(
-            right: 0,
-            top: 0,
-            child: BpSegmented<int>(
-              values: const [0, 1, 2],
-              selected: _mode,
-              onChanged: _setMode,
-              color: BP.amber,
-              labelOf: (i) => switch (i) {
-                0 => 'auto',
-                1 => _tab.before,
-                _ => _tab.after,
-              },
-            ),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Row(
-              children: [
-                Container(width: 24, height: 1, color: BP.lineDim),
-                const SizedBox(width: 10),
-                Text('HarfBuzz: code points → glyph ids + positions', style: BT.mono(14, color: BP.inkDim)),
-              ],
+              size: 20,
+              spacing: 12,
             ),
           ),
         ],
@@ -200,12 +166,12 @@ void _dashRect(Canvas canvas, Rect r, Color color, {double width = 1}) {
   );
 }
 
-/// |←— label —→| drawn directly on a canvas.
+/// |←—→| label, drawn directly on a canvas (the label sits to the right).
 void _dim(Canvas canvas, double x0, double x1, double y, String label, Color color, {double alpha = 1}) {
   if (alpha <= 0.001) return;
   final p = Paint()
     ..color = color.withValues(alpha: alpha)
-    ..strokeWidth = 1.2
+    ..strokeWidth = 1.8
     ..style = PaintingStyle.stroke;
   canvas.drawLine(Offset(x0, y), Offset(x1, y), p);
   canvas.drawLine(Offset(x0, y - 8), Offset(x0, y + 8), p);
@@ -214,10 +180,13 @@ void _dim(Canvas canvas, double x0, double x1, double y, String label, Color col
     drawArrowHead(canvas, Offset(x0, y), Offset(x0 + 10, y), p, 5);
     drawArrowHead(canvas, Offset(x1, y), Offset(x1 - 10, y), p, 5);
   }
-  _label(canvas, label, BT.mono(14, color: color), Offset((x0 + x1) / 2, y + 18), alpha: alpha);
+  final tp = TextPainter(
+    text: TextSpan(text: label, style: BT.mono(24, color: color.withValues(alpha: alpha), weight: 600)),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  tp.paint(canvas, Offset(math.max(x0, x1) + 14, y - tp.height / 2));
+  tp.dispose();
 }
-
-String _u(int cp) => 'U+${cp.toRadixString(16).toUpperCase().padLeft(4, '0')}';
 
 class _StagePainter extends CustomPainter {
   _StagePainter({required this.demo, required this.m, required this.tab}) : super(repaint: m);
@@ -229,23 +198,12 @@ class _StagePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final v = m.value.clamp(0.0, 1.0);
-    demo.paint(canvas, Size(size.width, size.height - 40), v);
+    demo.paint(canvas, Size(size.width, size.height - 64), v);
 
-    // before ─◆─ after indicator
-    final y = size.height - 12;
-    const x0 = 120.0;
-    const x1 = 300.0;
-    _label(canvas, tab.before, BT.mono(14, color: Color.lerp(BP.ink, BP.inkFaint, v)!), Offset(x0 - 60, y));
-    _label(canvas, tab.after, BT.mono(14, color: Color.lerp(BP.inkFaint, BP.amber, v)!), Offset(x1 + 60, y));
-    canvas.drawLine(Offset(x0, y), Offset(x1, y), Paint()..color = BP.lineDim);
-    final dx = _lerp(x0, x1, v);
-    final d = Path()
-      ..moveTo(dx, y - 7)
-      ..lineTo(dx + 7, y)
-      ..lineTo(dx, y + 7)
-      ..lineTo(dx - 7, y)
-      ..close();
-    canvas.drawPath(d, Paint()..color = BP.amber);
+    // One state label: before → after.
+    final c = Offset(size.width / 2, size.height - 22);
+    _label(canvas, tab.before, BT.mono(26, color: BP.inkDim), c, alpha: 1 - v);
+    _label(canvas, tab.after, BT.mono(26, color: BP.amber, weight: 600), c, alpha: v);
   }
 
   @override
@@ -263,7 +221,7 @@ abstract class _Demo {
 
 class _JoinDemo implements _Demo {
   _JoinDemo() {
-    final style = BT.sample(128, color: BP.ink);
+    final style = BT.sample(210, color: BP.ink);
     for (final l in _letters) {
       _iso.add(TextProbe(TextSpan(text: l, style: style), textDirection: TextDirection.rtl));
     }
@@ -271,7 +229,6 @@ class _JoinDemo implements _Demo {
   }
 
   static const _letters = ['ك', 'ت', 'ا', 'ب'];
-  static const _forms = ['init', 'medi', 'fina', 'isol'];
 
   final _iso = <TextProbe>[];
   late final TextProbe _joined;
@@ -281,8 +238,8 @@ class _JoinDemo implements _Demo {
     final p1 = _win(m, 0, 0.55);
     final p2 = _win(m, 0.45, 0.85);
     final cx = size.width / 2;
-    final top = math.max(0.0, (size.height - _joined.size.height) / 2 - 50);
-    const gap = 80.0;
+    final top = math.max(30.0, (size.height - _joined.size.height) / 2 + 14);
+    const gap = 110.0;
 
     // Before: isolated letters, right to left, with gaps.
     final total = _iso.fold<double>(0, (a, p) => a + p.size.width) + gap * (_iso.length - 1);
@@ -304,8 +261,8 @@ class _JoinDemo implements _Demo {
       final by = top + lines.first.baseline;
       canvas.drawPath(
         dashPath(Path()
-          ..moveTo(cx - 520, by)
-          ..lineTo(cx + 520, by), dash: 8, gap: 6),
+          ..moveTo(cx - 560, by)
+          ..lineTo(cx + 560, by), dash: 8, gap: 6),
         Paint()
           ..color = BP.lineFaint
           ..style = PaintingStyle.stroke,
@@ -318,36 +275,16 @@ class _JoinDemo implements _Demo {
       final o = Offset(_lerp(beforeLeft[i], afterLeft, p1), top);
       _paintAlpha(canvas, _iso[i], o, 1 - p2);
       final box = Rect.lerp(local.shift(o), jBoxes[i], p2)!;
-      _dashRect(canvas, box.deflate(1), Color.lerp(BP.lineDim, BP.line, p2)!);
-
-      // Joined boxes are narrow: stagger odd labels onto a second tier.
-      final tier = i.isOdd ? 58.0 * p2 : 0.0;
-      final ly = box.bottom + 24 + tier;
-      if (tier > 1) {
-        canvas.drawLine(
-          Offset(box.center.dx, box.bottom + 4),
-          Offset(box.center.dx, ly - 10),
-          Paint()
-            ..color = BP.lineFaint
-            ..strokeWidth = 1,
-        );
-      }
-      _label(canvas, _u(_letters[i].runes.first), BT.mono(14, color: BP.inkDim), Offset(box.center.dx, ly));
-      final changed = _forms[i] != 'isol';
-      _label(canvas, 'isol', BT.mono(17, color: BP.inkFaint), Offset(box.center.dx, ly + 28), alpha: changed ? 1 - p2 : 1);
-      if (changed) {
-        _label(canvas, _forms[i], BT.mono(17, color: BP.amber, weight: 600), Offset(box.center.dx, ly + 28), alpha: p2);
-      }
+      _dashRect(canvas, box.deflate(1), Color.lerp(BP.lineDim, BP.line, p2)!, width: 1.5);
     }
     _paintAlpha(canvas, _joined, jo, p2);
 
     // Reading direction
-    final ay = top - 6;
+    final ay = top - 22;
     final a = Paint()
       ..color = BP.amber.withValues(alpha: 0.8)
-      ..strokeWidth = 1.5;
-    drawArrow(canvas, Offset(cx + 120, ay), Offset(cx - 120, ay), a);
-    _label(canvas, 'rtl', BT.mono(13, color: BP.amber), Offset(cx + 150, ay));
+      ..strokeWidth = 2;
+    drawArrow(canvas, Offset(cx + 150, ay), Offset(cx - 150, ay), a, head: 12);
   }
 
   @override
@@ -365,7 +302,7 @@ class _JoinDemo implements _Demo {
 
 class _LigatureDemo implements _Demo {
   _LigatureDemo() {
-    final base = BT.mono(104, color: BP.ink);
+    final base = BT.mono(128, color: BP.ink);
     _off = TextProbe(TextSpan(text: _text, style: base.copyWith(fontFeatures: const [FontFeature.disable('calt')])));
     _on = TextProbe(TextSpan(text: _text, style: base.copyWith(fontFeatures: const [FontFeature.enable('calt')])));
     var s = -1;
@@ -387,7 +324,7 @@ class _LigatureDemo implements _Demo {
 
   @override
   void paint(Canvas canvas, Size size, double m) {
-    final o = Offset((size.width - _off.size.width) / 2, math.max(40.0, (size.height - _off.size.height) / 2 - 40));
+    final o = Offset((size.width - _off.size.width) / 2, math.max(40.0, (size.height - _off.size.height) / 2));
 
     // Monospace cells (same advances before and after).
     for (var i = 0; i < _text.length; i++) {
@@ -418,17 +355,9 @@ class _LigatureDemo implements _Demo {
         Paint()
           ..color = BP.amber
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6,
+          ..strokeWidth = 2,
       );
-
-      // The code points underneath never change.
-      final cps = _text.substring(s, e).codeUnits.map((c) => c.toRadixString(16).toUpperCase()).join(' ');
-      _label(canvas, cps, BT.mono(14, color: BP.inkDim), Offset(r.center.dx, r.bottom + 22));
     }
-
-    final cy = o.dy + _off.size.height + 84;
-    _label(canvas, "FontFeature.disable('calt')", BT.mono(18, color: BP.inkDim), Offset(size.width / 2, cy), alpha: 1 - m);
-    _label(canvas, "FontFeature.enable('calt')", BT.mono(18, color: BP.amber), Offset(size.width / 2, cy), alpha: m);
   }
 
   @override
@@ -444,7 +373,7 @@ class _LigatureDemo implements _Demo {
 
 class _KernDemo implements _Demo {
   _KernDemo() {
-    final base = BT.display(150, weight: 500);
+    final base = BT.display(190, weight: 500);
     final offStyle = base.copyWith(fontFeatures: const [FontFeature.disable('kern')]);
     _off = TextProbe(TextSpan(text: _text, style: offStyle));
     _on = TextProbe(TextSpan(text: _text, style: base.copyWith(fontFeatures: const [FontFeature.enable('kern')])));
@@ -466,10 +395,9 @@ class _KernDemo implements _Demo {
   @override
   void paint(Canvas canvas, Size size, double m) {
     final p = _win(m, 0.08, 0.72);
-    final o = Offset((size.width - _off.size.width) / 2, math.max(60.0, (size.height - _off.size.height) / 2));
+    final o = Offset((size.width - _off.size.width) / 2, math.max(20.0, (size.height - _off.size.height) / 2 - 40));
     final offW = _off.size.width;
     final onW = _on.size.width;
-    final w = _lerp(offW, onW, p);
 
     final lines = _off.lines;
     if (lines.isNotEmpty) {
@@ -493,29 +421,25 @@ class _KernDemo implements _Demo {
       _glyphs[i].paint(canvas, o + Offset(left, 0));
     }
 
-    // Real pair adjustments, measured from both layouts.
+    // Real pair adjustments, measured from both layouts: a tick per kerned pair.
     for (var i = 0; i < _text.length - 1; i++) {
       final delta = (_onBoxes[i + 1].left - _onBoxes[i].left) - (_offBoxes[i + 1].left - _offBoxes[i].left);
       if (delta.abs() < 0.5) continue;
       final x = o.dx + _lerp(_offBoxes[i + 1].left, _onBoxes[i + 1].left, p);
-      final y = o.dy + _off.size.height + 8;
+      final y = o.dy + _off.size.height + 10;
       canvas.drawLine(
-        Offset(x, y - 16),
+        Offset(x, y - 22),
         Offset(x, y),
         Paint()
           ..color = BP.amber.withValues(alpha: p)
-          ..strokeWidth = 1.5,
+          ..strokeWidth = 2.5,
       );
-      _label(canvas, delta.toStringAsFixed(1).replaceFirst('-', '−'), BT.mono(14, color: BP.amber), Offset(x, y + 14),
-          alpha: p);
     }
 
-    // Widths
-    final topY = o.dy - 26;
-    _dim(canvas, o.dx, o.dx + w, topY, '${w.toStringAsFixed(1)} px', BP.inkDim);
-    final dy = o.dy + _off.size.height + 64;
+    // How much narrower the kerned word is, right where it ends.
+    final dy = o.dy + _off.size.height / 2;
     final diff = onW - offW;
-    _dim(canvas, o.dx + onW, o.dx + offW, dy, 'Δ ${diff.toStringAsFixed(1).replaceFirst('-', '−')} px', BP.amber,
+    _dim(canvas, o.dx + onW, o.dx + offW, dy, '${diff.toStringAsFixed(0).replaceFirst('-', '−')} px', BP.amber,
         alpha: p);
   }
 
@@ -535,12 +459,12 @@ class _KernDemo implements _Demo {
 
 class _ReorderDemo implements _Demo {
   _ReorderDemo() {
-    final style = BT.sample(170, color: BP.ink);
+    final style = BT.sample(190, color: BP.ink);
     _shaped = TextProbe(TextSpan(text: 'कि', style: style));
     _ka = TextProbe(TextSpan(text: 'क', style: style));
     _i = TextProbe(TextSpan(text: '\u093F', style: style.copyWith(color: BP.violet)));
-    _chipKa = TextProbe(TextSpan(text: 'क', style: BT.sample(44, color: BP.ink)));
-    _chipI = TextProbe(TextSpan(text: '\u093F', style: BT.sample(44, color: BP.violet)));
+    _chipKa = TextProbe(TextSpan(text: 'क', style: BT.sample(56, color: BP.ink)));
+    _chipI = TextProbe(TextSpan(text: '\u093F', style: BT.sample(56, color: BP.violet)));
   }
 
   late final TextProbe _shaped;
@@ -554,8 +478,11 @@ class _ReorderDemo implements _Demo {
     final p1 = _win(m, 0, 0.5);
     final p2 = _win(m, 0.45, 0.9);
     final cx = size.width / 2;
-    const top = 0.0;
-    const gap = 70.0;
+    const gap = 80.0;
+    const cw = 150.0;
+    const ch = 110.0;
+    const chipGap = 70.0;
+    final top = math.max(0.0, (size.height - _shaped.size.height - chipGap - ch) / 2);
 
     // Glyph pieces: logical order → reordered → shaped cluster.
     final sx = cx - _shaped.size.width / 2;
@@ -565,20 +492,17 @@ class _ReorderDemo implements _Demo {
     final iX1 = sx - _i.size.width * 0.15;
     final kaX = _lerp(kaX0, kaX1, p1);
     final iX = _lerp(iX0, iX1, p1);
-    final hop = -70 * math.sin(math.pi * p1);
+    final hop = -80 * math.sin(math.pi * p1);
     _paintAlpha(canvas, _ka, Offset(kaX, top), 1 - p2);
     _paintAlpha(canvas, _i, Offset(iX, top + hop), 1 - p2);
     _paintAlpha(canvas, _shaped, Offset(sx, top), p2);
     final cluster = (_shaped.rectFor(0, 2) ?? (Offset.zero & _shaped.size)).shift(Offset(sx, top));
-    _dashRect(canvas, cluster.deflate(1), BP.line.withValues(alpha: p2));
-    _label(canvas, '1 cluster', BT.mono(13, color: BP.line), Offset(cluster.right + 56, cluster.top + 16), alpha: p2);
+    _dashRect(canvas, cluster.deflate(1), BP.line.withValues(alpha: p2), width: 1.5);
 
-    // Chips: code points → glyph order.
-    const cw = 150.0;
-    const ch = 100.0;
-    final cy = _shaped.size.height + 60;
-    final c0 = cx - cw - 12;
-    final c1 = cx + 12;
+    // Chips: code points in memory order → glyph order.
+    final cy = top + _shaped.size.height + chipGap;
+    final c0 = cx - cw - 14;
+    final c1 = cx + 14;
     final kaChip = Rect.fromLTWH(_lerp(c0, c1, p1), cy + 14 * math.sin(math.pi * p1), cw, ch);
     final iChip = Rect.fromLTWH(_lerp(c1, c0, p1), cy - 110 * math.sin(math.pi * p1), cw, ch);
 
@@ -596,14 +520,8 @@ class _ReorderDemo implements _Demo {
     _wire(canvas, kaChip.topCenter, kaPiece, BP.line);
     _wire(canvas, iChip.topCenter, iPiece, BP.violet);
 
-    _chip(canvas, kaChip, _chipKa, 'U+0915', BP.line);
-    _chip(canvas, iChip, _chipI, 'U+093F', BP.violet);
-
-    _label(canvas, 'code points', BT.mono(16, color: BP.inkDim), Offset(c0 - 120, cy + ch / 2), alpha: 1 - p1);
-    _label(canvas, 'glyphs', BT.mono(16, color: BP.amber), Offset(c0 - 120, cy + ch / 2), alpha: p1);
-    // Index badges keep the memory order visible.
-    _label(canvas, '0', BT.mono(12, color: BP.inkFaint), kaChip.topLeft + const Offset(12, 12));
-    _label(canvas, '1', BT.mono(12, color: BP.inkFaint), iChip.topLeft + const Offset(12, 12));
+    _chip(canvas, kaChip, _chipKa, BP.line);
+    _chip(canvas, iChip, _chipI, BP.violet);
   }
 
   void _wire(Canvas canvas, Offset a, Offset b, Color c) {
@@ -611,16 +529,16 @@ class _ReorderDemo implements _Demo {
       ..moveTo(a.dx, a.dy)
       ..cubicTo(a.dx, a.dy - 40, b.dx, b.dy + 40, b.dx, b.dy);
     canvas.drawPath(
-      dashPath(path, dash: 4, gap: 4),
+      dashPath(path, dash: 5, gap: 4),
       Paint()
-        ..color = c.withValues(alpha: 0.7)
+        ..color = c.withValues(alpha: 0.75)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 1.6,
     );
-    canvas.drawCircle(b, 3.5, Paint()..color = c);
+    canvas.drawCircle(b, 4.5, Paint()..color = c);
   }
 
-  void _chip(Canvas canvas, Rect r, TextProbe glyph, String cp, Color c) {
+  void _chip(Canvas canvas, Rect r, TextProbe glyph, Color c) {
     canvas.drawRect(r, Paint()..color = BP.panel);
     canvas.drawRect(r, Paint()..color = c.withValues(alpha: 0.10));
     canvas.drawRect(
@@ -628,10 +546,9 @@ class _ReorderDemo implements _Demo {
       Paint()
         ..color = c
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
+        ..strokeWidth = 2,
     );
-    glyph.paint(canvas, Offset(r.center.dx - glyph.size.width / 2, r.top + 30 - glyph.size.height / 2 + 6));
-    _label(canvas, cp, BT.mono(14, color: c), Offset(r.center.dx, r.bottom - 18));
+    glyph.paint(canvas, r.center - Offset(glyph.size.width / 2, glyph.size.height / 2));
   }
 
   @override
@@ -649,9 +566,9 @@ class _ReorderDemo implements _Demo {
 class _ZwjDemo implements _Demo {
   _ZwjDemo() {
     for (final e in _emoji) {
-      _parts.add(TextProbe(TextSpan(text: e, style: BT.sample(84))));
+      _parts.add(TextProbe(TextSpan(text: e, style: BT.sample(104))));
     }
-    _family = TextProbe(TextSpan(text: _emoji.join('\u200D'), style: BT.sample(150)));
+    _family = TextProbe(TextSpan(text: _emoji.join('\u200D'), style: BT.sample(200)));
   }
 
   static const _emoji = ['👨', '👩', '👧'];
@@ -664,11 +581,11 @@ class _ZwjDemo implements _Demo {
     final p1 = _win(m, 0, 0.45);
     final p2 = _win(m, 0.4, 0.82);
     final cx = size.width / 2;
-    const ew = 150.0;
-    const zw = 110.0;
-    const eh = 140.0;
-    const g = 22.0;
-    final cy = math.max(40.0, (size.height - eh) / 2 - 30);
+    const ew = 176.0;
+    const zw = 124.0;
+    const eh = 170.0;
+    const g = 24.0;
+    final cy = math.max(40.0, (size.height - eh) / 2);
     final total = 3 * ew + 2 * zw + 4 * g;
     final x0 = cx - total / 2;
 
@@ -685,7 +602,7 @@ class _ZwjDemo implements _Demo {
     for (final k in [1, 3]) {
       final s = 1 - p1;
       if (s <= 0.01) continue;
-      final mid = Offset.lerp(slots[k].center, Offset(cx + (k == 1 ? -55 : 55), slots[k].center.dy), p1)!;
+      final mid = Offset.lerp(slots[k].center, Offset(cx + (k == 1 ? -62 : 62), slots[k].center.dy), p1)!;
       final r = Rect.fromCenter(center: mid, width: zw * s, height: eh * s);
       canvas.drawRect(r, Paint()..color = BP.violet.withValues(alpha: 0.10 * s));
       canvas.drawRect(
@@ -693,20 +610,19 @@ class _ZwjDemo implements _Demo {
         Paint()
           ..color = BP.violet.withValues(alpha: s)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
+          ..strokeWidth = 2,
       );
       canvas.save();
       canvas.translate(mid.dx, mid.dy);
       canvas.scale(s);
-      _label(canvas, 'ZWJ', BT.mono(24, color: BP.violet, weight: 600), const Offset(0, -12));
-      _label(canvas, 'U+200D', BT.mono(13, color: BP.violet), const Offset(0, 40));
+      _label(canvas, 'ZWJ', BT.mono(32, color: BP.violet, weight: 600), Offset.zero);
       canvas.restore();
     }
 
     // Emoji: row → huddle → one glyph.
     for (var j = 0; j < 3; j++) {
       final before = slots[j * 2].center;
-      final mid = Offset(cx + (j - 1) * 110, before.dy);
+      final mid = Offset(cx + (j - 1) * 124, before.dy);
       final end = Offset(cx, before.dy);
       final c = Offset.lerp(Offset.lerp(before, mid, p1)!, end, p2)!;
       final alpha = 1 - p2;
@@ -715,22 +631,18 @@ class _ZwjDemo implements _Demo {
         r,
         Paint()
           ..color = BP.line.withValues(alpha: 0.8 * alpha)
+          ..strokeWidth = 1.5
           ..style = PaintingStyle.stroke,
       );
       final probe = _parts[j];
-      _paintAlpha(canvas, probe, c - Offset(probe.size.width / 2, probe.size.height / 2 + 10), alpha);
-      _label(canvas, _u(_emoji[j].runes.first), BT.mono(13, color: BP.line), Offset(c.dx, r.bottom - 16), alpha: alpha);
+      _paintAlpha(canvas, probe, c - Offset(probe.size.width / 2, probe.size.height / 2), alpha);
     }
 
     // The shaped cluster.
     final fo = Offset(cx - _family.size.width / 2, cy + eh / 2 - _family.size.height / 2);
     _paintAlpha(canvas, _family, fo, p2);
     final fr = (_family.rectFor(0, _family.text.length) ?? (Offset.zero & _family.size)).shift(fo);
-    _dashRect(canvas, fr.deflate(1), BP.amber.withValues(alpha: p2), width: 1.5);
-
-    final ly = cy + eh + 70;
-    _label(canvas, '5 code points', BT.mono(18, color: BP.inkDim), Offset(cx, ly), alpha: 1 - p2);
-    _label(canvas, '1 glyph', BT.mono(18, color: BP.amber, weight: 600), Offset(cx, ly), alpha: p2);
+    _dashRect(canvas, fr.deflate(1), BP.amber.withValues(alpha: p2), width: 2);
   }
 
   @override

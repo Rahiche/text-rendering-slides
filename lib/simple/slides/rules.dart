@@ -10,43 +10,48 @@ import '../../deck/theme.dart';
 import '../../deck/widgets.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid
+// Grid: 3 × 2 large panels, each a big glyph demo + one short label.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Every mini animation is drawn on this design canvas and scaled to its panel.
-const _dw = 320.0;
-const _dh = 250.0;
+/// Every demo is drawn on this design canvas and scaled to its panel.
+const _dw = 440.0;
+const _dh = 236.0;
 const _design = Size(_dw, _dh);
 
-const _gapX = 24.0;
-const _gapY = 34.0;
-const _panelTop = 10.0;
-const _panelW = (1472 - 3 * _gapX) / 4;
-const _panelH = (628 - _panelTop - _gapY) / 2;
-const _bigH = 628.0;
+/// Panels stop short of the content area's bottom: the conveyor ruler.
+const _areaH = 612.0;
+const _gapX = 28.0;
+const _gapY = 44.0;
+const _panelTop = 18.0;
+const _panelW = (1472 - 2 * _gapX) / 3;
+const _panelH = (_areaH - _panelTop - _gapY) / 2;
+const _bigH = _areaH - _panelTop;
 const _bigW = _bigH * _panelW / _panelH;
+const _pad = EdgeInsets.fromLTRB(16, 26, 16, 12);
+
+/// Every demo loops on the same clock: it builds up in ~3 s, holds the
+/// finished picture until [_holdEnd], fades, and starts again.
+const _period = 8.0;
+const _holdEnd = 7.3;
 
 class _Rule {
-  const _Rule(this.label, this.script, this.color, this.build);
+  const _Rule(this.label, this.color, this.build);
 
   final String label;
-  final String script;
   final Color color;
   final Widget Function() build;
 }
 
 final _rules = <_Rule>[
-  _Rule('direction', 'hebrew', Script.hebrew.color, () => const _Direction()),
-  _Rule('position forms', 'arabic', Script.arabic.color, () => const _Forms()),
-  _Rule('reorder', 'devanagari', Script.devanagari.color, () => const _Reorder()),
-  _Rule('stacking', 'thai', Script.thai.color, () => const _Stacking()),
-  _Rule('no spaces', 'thai', Script.thai.color, () => const _NoSpaces()),
-  _Rule('composition', 'hangul', Script.hangul.color, () => const _Hangul()),
-  _Rule('vertical', 'japanese', Script.kana.color, () => const _Vertical()),
-  _Rule('combining', 'emoji', Script.emoji.color, () => const _Emoji()),
+  _Rule('right-to-left', Script.hebrew.color, () => const _Direction()),
+  _Rule('joining', Script.arabic.color, () => const _Forms()),
+  _Rule('reordering', Script.devanagari.color, () => const _Reorder()),
+  _Rule('stacking', Script.thai.color, () => const _Stacking()),
+  _Rule('composition', Script.hangul.color, () => const _Hangul()),
+  _Rule('vertical · 縦書き', Script.kana.color, () => const _Vertical()),
 ];
 
-/// Eight scripts, eight broken assumptions. Click a panel to enlarge + replay.
+/// Six scripts, six broken assumptions. Click a panel to enlarge + replay.
 class ScriptRulesSlide extends StatefulWidget {
   const ScriptRulesSlide({super.key});
 
@@ -58,7 +63,7 @@ class _ScriptRulesSlideState extends State<ScriptRulesSlide> {
   int? _big;
   int _top = 0;
   int? _hover;
-  final _nonce = List<int>.filled(8, 0);
+  final _nonce = List<int>.filled(_rules.length, 0);
 
   void _tap(int i) => setState(() {
     if (_big == i) {
@@ -71,9 +76,9 @@ class _ScriptRulesSlideState extends State<ScriptRulesSlide> {
   });
 
   Rect _rectOf(int i) {
-    if (_big == i) return const Rect.fromLTWH((1472 - _bigW) / 2, 0, _bigW, _bigH);
-    final c = i % 4;
-    final r = i ~/ 4;
+    if (_big == i) return const Rect.fromLTWH((1472 - _bigW) / 2, _panelTop, _bigW, _bigH);
+    final c = i % 3;
+    final r = i ~/ 3;
     return Rect.fromLTWH(c * (_panelW + _gapX), _panelTop + r * (_panelH + _gapY), _panelW, _panelH);
   }
 
@@ -125,33 +130,34 @@ class _ScriptRulesSlideState extends State<ScriptRulesSlide> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _tap(i),
-            child: ColoredBox(
-              // BpPanel's fill is translucent; keep panels behind from showing through.
-              color: BP.paper,
-              child: BpPanel(
-                label: rule.label,
-                color: hot ? rule.color : BP.lineDim,
-                padding: const EdgeInsets.fromLTRB(14, 22, 14, 12),
-                child: SizedBox.expand(
-                  child: Stack(
-                    children: [
-                      // Tight constraints so the design canvas scales up when enlarged.
-                      Positioned.fill(
-                        child: FittedBox(
-                          child: SizedBox.fromSize(
-                            size: _design,
-                            child: KeyedSubtree(key: ValueKey(_nonce[i]), child: rule.build()),
-                          ),
+            child: CustomPaint(
+              painter: _PanelPainter(hot ? rule.color : BP.lineDim),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Tight constraints so the design canvas scales up when enlarged.
+                  Positioned.fill(
+                    child: Padding(
+                      padding: _pad,
+                      child: FittedBox(
+                        child: SizedBox.fromSize(
+                          size: _design,
+                          child: KeyedSubtree(key: ValueKey(_nonce[i]), child: rule.build()),
                         ),
                       ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Text(rule.script, style: BT.mono(11, color: BP.inkFaint)),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  // The label, notched into the top edge.
+                  Positioned(
+                    left: 18,
+                    top: -17,
+                    child: Container(
+                      color: BP.paper,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(rule.label, style: BT.display(24, color: rule.color)),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -161,9 +167,53 @@ class _ScriptRulesSlideState extends State<ScriptRulesSlide> {
   }
 }
 
+/// Opaque blueprint panel (panels overlap while one is enlarged).
+class _PanelPainter extends CustomPainter {
+  _PanelPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Offset.zero & size;
+    canvas.drawRect(r, Paint()..color = BP.paper);
+    canvas.drawRect(r, Paint()..color = BP.panel.withValues(alpha: 0.85));
+    canvas.drawRect(r, _stroke(color, color == BP.lineDim ? 1 : 1.6));
+    final t = Paint()
+      ..color = BP.line
+      ..strokeWidth = 2;
+    const l = 10.0;
+    for (final c in [r.topLeft, r.topRight, r.bottomLeft, r.bottomRight]) {
+      final dx = c.dx == 0 ? l : -l;
+      final dy = c.dy == 0 ? l : -l;
+      canvas.drawLine(c, c + Offset(dx, 0), t);
+      canvas.drawLine(c, c + Offset(0, dy), t);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PanelPainter old) => old.color != color;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The shared demo clock, in seconds since the demo appeared (0 … [_period]).
+class _Clock extends StatelessWidget {
+  const _Clock({required this.builder});
+
+  final Widget Function(BuildContext context, double s) builder;
+
+  @override
+  Widget build(BuildContext context) => LoopBuilder(
+    period: Duration(milliseconds: (_period * 1000).round()),
+    builder: (context, t, _) => builder(context, t * _period),
+  );
+}
+
+/// 1 while the finished picture holds, fading to 0 before the loop restarts.
+double _out(double s) => 1 - _seg(s, _holdEnd, _holdEnd + 0.5);
 
 /// Rebuilds cached text layouts when fonts arrive (web fallback fonts load late).
 mixin _FontAware<T extends StatefulWidget> on State<T> {
@@ -224,7 +274,7 @@ Paint _stroke(Color c, [double w = 1]) => Paint()
   ..style = PaintingStyle.stroke
   ..strokeWidth = w;
 
-void _dashRect(Canvas c, Rect r, Color color, {double width = 1, double dash = 4, double gap = 3}) =>
+void _dashRect(Canvas c, Rect r, Color color, {double width = 1, double dash = 5, double gap = 4}) =>
     c.drawPath(dashPath(Path()..addRect(r), dash: dash, gap: gap), _stroke(color, width));
 
 void _dashLine(
@@ -233,8 +283,8 @@ void _dashLine(
   Offset b,
   Color color, {
   double width = 1,
-  double dash = 4,
-  double gap = 3,
+  double dash = 5,
+  double gap = 4,
 }) => c.drawPath(
   dashPath(
     Path()
@@ -262,7 +312,7 @@ void _diamond(Canvas c, Offset o, double r, Color color) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1 · direction — Hebrew typed from the right
+// 1 · right-to-left — Hebrew typed from the right
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Direction extends StatefulWidget {
@@ -284,7 +334,7 @@ class _DirectionState extends State<_Direction> with _FontAware {
   }
 
   void _make() {
-    final style = BT.sample(84, weight: 500);
+    final style = BT.sample(112, weight: 500, height: 1.1);
     _probe = TextProbe(
       TextSpan(text: _word, style: style),
       textDirection: TextDirection.rtl,
@@ -312,35 +362,33 @@ class _DirectionState extends State<_Direction> with _FontAware {
   }
 
   @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 4600),
-    builder: (context, t, _) => CustomPaint(size: _design, painter: _DirectionPainter(_probe, _letters, t)),
+  Widget build(BuildContext context) => _Clock(
+    builder: (context, s) => CustomPaint(size: _design, painter: _DirectionPainter(_probe, _letters, s)),
   );
 }
 
 class _DirectionPainter extends CustomPainter {
-  _DirectionPainter(this.probe, this.letters, this.t);
+  _DirectionPainter(this.probe, this.letters, this.s);
 
   final TextProbe probe;
   final List<TextPainter> letters;
-  final double t;
+  final double s;
 
-  static const _starts = [0.08, 0.2, 0.32, 0.44];
+  static const _starts = [0.4, 0.95, 1.5, 2.05];
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = probe.size.width;
     final lines = probe.lines;
     if (lines.isEmpty) return;
-    final o = Offset((size.width - w) / 2, 92 - probe.size.height / 2);
+    final o = Offset((size.width - w) / 2, 88 - probe.size.height / 2);
     final baseY = o.dy + lines.first.baseline;
-    final fade = 1 - _seg(t, 0.86, 0.96);
+    final fade = _out(s);
 
-    _dashLine(canvas, Offset(14, baseY), Offset(size.width - 14, baseY), BP.lineFaint, dash: 5, gap: 4);
+    _dashLine(canvas, Offset(10, baseY), Offset(size.width - 10, baseY), BP.lineFaint);
 
     var caretX = o.dx + w;
     var typed = 0;
-    final latest = _starts.lastIndexWhere((s) => t > s);
     var boxBottom = o.dy + probe.size.height;
     var boxTop = o.dy;
     for (var i = 0; i < letters.length; i++) {
@@ -349,7 +397,7 @@ class _DirectionPainter extends CustomPainter {
       final box = boxes.first.toRect().shift(o);
       boxTop = box.top;
       boxBottom = box.bottom;
-      final p = _seg(t, _starts[i], _starts[i] + 0.07);
+      final p = _seg(s, _starts[i], _starts[i] + 0.35);
       caretX = ui.lerpDouble(caretX, box.left, Curves.easeOutCubic.transform(p))!;
       if (p <= 0) continue;
       typed = i + 1;
@@ -357,179 +405,128 @@ class _DirectionPainter extends CustomPainter {
       final e = Curves.easeOutBack.transform(p);
       _dashRect(canvas, box, BP.lineDim.withValues(alpha: a));
       final l = letters[i];
-      _paintAlpha(canvas, l, Offset(box.left + (box.width - l.width) / 2, o.dy - (1 - e) * 18), a);
-      _label(
-        canvas,
-        '$i',
-        BT.mono(14, color: (i == latest ? BP.amber : BP.inkDim).withValues(alpha: a)),
-        Offset(box.center.dx, box.bottom + 8),
-      );
+      _paintAlpha(canvas, l, Offset(box.left + (box.width - l.width) / 2, o.dy - (1 - e) * 22), a);
     }
 
     // Typing direction: an arrow growing leftwards behind the caret.
     if (typed > 0 && fade > 0) {
-      final y = boxBottom + 44;
+      final y = boxBottom + 30;
       drawArrow(
         canvas,
-        Offset(o.dx + w + 8, y),
-        Offset(caretX - 4, y),
+        Offset(o.dx + w + 10, y),
+        Offset(caretX - 6, y),
         Paint()
           ..color = BP.amber.withValues(alpha: fade)
-          ..strokeWidth = 1.5,
+          ..strokeWidth = 3,
+        head: 14,
       );
     }
 
-    // Caret (blinks once typing is done).
-    final idle = t > 0.52 || t < _starts.first;
-    final on = !idle || ((t * 4600) ~/ 420).isEven;
-    if (fade > 0 && on) {
+    // Caret
+    if (fade > 0 && s > 0.2) {
       canvas.drawRect(
-        Rect.fromLTRB(caretX - 1.5, boxTop, caretX + 1.5, boxBottom),
+        Rect.fromLTRB(caretX - 2, boxTop, caretX + 2, boxBottom),
         Paint()..color = BP.amber.withValues(alpha: fade),
       );
     }
   }
 
   @override
-  bool shouldRepaint(_DirectionPainter old) => old.t != t || old.probe != probe;
+  bool shouldRepaint(_DirectionPainter old) => old.s != s || old.probe != probe;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2 · position forms — Arabic ع in four shapes (forced with ZWJ)
+// 2 · joining — Arabic ع takes four shapes (forced with ZWJ)
 // ─────────────────────────────────────────────────────────────────────────────
 
 TextStyle _kufi(double size, Color color) =>
     TextStyle(fontFamily: BP.arabic, fontSize: size, color: color, height: 1.25);
 
+/// One letter, four shapes, side by side in reading order (right to left).
+/// The highlight walks isolated → initial → medial → final; each shape shows
+/// the sides where it joins its neighbours.
 class _Forms extends StatelessWidget {
   const _Forms();
 
-  static const _forms = ['ع', 'ع‍', '‍ع‍', '‍ع'];
-  static const _tags = ['isol', 'init', 'medi', 'fina'];
-
-  /// Cells laid out right-to-left: isolated is rightmost, like reading order.
-  static double _cellX(int k) => 244.0 - k * 76.0;
-
   @override
   Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 5200),
-    builder: (context, t, _) {
-      final pos = t * 4;
-      final i = pos.floor().clamp(0, 3);
-      final m = Curves.easeInOutCubic.transform(_seg(pos - i, 0.8, 1));
-      final mx = ui.lerpDouble(_cellX(i), _cellX((i + 1) % 4), m)!;
-      return SizedBox.fromSize(
-        size: _design,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              width: _dw,
-              height: 150,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 360),
-                child: CustomPaint(
-                  key: ValueKey(i),
-                  size: const Size(_dw, 150),
-                  painter: _ArabicPainter(_forms[i], i),
-                ),
-              ),
-            ),
-            for (var k = 0; k < 4; k++) ...[
-              Positioned(
-                left: _cellX(k),
-                top: 162,
-                width: 64,
-                height: 56,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: k == i ? BP.amber.withValues(alpha: 0.10) : BP.panel,
-                    border: Border.all(color: k == i ? BP.amber : BP.lineDim),
-                  ),
-                  child: Text(
-                    _forms[k],
-                    textDirection: TextDirection.rtl,
-                    style: _kufi(26, k == i ? BP.ink : BP.inkDim),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: _cellX(k),
-                top: 224,
-                width: 64,
-                child: Text(
-                  _tags[k],
-                  textAlign: TextAlign.center,
-                  style: BT.mono(12, color: k == i ? BP.amber : BP.inkFaint),
-                ),
-              ),
-            ],
-            Positioned(
-              left: mx,
-              top: 157,
-              width: 64,
-              height: 3,
-              child: const ColoredBox(color: BP.amber),
-            ),
-          ],
-        ),
-      );
-    },
+    period: const Duration(milliseconds: 8000),
+    // Offset by half a step so a form is fully lit at ~4.2 s (the export still).
+    builder: (context, t, _) => CustomPaint(size: _design, painter: _FormsPainter((t * 4 + 0.5) % 4)),
   );
 }
 
-class _ArabicPainter extends CustomPainter {
-  _ArabicPainter(this.text, this.form);
+class _FormsPainter extends CustomPainter {
+  _FormsPainter(this.pos);
 
-  final String text;
+  /// 0..4: which form is lit (fractional while the highlight moves on).
+  final double pos;
 
-  /// 0 isol, 1 init, 2 medi, 3 fina.
-  final int form;
+  static const _forms = ['ع', 'ع‍', '‍ع‍', '‍ع'];
+  static const _cellW = 98.0;
+  static const _cellGap = 12.0;
+  static const _top = 14.0;
+  static const _cellH = 184.0;
+  static const _baseY = _top + 124;
+  static const _fs = 88.0;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final probe = TextProbe(
-      TextSpan(text: text, style: _kufi(84, BP.ink)),
-      textDirection: TextDirection.rtl,
-    );
-    final lines = probe.lines;
-    if (lines.isEmpty) {
-      probe.dispose();
-      return;
-    }
-    const baseY = 100.0;
-    final o = Offset((size.width - probe.size.width) / 2, baseY - lines.first.baseline);
-    _dashLine(
-      canvas,
-      const Offset(20, baseY),
-      Offset(size.width - 20, baseY),
-      BP.amber.withValues(alpha: 0.5),
-    );
-    final adv = probe.rectFor(0, text.length)?.shift(o);
-    if (adv != null) {
-      // Advance box, trimmed to the glyph's band.
-      final r = Rect.fromLTRB(adv.left, baseY - 78, adv.right, baseY + 40);
-      _dashRect(canvas, r, BP.lineDim);
-      // Where this form joins its neighbours (RTL: the next letter is to the left).
-      final joinLeft = form == 1 || form == 2;
-      final joinRight = form == 2 || form == 3;
-      if (joinLeft) _diamond(canvas, Offset(r.left, baseY), 5, BP.amber);
-      if (joinRight) _diamond(canvas, Offset(r.right, baseY), 5, BP.amber);
-    }
-    probe.paint(canvas, o);
-    probe.dispose();
+  /// Cells laid out right-to-left: isolated is rightmost, like reading order.
+  static double _cellX(int k) {
+    const row = 4 * _cellW + 3 * _cellGap;
+    const left = (_dw - row) / 2;
+    return left + (3 - k) * (_cellW + _cellGap);
   }
 
   @override
-  bool shouldRepaint(_ArabicPainter old) => old.text != text;
+  void paint(Canvas canvas, Size size) {
+    final i = pos.floor().clamp(0, 3);
+    final m = Curves.easeInOutCubic.transform(_seg(pos - i, 0.85, 1));
+    final next = (i + 1) % 4;
+
+    for (var k = 0; k < 4; k++) {
+      final lit = k == i ? 1 - m : (k == next ? m : 0.0);
+      final cell = Rect.fromLTWH(_cellX(k), _top, _cellW, _cellH);
+      canvas.drawRect(cell, Paint()..color = Color.lerp(BP.panel, BP.amber.withValues(alpha: 0.12), lit)!);
+      canvas.drawRect(cell, _stroke(Color.lerp(BP.lineDim, BP.amber, lit)!, 1 + lit));
+      _dashLine(
+        canvas,
+        Offset(cell.left + 4, _baseY),
+        Offset(cell.right - 4, _baseY),
+        Color.lerp(BP.lineFaint, BP.amber.withValues(alpha: 0.6), lit)!,
+      );
+
+      final tp = TextPainter(
+        text: TextSpan(text: _forms[k], style: _kufi(_fs, Color.lerp(BP.inkDim, BP.ink, lit)!)),
+        textDirection: TextDirection.rtl,
+      )..layout();
+      final base = tp.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+      final s = 1 + 0.08 * Curves.easeOut.transform(lit);
+      canvas.save();
+      canvas.translate(cell.center.dx, _baseY);
+      canvas.scale(s);
+      tp.paint(canvas, Offset(-tp.width / 2, -base));
+      canvas.restore();
+      tp.dispose();
+
+      // Where this form joins its neighbours (RTL: the next letter is to the left).
+      final joinLeft = k == 1 || k == 2;
+      final joinRight = k == 2 || k == 3;
+      final c = Color.lerp(BP.lineDim, BP.amber, lit)!;
+      if (joinLeft) _diamond(canvas, Offset(cell.left, _baseY), 6 + 2 * lit, c);
+      if (joinRight) _diamond(canvas, Offset(cell.right, _baseY), 6 + 2 * lit, c);
+    }
+
+    // The highlight bar under the lit form.
+    final x = ui.lerpDouble(_cellX(i), _cellX(next), m)!;
+    canvas.drawRect(Rect.fromLTWH(x, _top + _cellH + 10, _cellW, 5), Paint()..color = BP.amber);
+  }
+
+  @override
+  bool shouldRepaint(_FormsPainter old) => old.pos != pos;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3 · reorder — Devanagari कि: the vowel sign is stored after, drawn before
+// 3 · reordering — Devanagari कि: the vowel sign is stored after, drawn before
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Reorder extends StatefulWidget {
@@ -551,9 +548,9 @@ class _ReorderState extends State<_Reorder> with _FontAware {
   }
 
   void _make() {
-    _word = TextProbe(TextSpan(text: 'कि', style: BT.sample(80)));
-    _ka = _tp('क', BT.sample(34));
-    _i = _tp('ि', BT.sample(34, color: Script.devanagari.color));
+    _word = TextProbe(TextSpan(text: 'कि', style: BT.sample(96, height: 1.15)));
+    _ka = _tp('क', BT.sample(46));
+    _i = _tp('ि', BT.sample(46, color: Script.devanagari.color));
   }
 
   void _free() {
@@ -575,72 +572,51 @@ class _ReorderState extends State<_Reorder> with _FontAware {
   }
 
   @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 5400),
-    builder: (context, t, _) => CustomPaint(size: _design, painter: _ReorderPainter(_word, _ka, _i, t)),
+  Widget build(BuildContext context) => _Clock(
+    builder: (context, s) => CustomPaint(size: _design, painter: _ReorderPainter(_word, _ka, _i, s)),
   );
 }
 
 class _ReorderPainter extends CustomPainter {
-  _ReorderPainter(this.word, this.ka, this.i, this.t);
+  _ReorderPainter(this.word, this.ka, this.i, this.s);
 
   final TextProbe word;
   final TextPainter ka;
   final TextPainter i;
-  final double t;
+  final double s;
+
+  static const _cx = 262.0;
+  static const _memY = 42.0;
+  static const _screenY = 174.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final vColor = Script.devanagari.color;
-    final chipsIn = _seg(t, 0.02, 0.12);
-    final fly = _ease(t, 0.18, 0.5);
-    final land = _seg(t, 0.36, 0.56);
-    final fade = 1 - _seg(t, 0.88, 0.97);
+    final chipsIn = _seg(s, 0.2, 0.7);
+    final fly = _ease(s, 1.0, 2.4);
+    final land = _seg(s, 1.9, 2.7);
+    final fade = _out(s);
 
     // Row labels
-    _label(canvas, 'memory', BT.mono(11, color: BP.inkFaint), const Offset(8, 58), ax: 0, ay: 0.5);
-    _label(canvas, 'screen', BT.mono(11, color: BP.inkFaint), const Offset(8, 188), ax: 0, ay: 0.5);
+    _label(canvas, 'memory', BT.mono(18, color: BP.inkDim), const Offset(0, _memY), ax: 0, ay: 0.5);
+    _label(canvas, 'screen', BT.mono(18, color: BP.inkDim), const Offset(0, _screenY), ax: 0, ay: 0.5);
 
     // Memory: two code points in logical order.
-    final kaChip = Rect.fromCenter(center: const Offset(150, 58), width: 62, height: 74);
-    final iChip = Rect.fromCenter(center: const Offset(222, 58), width: 62, height: 74);
+    final kaChip = Rect.fromCenter(center: const Offset(_cx - 46, _memY), width: 80, height: 80);
+    final iChip = Rect.fromCenter(center: const Offset(_cx + 46, _memY), width: 80, height: 80);
     final a = chipsIn * fade;
     if (a > 0) {
-      canvas.drawRect(kaChip, _stroke(BP.lineDim.withValues(alpha: a)));
-      canvas.drawRect(iChip, _stroke(vColor.withValues(alpha: a), 1.5));
-      _label(
-        canvas,
-        '0',
-        BT.mono(11, color: BP.inkDim.withValues(alpha: a)),
-        kaChip.topCenter - const Offset(0, 16),
-      );
-      _label(
-        canvas,
-        '1',
-        BT.mono(11, color: BP.inkDim.withValues(alpha: a)),
-        iChip.topCenter - const Offset(0, 16),
-      );
+      canvas.drawRect(kaChip, _stroke(BP.lineDim.withValues(alpha: a), 1.2));
+      canvas.drawRect(iChip, _stroke(vColor.withValues(alpha: a), 2));
       // The glyphs leave their slots while in flight, and are back once landed.
       final away = 1 - 0.8 * math.min(1.0, fly * 4) * (1 - land);
-      _paintCentered(canvas, ka, kaChip.center - const Offset(0, 8), 1, a * away);
-      _paintCentered(canvas, i, iChip.center - const Offset(0, 8), 1, a * away);
-      _label(
-        canvas,
-        'U+0915',
-        BT.mono(10, color: BP.inkFaint.withValues(alpha: a)),
-        kaChip.bottomCenter - const Offset(0, 16),
-      );
-      _label(
-        canvas,
-        'U+093F',
-        BT.mono(10, color: vColor.withValues(alpha: a)),
-        iChip.bottomCenter - const Offset(0, 16),
-      );
+      _paintCentered(canvas, ka, kaChip.center, 1, a * away);
+      _paintCentered(canvas, i, iChip.center, 1, a * away);
     }
 
     // Screen: the real shaped cluster.
     final ws = word.size;
-    final wo = Offset(186 - ws.width / 2, 188 - ws.height / 2);
+    final wo = Offset(_cx - ws.width / 2, _screenY - ws.height / 2);
     final r = word.rectFor(0, 2)?.shift(wo) ?? (wo & ws);
     final kaTarget = Offset(r.left + r.width * 0.64, r.center.dy);
     final iTarget = Offset(r.left + r.width * 0.24, r.center.dy);
@@ -649,24 +625,19 @@ class _ReorderPainter extends CustomPainter {
     if (fly > 0 && fade > 0) {
       final kaFrom = kaChip.bottomCenter;
       final iFrom = iChip.bottomCenter;
-      _dashLine(canvas, kaFrom, Offset.lerp(kaFrom, kaTarget, fly)!, BP.line.withValues(alpha: 0.6 * fade));
-      _dashLine(
-        canvas,
-        iFrom,
-        Offset.lerp(iFrom, iTarget, fly)!,
-        vColor.withValues(alpha: 0.8 * fade),
-        width: 1.5,
-      );
+      final kaTo = Offset(kaTarget.dx, r.top);
+      final iTo = Offset(iTarget.dx, r.top);
+      _dashLine(canvas, kaFrom, Offset.lerp(kaFrom, kaTo, fly)!, BP.line.withValues(alpha: 0.7 * fade), width: 1.5);
+      _dashLine(canvas, iFrom, Offset.lerp(iFrom, iTo, fly)!, vColor.withValues(alpha: 0.9 * fade), width: 2);
     }
 
-    // Flying copies.
-    // Copies grow a little and dissolve into the real cluster as they arrive.
-    final scale = ui.lerpDouble(1, 1.6, fly)!;
+    // Flying copies grow and dissolve into the real cluster as they arrive.
+    final scale = ui.lerpDouble(1, 2, fly)!;
     final copyA = fly > 0 ? (1 - _seg(fly, 0.5, 0.95)) * fade : 0.0;
     if (copyA > 0) {
-      final kaPos = Offset.lerp(kaChip.center - const Offset(0, 8), kaTarget, fly)!;
+      final kaPos = Offset.lerp(kaChip.center, kaTarget, fly)!;
       final arc = -math.sin(fly * math.pi) * 30;
-      final iPos = Offset.lerp(iChip.center - const Offset(0, 8), iTarget, fly)! + Offset(0, arc);
+      final iPos = Offset.lerp(iChip.center, iTarget, fly)! + Offset(0, arc);
       _paintCentered(canvas, ka, kaPos, scale, copyA);
       _paintCentered(canvas, i, iPos, scale, copyA);
     }
@@ -680,15 +651,49 @@ class _ReorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ReorderPainter old) => old.t != t || old.word != word;
+  bool shouldRepaint(_ReorderPainter old) => old.s != s || old.word != word;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4 · stacking — Thai ป + ั + ่: marks drop onto the base and stack.
 //
-// The pieces are cut out of the engine's own rendering: we rasterize ป, ปั,
-// ปั่ (and ป่) and subtract, so every mark lands exactly where HarfBuzz put it.
+// The pieces are cut out of the engine's own rendering: we rasterize ป, ปั and
+// ปั่ and subtract, so every mark lands exactly where HarfBuzz put it.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Max filter with radius [r] (separable), on an alpha mask.
+Uint8List _grow(Uint8List a, int w, int h, int r) {
+  final tmp = Uint8List(w * h);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var m = 0;
+      for (var d = math.max(0, x - r); d <= math.min(w - 1, x + r); d++) {
+        m = math.max(m, a[y * w + d]);
+      }
+      tmp[y * w + x] = m;
+    }
+  }
+  final out = Uint8List(w * h);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var m = 0;
+      for (var d = math.max(0, y - r); d <= math.min(h - 1, y + r); d++) {
+        m = math.max(m, tmp[d * w + x]);
+      }
+      out[y * w + x] = m;
+    }
+  }
+  return out;
+}
+
+/// [a] where [mask] is (nearly) empty.
+Uint8List _minus(Uint8List a, Uint8List mask) {
+  final out = Uint8List(a.length);
+  for (var i = 0; i < a.length; i++) {
+    out[i] = mask[i] > 24 ? 0 : a[i];
+  }
+  return out;
+}
 
 class _Layer {
   _Layer(this.image, this.bounds);
@@ -698,13 +703,13 @@ class _Layer {
   /// Ink bounds in raster pixels, or null if the layer is empty.
   final Rect? bounds;
 
-  static Future<_Layer> make(Uint8List a, Uint8List? minus, int w, int h) async {
+  static Future<_Layer> make(Uint8List a, int w, int h) async {
     final px = Uint8List(w * h * 4);
     var minX = w, minY = h, maxX = -1, maxY = -1;
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         final i = y * w + x;
-        var v = a[i] - (minus == null ? 0 : minus[i]);
+        var v = a[i];
         if (v < 12) v = 0;
         if (v == 0) continue;
         final j = i * 4;
@@ -731,7 +736,7 @@ class _Layer {
 class _Raster {
   _Raster(this.layers, this.pad, this.w, this.h, this.k);
 
-  /// base, vowel, tone (stacked), tone (on the bare base).
+  /// base, vowel, tone.
   final List<_Layer> layers;
   final double pad;
   final int w;
@@ -747,7 +752,7 @@ class _Raster {
   static Future<_Raster?> build(double fontSize, double k) async {
     final style = BT.sample(fontSize * k, color: const Color(0xFFFFFFFF));
     final painters = [
-      for (final s in const ['ป', 'ปั', 'ปั่', 'ป่']) _tp(s, style),
+      for (final s in const ['ป', 'ปั', 'ปั่']) _tp(s, style),
     ];
     final pad = (fontSize * k * 0.4).ceilToDouble();
     final w = (painters.map((p) => p.width).reduce(math.max) + pad * 2).ceil();
@@ -775,11 +780,13 @@ class _Raster {
         p.dispose();
       }
     }
+    // Each piece = the longer string minus the shorter one. Subtracting a
+    // slightly grown copy of the shorter one drops the anti-aliasing fringe.
+    final r = (k * 3).ceil();
     final layers = [
-      await _Layer.make(alphas[0], null, w, h),
-      await _Layer.make(alphas[1], alphas[0], w, h),
-      await _Layer.make(alphas[2], alphas[1], w, h),
-      await _Layer.make(alphas[3], alphas[0], w, h),
+      await _Layer.make(alphas[0], w, h),
+      await _Layer.make(_minus(alphas[1], _grow(alphas[0], w, h, r)), w, h),
+      await _Layer.make(_minus(alphas[2], _grow(alphas[1], w, h, r)), w, h),
     ];
     return _Raster(layers, pad, w, h, k);
   }
@@ -793,7 +800,7 @@ class _Stacking extends StatefulWidget {
 }
 
 class _StackingState extends State<_Stacking> with _FontAware {
-  static const _size = 116.0;
+  static const _size = 190.0;
   late TextProbe _probe;
   _Raster? _raster;
   int _gen = 0;
@@ -811,7 +818,7 @@ class _StackingState extends State<_Stacking> with _FontAware {
 
   Future<void> _rasterize() async {
     final gen = ++_gen;
-    final r = await _Raster.build(_size, 3);
+    final r = await _Raster.build(_size, 2);
     if (!mounted || gen != _gen) {
       r?.dispose();
       return;
@@ -838,36 +845,33 @@ class _StackingState extends State<_Stacking> with _FontAware {
 
   @override
   Widget build(BuildContext context) => ClipRect(
-    child: LoopBuilder(
-      period: const Duration(milliseconds: 5400),
-      builder: (context, t, _) => CustomPaint(size: _design, painter: _StackPainter(_probe, _raster, t)),
+    child: _Clock(
+      builder: (context, s) => CustomPaint(size: _design, painter: _StackPainter(_probe, _raster, s)),
     ),
   );
 }
 
 class _StackPainter extends CustomPainter {
-  _StackPainter(this.probe, this.raster, this.t);
+  _StackPainter(this.probe, this.raster, this.s);
 
   final TextProbe probe;
   final _Raster? raster;
-  final double t;
+  final double s;
 
   static final _colors = [BP.ink, Script.thai.color, BP.amber];
-  static const _names = ['base', 'vowel', 'tone'];
 
   @override
   void paint(Canvas canvas, Size size) {
     final ps = probe.size;
-    final o = Offset((size.width - ps.width) / 2 - 34, 132 - ps.height / 2);
-    final fade = 1 - _seg(t, 0.9, 0.98);
+    final lines = probe.lines;
+    if (lines.isEmpty) return;
+    // Sit the baseline low in the panel: the marks stack upwards.
+    const by = 222.0;
+    final o = Offset((size.width - ps.width) / 2, by - lines.first.baseline);
+    final fade = _out(s);
     final rs = raster;
 
-    // Baseline guide
-    final lines = probe.lines;
-    if (lines.isNotEmpty) {
-      final by = o.dy + lines.first.baseline;
-      _dashLine(canvas, Offset(14, by), Offset(size.width - 14, by), BP.lineFaint, dash: 5, gap: 4);
-    }
+    _dashLine(canvas, Offset(10, by), Offset(size.width - 10, by), BP.lineFaint);
 
     if (rs == null) {
       probe.paint(canvas, o);
@@ -886,27 +890,11 @@ class _StackPainter extends CustomPainter {
           );
 
     final drops = [
-      (_seg(t, 0.02, 0.14), 40.0, Curves.easeOutCubic),
-      (_seg(t, 0.18, 0.40), 150.0, Curves.bounceOut),
-      (_seg(t, 0.44, 0.66), 170.0, Curves.bounceOut),
+      (_seg(s, 0.2, 0.8), 50.0, Curves.easeOutCubic),
+      (_seg(s, 1.0, 2.0), 170.0, Curves.bounceOut),
+      (_seg(s, 2.1, 3.1), 190.0, Curves.bounceOut),
     ];
-    final settled = _seg(t, 0.66, 0.74) * fade;
-
-    // Ghost: where the tone mark would sit without the vowel — it would collide.
-    final ghost = boundsOf(rs.layers[3], 0);
-    final tone = boundsOf(rs.layers[2], 0);
-    if (ghost != null && tone != null && (ghost.center.dy - tone.center.dy).abs() > 2 && settled > 0) {
-      _dashRect(canvas, ghost.inflate(2), BP.red.withValues(alpha: settled * 0.9));
-      drawArrow(
-        canvas,
-        Offset(ghost.right + 8, ghost.center.dy),
-        Offset(tone.right + 8, tone.center.dy),
-        Paint()
-          ..color = BP.red.withValues(alpha: settled)
-          ..strokeWidth = 1.3,
-        head: 6,
-      );
-    }
+    final settled = _seg(s, 3.1, 3.5) * fade;
 
     for (var li = 0; li < 3; li++) {
       final (p, from, curve) = drops[li];
@@ -922,212 +910,43 @@ class _StackPainter extends CustomPainter {
           ..filterQuality = FilterQuality.medium
           ..colorFilter = ColorFilter.mode(_colors[li].withValues(alpha: alpha), BlendMode.srcIn),
       );
-      // Ink box + name once everything has landed.
+      // Ink box once everything has landed.
       final b = boundsOf(layer, dy);
       if (b != null && settled > 0) {
-        _dashRect(canvas, b.inflate(2), _colors[li].withValues(alpha: settled * 0.8));
-      }
-    }
-
-    // Labels on the right, one per level.
-    if (settled > 0) {
-      final right = [
-        for (var li = 0; li < 3; li++) boundsOf(rs.layers[li], 0),
-      ].whereType<Rect>().fold<double>(0, (m, r) => math.max(m, r.right));
-      final ys = <double>[];
-      for (var li = 2; li >= 0; li--) {
-        final b = boundsOf(rs.layers[li], 0);
-        if (b == null) continue;
-        var y = b.center.dy;
-        if (ys.isNotEmpty && y < ys.last + 16) y = ys.last + 16;
-        ys.add(y);
-        final x = right + 34;
-        canvas.drawLine(
-          Offset(b.right + 4, b.center.dy),
-          Offset(x - 4, y),
-          _stroke(_colors[li].withValues(alpha: settled * 0.6)),
-        );
-        _label(
-          canvas,
-          _names[li],
-          BT.mono(12, color: _colors[li].withValues(alpha: settled)),
-          Offset(x, y),
-          ax: 0,
-          ay: 0.5,
-        );
+        _dashRect(canvas, b.inflate(3), _colors[li].withValues(alpha: settled * 0.8), width: 1.3);
       }
     }
   }
 
   @override
-  bool shouldRepaint(_StackPainter old) => old.t != t || old.raster != raster || old.probe != probe;
+  bool shouldRepaint(_StackPainter old) => old.s != s || old.raster != raster || old.probe != probe;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5 · no spaces — Thai word boundaries found by a dictionary scan
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _NoSpaces extends StatefulWidget {
-  const _NoSpaces();
-
-  @override
-  State<_NoSpaces> createState() => _NoSpacesState();
-}
-
-class _NoSpacesState extends State<_NoSpaces> with _FontAware {
-  static const _text = 'ภาษาไทยไม่มีช่องว่าง';
-  static const _cuts = [0, 4, 7, 10, 12, 16, 20];
-
-  late TextProbe _probe;
-  late List<Rect> _words;
-
-  @override
-  void initState() {
-    super.initState();
-    _make();
-  }
-
-  void _make() {
-    var fs = 44.0;
-    var p = TextProbe(TextSpan(text: _text, style: BT.sample(fs)));
-    if (p.size.width > 290) {
-      fs = fs * 290 / p.size.width;
-      p.dispose();
-      p = TextProbe(TextSpan(text: _text, style: BT.sample(fs)));
-    }
-    _probe = p;
-    _words = [for (var i = 0; i < _cuts.length - 1; i++) p.rectFor(_cuts[i], _cuts[i + 1]) ?? Rect.zero];
-  }
-
-  @override
-  void rebuildText() {
-    _probe.dispose();
-    _make();
-  }
-
-  @override
-  void dispose() {
-    _probe.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 5800),
-    builder: (context, t, _) => CustomPaint(size: _design, painter: _NoSpacesPainter(_probe, _words, t)),
-  );
-}
-
-class _NoSpacesPainter extends CustomPainter {
-  _NoSpacesPainter(this.probe, this.words, this.t);
-
-  final TextProbe probe;
-  final List<Rect> words;
-  final double t;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final ps = probe.size;
-    final o = Offset((size.width - ps.width) / 2, 112 - ps.height / 2);
-    final fade = _seg(t, 0, 0.06) * (1 - _seg(t, 0.92, 0.99));
-    final scan = Curves.easeInOutSine.transform(_seg(t, 0.1, 0.66));
-    final hx = o.dx + ps.width * scan;
-    final spread = _ease(t, 0.7, 0.8) * (1 - _seg(t, 0.92, 0.99));
-    final n = words.length;
-    double dxOf(int i) => (i - (n - 1) / 2) * 10 * spread;
-
-    // Text: one run, no spaces. Split apart at the found boundaries.
-    if (spread <= 0) {
-      _paintAlpha(canvas, probe.painter, o, fade);
-    } else {
-      for (var i = 0; i < n; i++) {
-        final r = words[i].shift(o);
-        canvas.save();
-        canvas.translate(dxOf(i), 0);
-        canvas.clipRect(Rect.fromLTRB(r.left, 0, r.right, size.height));
-        _paintAlpha(canvas, probe.painter, o, fade);
-        canvas.restore();
-      }
-    }
-
-    for (var i = 0; i < n; i++) {
-      final r = words[i].shift(o);
-      final q = scan <= 0 ? 0.0 : ((hx - r.right + 1) / 18).clamp(0.0, 1.0) * fade;
-      if (q <= 0) continue;
-      final dx = dxOf(i);
-      final c = (i.isEven ? Script.thai.color : BP.line).withValues(alpha: q);
-      final y = r.bottom + 8;
-      canvas.drawPath(
-        Path()
-          ..moveTo(r.left + 3 + dx, y - 6)
-          ..lineTo(r.left + 3 + dx, y)
-          ..lineTo(r.right - 3 + dx, y)
-          ..lineTo(r.right - 3 + dx, y - 6),
-        _stroke(c, 2),
-      );
-      if (i < n - 1) {
-        final x = r.right + (dx + dxOf(i + 1)) / 2;
-        final grow = Curves.easeOutBack.transform(q);
-        final top = r.top - 16;
-        _dashLine(
-          canvas,
-          Offset(x, top),
-          Offset(x, top + (r.height + 32) * grow),
-          BP.amber.withValues(alpha: q),
-          width: 1.5,
-        );
-        _diamond(canvas, Offset(x, top), 4, BP.amber.withValues(alpha: q));
-      }
-    }
-
-    // The dictionary scan head.
-    if (scan > 0 && scan < 1 && fade > 0) {
-      final top = o.dy + ps.height * 0.05 - 22;
-      canvas.drawLine(
-        Offset(hx, top),
-        Offset(hx, o.dy + ps.height + 10),
-        Paint()
-          ..color = BP.amber.withValues(alpha: fade)
-          ..strokeWidth = 2,
-      );
-      _label(
-        canvas,
-        'dictionary',
-        BT.mono(11, color: BP.amber.withValues(alpha: fade)),
-        Offset(hx, top - 4),
-        ay: 1,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_NoSpacesPainter old) => old.t != t || old.probe != probe;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 6 · composition — Hangul jamo assemble into a syllable block
+// 5 · composition — Hangul jamo assemble into one syllable block
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Hangul extends StatelessWidget {
   const _Hangul();
 
   static const _jamo = ['ㅎ', 'ㅏ', 'ㄴ'];
-  static const _chip = [Offset(84, 42), Offset(160, 42), Offset(236, 42)];
-  static const _block = Rect.fromLTWH(100, 100, 120, 120);
+  static const _chipY = 36.0;
+  static const _chip = [Offset(128, _chipY), Offset(220, _chipY), Offset(312, _chipY)];
+  static const _block = Rect.fromLTWH(154, 96, 132, 132);
   static const _slot = [
-    Rect.fromLTWH(106, 106, 58, 56),
-    Rect.fromLTWH(168, 106, 46, 56),
-    Rect.fromLTWH(106, 166, 108, 48),
+    Rect.fromLTWH(160, 102, 64, 62),
+    Rect.fromLTWH(228, 102, 52, 62),
+    Rect.fromLTWH(160, 168, 120, 54),
   ];
   static const _slotScale = [(1.2, 1.2), (1.0, 1.5), (1.9, 1.0)];
 
   @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 5800),
-    builder: (context, t, _) {
-      final chipsIn = _seg(t, 0, 0.08);
-      final pos = _ease(t, 0.14, 0.40) * (1 - _ease(t, 0.78, 0.94));
-      final merged = _seg(t, 0.40, 0.48) * (1 - _seg(t, 0.70, 0.78));
+  Widget build(BuildContext context) => _Clock(
+    builder: (context, s) {
+      final fade = _out(s);
+      final chipsIn = _seg(s, 0.2, 0.6) * fade;
+      final pos = _ease(s, 0.9, 2.2);
+      final merged = _seg(s, 2.3, 2.9) * fade;
       final jamoColor = Script.hangul.color;
       return SizedBox.fromSize(
         size: _design,
@@ -1139,15 +958,19 @@ class _Hangul extends StatelessWidget {
                 painter: _HangulGuides(chipsIn: chipsIn, pos: pos, merged: merged),
               ),
             ),
+            // The jamo stay in their slots (dimmed) while copies fly into the block.
             for (var k = 0; k < 3; k++)
-              _jamoAt(
-                _jamo[k],
-                Offset.lerp(_chip[k], _slot[k].center, pos)!,
-                ui.lerpDouble(1, _slotScale[k].$1, pos)!,
-                ui.lerpDouble(1, _slotScale[k].$2, pos)!,
-                chipsIn * (1 - merged),
-                jamoColor,
-              ),
+              _jamoAt(_jamo[k], _chip[k], 1, 1, chipsIn * (pos > 0 ? 0.55 : 1), jamoColor),
+            if (pos > 0)
+              for (var k = 0; k < 3; k++)
+                _jamoAt(
+                  _jamo[k],
+                  Offset.lerp(_chip[k], _slot[k].center, pos)!,
+                  ui.lerpDouble(1, _slotScale[k].$1, pos)!,
+                  ui.lerpDouble(1, _slotScale[k].$2, pos)!,
+                  chipsIn * (1 - merged),
+                  jamoColor,
+                ),
             Positioned.fromRect(
               rect: _block,
               child: Opacity(
@@ -1155,21 +978,8 @@ class _Hangul extends StatelessWidget {
                 child: Center(
                   child: Transform.scale(
                     scale: 0.9 + 0.1 * merged,
-                    child: Text('한', style: BT.sample(92, color: BP.ink)),
+                    child: Text('한', style: BT.sample(100, color: BP.ink, height: 1.1)),
                   ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: _block.bottom + 8,
-              child: Opacity(
-                opacity: merged,
-                child: Text(
-                  'U+D55C',
-                  textAlign: TextAlign.center,
-                  style: BT.mono(12, color: BP.amber),
                 ),
               ),
             ),
@@ -1180,17 +990,17 @@ class _Hangul extends StatelessWidget {
   );
 
   static Widget _jamoAt(String j, Offset c, double sx, double sy, double alpha, Color color) => Positioned(
-    left: c.dx - 40,
-    top: c.dy - 40,
-    width: 80,
-    height: 80,
+    left: c.dx - 45,
+    top: c.dy - 45,
+    width: 90,
+    height: 90,
     child: Opacity(
       opacity: alpha.clamp(0.0, 1.0),
       child: Center(
         child: Transform.scale(
           scaleX: sx,
           scaleY: sy,
-          child: Text(j, style: BT.sample(38, color: color, height: 1)),
+          child: Text(j, style: BT.sample(44, color: color, height: 1)),
         ),
       ),
     ),
@@ -1209,20 +1019,25 @@ class _HangulGuides extends CustomPainter {
     for (var k = 0; k < 3; k++) {
       _dashRect(
         canvas,
-        Rect.fromCenter(center: _Hangul._chip[k], width: 56, height: 56),
+        Rect.fromCenter(center: _Hangul._chip[k], width: 66, height: 66),
         BP.lineDim.withValues(alpha: chipsIn),
       );
     }
-    for (final x in [122.0, 198.0]) {
-      _label(canvas, '+', BT.mono(18, color: BP.inkDim.withValues(alpha: chipsIn)), Offset(x, 42), ay: 0.5);
+    for (var k = 0; k < 2; k++) {
+      final x = (_Hangul._chip[k].dx + _Hangul._chip[k + 1].dx) / 2;
+      _label(
+        canvas,
+        '+',
+        BT.mono(26, color: BP.inkDim.withValues(alpha: chipsIn)),
+        Offset(x, _Hangul._chipY),
+        ay: 0.5,
+      );
     }
-    // Arrow between the jamo and the block, both ways.
+    // Arrow from the jamo down to the block.
     final arrow = Paint()
-      ..color = BP.inkFaint
-      ..strokeWidth = 1.2;
-    canvas.drawLine(const Offset(160, 74), const Offset(160, 94), arrow);
-    drawArrowHead(canvas, const Offset(160, 95), const Offset(160, 85), arrow, 5);
-    drawArrowHead(canvas, const Offset(160, 73), const Offset(160, 83), arrow, 5);
+      ..color = BP.inkDim.withValues(alpha: chipsIn)
+      ..strokeWidth = 1.6;
+    drawArrow(canvas, const Offset(220, 72), Offset(220, _Hangul._block.top - 4), arrow, head: 7);
 
     canvas.drawRect(_Hangul._block, _stroke(Color.lerp(BP.lineDim, BP.amber, merged)!, 1 + merged));
     final slotA = (0.25 + 0.75 * pos) * (1 - merged);
@@ -1236,7 +1051,7 @@ class _HangulGuides extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7 · vertical — Japanese in columns, top→bottom, right→left (illustration)
+// 6 · vertical — Japanese in columns, top→bottom, right→left
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Vertical extends StatefulWidget {
@@ -1257,7 +1072,7 @@ class _VerticalState extends State<_Vertical> with _FontAware {
   }
 
   void _make() {
-    _chars = [for (final c in _text.characters) _tp(c, BT.sample(30, color: BP.ink))];
+    _chars = [for (final c in _text.characters) _tp(c, BT.sample(38, color: BP.ink))];
   }
 
   void _free() {
@@ -1279,232 +1094,74 @@ class _VerticalState extends State<_Vertical> with _FontAware {
   }
 
   @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 6200),
-    builder: (context, t, _) => CustomPaint(size: _design, painter: _VerticalPainter(_chars, t)),
+  Widget build(BuildContext context) => _Clock(
+    builder: (context, s) => CustomPaint(size: _design, painter: _VerticalPainter(_chars, s)),
   );
 }
 
 class _VerticalPainter extends CustomPainter {
-  _VerticalPainter(this.chars, this.t);
+  _VerticalPainter(this.chars, this.s);
 
   final List<TextPainter> chars;
-  final double t;
+  final double s;
 
-  static const _cell = 46.0;
+  static const _cell = 50.0;
   static const _colGap = 14.0;
   static const _rows = 4;
   static const _cols = 3;
-  static const _top = 36.0;
+  static const _top = 26.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     const gridW = _cols * _cell + (_cols - 1) * _colGap;
-    final left = (size.width - gridW) / 2 - 8;
+    final left = (size.width - gridW) / 2 - 10;
     double colX(int c) => left + (_cols - 1 - c) * (_cell + _colGap);
-    final fade = 1 - _seg(t, 0.9, 0.98);
+    final fade = _out(s);
 
     // Manuscript grid
     for (var c = 0; c < _cols; c++) {
       for (var r = 0; r < _rows; r++) {
-        canvas.drawRect(Rect.fromLTWH(colX(c), _top + r * _cell, _cell, _cell), _stroke(BP.lineFaint));
+        canvas.drawRect(Rect.fromLTWH(colX(c), _top + r * _cell, _cell, _cell), _stroke(BP.lineFaint, 1.2));
       }
     }
 
-    // Reading-order arrows: columns go ←, characters go ↓.
+    // Reading-order arrows: characters go ↓, columns go ←.
     final guide = Paint()
-      ..color = BP.amber.withValues(alpha: 0.7)
-      ..strokeWidth = 1.3;
+      ..color = BP.amber.withValues(alpha: 0.8)
+      ..strokeWidth = 2;
     drawArrow(
       canvas,
-      Offset(colX(0) + _cell, _top - 16),
-      Offset(colX(_cols - 1), _top - 16),
+      Offset(colX(0) + _cell, _top - 14),
+      Offset(colX(_cols - 1), _top - 14),
       guide,
       dashed: true,
-      head: 6,
+      head: 9,
     );
-    final ax = colX(0) + _cell + 16;
-    drawArrow(canvas, Offset(ax, _top), Offset(ax, _top + _rows * _cell), guide, dashed: true, head: 6);
+    final ax = colX(0) + _cell + 18;
+    drawArrow(canvas, Offset(ax, _top), Offset(ax, _top + _rows * _cell), guide, dashed: true, head: 9);
 
     var last = -1;
     for (var j = 0; j < chars.length; j++) {
-      final s = 0.05 + j * 0.055;
-      final p = _seg(t, s, s + 0.05);
+      final st = 0.3 + j * 0.22;
+      final p = _seg(s, st, st + 0.3);
       if (p <= 0) continue;
       last = j;
       final c = j ~/ _rows;
       final r = j % _rows;
       final cell = Rect.fromLTWH(colX(c), _top + r * _cell, _cell, _cell);
       final e = Curves.easeOutCubic.transform(p);
-      _paintCentered(canvas, chars[j], cell.center - Offset(0, 8 * (1 - e)), 1, p * fade);
+      _paintCentered(canvas, chars[j], cell.center - Offset(0, 10 * (1 - e)), 1, p * fade);
     }
     if (last >= 0 && fade > 0) {
       final c = last ~/ _rows;
       final r = last % _rows;
       canvas.drawRect(
         Rect.fromLTWH(colX(c), _top + r * _cell, _cell, _cell),
-        _stroke(BP.amber.withValues(alpha: fade), 1.5),
+        _stroke(BP.amber.withValues(alpha: fade), 2),
       );
     }
   }
 
   @override
-  bool shouldRepaint(_VerticalPainter old) => old.t != t || old.chars != chars;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 8 · combining — several code points become one emoji
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Emoji extends StatelessWidget {
-  const _Emoji();
-
-  static const _resultX = 266.0;
-
-  @override
-  Widget build(BuildContext context) => LoopBuilder(
-    period: const Duration(milliseconds: 6400),
-    builder: (context, t, _) {
-      final fade = 1 - _seg(t, 0.9, 0.98);
-      return SizedBox.fromSize(
-        size: _design,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            ..._row(
-              t,
-              fade,
-              y: 66,
-              start: 0.04,
-              parts: const ['👋', '🏽'],
-              xs: const [52, 116],
-              result: '👋🏽',
-              note: '2 → 1',
-            ),
-            ..._row(
-              t,
-              fade,
-              y: 180,
-              start: 0.40,
-              parts: const ['👩', 'ZWJ', '💻'],
-              xs: const [36, 94, 152],
-              result: '👩‍💻',
-              note: '3 → 1',
-            ),
-          ],
-        ),
-      );
-    },
-  );
-
-  static List<Widget> _row(
-    double t,
-    double fade, {
-    required double y,
-    required double start,
-    required List<String> parts,
-    required List<double> xs,
-    required String result,
-    required String note,
-  }) {
-    final appear = _seg(t, start, start + 0.08) * fade;
-    final merge = _ease(t, start + 0.12, start + 0.28);
-    final pop = _seg(t, start + 0.26, start + 0.34);
-    final partA = appear * (1 - _seg(merge, 0.7, 1));
-    final flash = 1 - _seg(t, start + 0.34, start + 0.5);
-    return [
-      // Code point slots
-      for (var k = 0; k < parts.length; k++)
-        Positioned(
-          left: xs[k] - (parts[k] == 'ZWJ' ? 22 : 27),
-          top: y - 27,
-          width: parts[k] == 'ZWJ' ? 44 : 54,
-          height: 54,
-          child: Opacity(
-            opacity: appear * 0.9,
-            child: CustomPaint(painter: DashedRectPainter(color: parts[k] == 'ZWJ' ? BP.amber : BP.lineDim)),
-          ),
-        ),
-      Positioned(
-        left: 184,
-        top: y - 10,
-        width: 40,
-        height: 20,
-        child: Opacity(
-          opacity: appear,
-          child: CustomPaint(painter: _ArrowPainter()),
-        ),
-      ),
-      // Parts sliding into one cluster
-      for (var k = 0; k < parts.length; k++)
-        Positioned(
-          left: ui.lerpDouble(xs[k], _resultX, merge)! - 40,
-          top: y - 40,
-          width: 80,
-          height: 80,
-          child: Opacity(
-            opacity: partA.clamp(0.0, 1.0),
-            child: Center(
-              child: parts[k] == 'ZWJ'
-                  ? Text('ZWJ', style: BT.mono(12, color: BP.amber, weight: 600))
-                  : Text(parts[k], style: BT.sample(34, height: 1)),
-            ),
-          ),
-        ),
-      // Result
-      Positioned(
-        left: _resultX - 34,
-        top: y - 34,
-        width: 68,
-        height: 68,
-        child: Opacity(
-          opacity: (pop * fade).clamp(0.0, 1.0),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: BP.amber.withValues(alpha: 0.12 * flash),
-              border: Border.all(color: Color.lerp(BP.line, BP.amber, flash)!, width: 1 + flash),
-            ),
-            child: Center(
-              child: Transform.scale(
-                scale: 0.6 + 0.4 * Curves.easeOutBack.transform(pop),
-                child: Text(result, style: BT.sample(40, height: 1)),
-              ),
-            ),
-          ),
-        ),
-      ),
-      Positioned(
-        left: _resultX - 40,
-        top: y + 38,
-        width: 80,
-        child: Opacity(
-          opacity: (pop * fade).clamp(0.0, 1.0),
-          child: Text(
-            note,
-            textAlign: TextAlign.center,
-            style: BT.mono(12, color: BP.amber),
-          ),
-        ),
-      ),
-    ];
-  }
-}
-
-class _ArrowPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    drawArrow(
-      canvas,
-      Offset(0, size.height / 2),
-      Offset(size.width, size.height / 2),
-      Paint()
-        ..color = BP.inkDim
-        ..strokeWidth = 1.3,
-      dashed: true,
-      head: 6,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_ArrowPainter old) => false;
+  bool shouldRepaint(_VerticalPainter old) => old.s != s || old.chars != chars;
 }

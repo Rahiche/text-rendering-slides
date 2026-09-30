@@ -12,69 +12,28 @@ class _Engine {
   final List<String> cells;
 }
 
-const _rows = ['layout', 'shaping', 'bidi / breaks', 'fonts', 'raster', 'GPU'];
+/// Pipeline order: find fonts → shape → lay out lines → rasterize.
+const _rows = ['fonts', 'shaping', 'layout', 'raster'];
 
 const _engines = [
-  _Engine('Chrome', 'chrome', [
-    'LayoutNG',
-    'HarfBuzz',
-    'ICU',
-    'platform + web fonts',
-    'Skia',
-    'Ganesh / Graphite',
-  ]),
-  _Engine('Figma', 'figma', [
-    'own C++ → WASM',
-    'HarfBuzz',
-    'ICU',
-    'Noto fallback',
-    'own renderer',
-    'WebGL / WebGPU',
-  ]),
-  _Engine('macOS', 'apple', [
-    'TextKit 2',
-    'Core Text (own shaper)',
-    'Core Text',
-    'system cascade',
-    'Core Graphics',
-    'Core Animation',
-  ]),
-  _Engine('Android', 'android', [
-    'StaticLayout',
-    'HarfBuzz (Minikin)',
-    'Minikin + ICU',
-    'system fallback',
-    'Skia (HWUI)',
-    'GL / Vulkan',
-  ]),
-  _Engine('Flutter', 'j-map', [
-    'RenderParagraph',
-    'HarfBuzz (SkParagraph)',
-    'ICU (SkUnicode)',
-    'FontCollection',
-    'Skia scaler → atlas',
-    'Impeller',
-  ]),
+  _Engine('Chrome', 'chrome', ['system + web', 'HarfBuzz', 'LayoutNG', 'Skia']),
+  _Engine('Figma', 'figma', ['Noto fallback', 'HarfBuzz', 'own C++', 'WebGL / WebGPU']),
+  _Engine('macOS', 'apple', ['system cascade', 'Core Text', 'TextKit 2', 'Core Graphics']),
+  _Engine('Android', 'android', ['system fallback', 'HarfBuzz', 'Minikin', 'Skia']),
+  _Engine('Flutter', 'j-map', ['FontCollection', 'HarfBuzz', 'SkParagraph', 'Impeller']),
 ];
 
-const _labelW = 180.0;
+const _labelW = 170.0;
 const _colW = (1472 - _labelW) / 5;
-const _headH = 84.0;
-const _rowH = 88.0;
-const _inset = 7.0;
+const _headH = 88.0;
+const _rowH = 106.0;
+const _inset = 8.0;
 const _shapingRow = 1;
-const _gridBottom = _headH + 6 * _rowH;
+const _gridBottom = _headH + 4 * _rowH;
 const _busY = _headH + (_shapingRow + 1) * _rowH;
 const _apple = 2;
 
-bool _isHarfBuzz(int c, int r) => r == _shapingRow && _engines[c].cells[r].startsWith('HarfBuzz');
-
-/// "HarfBuzz (Minikin)" → ("HarfBuzz", "Minikin").
-(String, String?) _split(String s) {
-  final i = s.indexOf(' (');
-  if (i < 0 || !s.endsWith(')')) return (s, null);
-  return (s.substring(0, i), s.substring(i + 2, s.length - 1));
-}
+bool _isHarfBuzz(int c, int r) => r == _shapingRow && _engines[c].cells[r] == 'HarfBuzz';
 
 /// Five text stacks side by side. Step 1 fills the matrix column by column,
 /// step 2 lights up the shaper four of them share.
@@ -146,7 +105,7 @@ class _EnginesSlideState extends State<EnginesSlide> {
             left: 0,
             top: _headH,
             width: 18,
-            height: 6 * _rowH,
+            height: 4 * _rowH,
             child: IgnorePointer(
               child: LoopBuilder(
                 period: const Duration(milliseconds: 3600),
@@ -158,9 +117,9 @@ class _EnginesSlideState extends State<EnginesSlide> {
           // Row labels
           for (var r = 0; r < _rows.length; r++)
             Positioned(
-              left: 26,
+              left: 30,
               top: _headH + r * _rowH,
-              width: _labelW - 34,
+              width: _labelW - 36,
               height: _rowH,
               child: MouseRegion(
                 onEnter: (_) => _hover(r, null),
@@ -173,7 +132,10 @@ class _EnginesSlideState extends State<EnginesSlide> {
                     alignment: Alignment.centerLeft,
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 160),
-                      style: BT.mono(17, color: _hr == r ? BP.amber : BP.inkDim),
+                      style: BT.mono(
+                        24,
+                        color: _hr == r || (r == _shapingRow && step >= 2) ? BP.amber : BP.inkDim,
+                      ),
                       child: Text(_rows[r]),
                     ),
                   ),
@@ -181,7 +143,7 @@ class _EnginesSlideState extends State<EnginesSlide> {
               ),
             ),
 
-          // Column headers (click → deep-dive slide)
+          // Column headers (click → deep-dive slide, where there is one)
           for (var c = 0; c < _engines.length; c++)
             Positioned(
               left: _labelW + c * _colW,
@@ -218,7 +180,7 @@ class _EnginesSlideState extends State<EnginesSlide> {
                   child: _Cell(
                     text: _engines[c].cells[r],
                     visible: step >= 1,
-                    delay: Duration(milliseconds: c * 300 + r * 70),
+                    delay: Duration(milliseconds: c * 220 + r * 60),
                     glow: step >= 2 && _isHarfBuzz(c, r),
                     own: step >= 2 && c == _apple && r == _shapingRow,
                     hot: _hr == r || _hc == c,
@@ -230,13 +192,24 @@ class _EnginesSlideState extends State<EnginesSlide> {
           Positioned.fill(
             child: IgnorePointer(child: _Bus(visible: step >= 2)),
           ),
+
+          // The one takeaway.
           Positioned(
-            left: 20,
-            top: _busY - 13,
-            child: const StepReveal(
+            left: _labelW,
+            right: 0,
+            top: _gridBottom + 28,
+            child: StepReveal(
               at: 2,
-              offset: Offset(-14, 0),
-              child: BpTag('same shaper', color: BP.amber),
+              delay: const Duration(milliseconds: 500),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: 'HarfBuzz', style: BT.display(36, color: BP.amber, weight: 600)),
+                    TextSpan(text: ' shapes text in 4 of 5', style: BT.display(36, color: BP.ink)),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         ],
@@ -305,7 +278,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final flutter = name == 'Flutter';
     return Padding(
-      padding: const EdgeInsets.only(left: 14, bottom: 16),
+      padding: const EdgeInsets.only(left: 14, bottom: 18),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,12 +290,15 @@ class _Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (flutter) ...[
-                  Transform.rotate(angle: 0.785398, child: Container(width: 9, height: 9, color: BP.amber)),
-                  const SizedBox(width: 12),
+                  Transform.rotate(
+                    angle: 0.785398,
+                    child: Container(width: 12, height: 12, color: BP.amber),
+                  ),
+                  const SizedBox(width: 14),
                 ],
                 AnimatedDefaultTextStyle(
                   duration: const Duration(milliseconds: 160),
-                  style: BT.display(30, color: hot ? BP.amber : BP.ink, letterSpacing: -0.5),
+                  style: BT.display(38, color: hot ? BP.amber : BP.ink, letterSpacing: -0.5),
                   child: Text(name),
                 ),
                 const SizedBox(width: 10),
@@ -332,7 +308,7 @@ class _Header extends StatelessWidget {
                   child: AnimatedSlide(
                     duration: const Duration(milliseconds: 200),
                     offset: hot ? Offset.zero : const Offset(-0.4, 0),
-                    child: Text('→', style: BT.mono(22, color: BP.amber)),
+                    child: Text('→', style: BT.mono(28, color: BP.amber)),
                   ),
                 ),
               ],
@@ -363,7 +339,6 @@ class _Cell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (main, sub) = _split(text);
     final edge = glow
         ? BP.amber
         : own
@@ -383,10 +358,10 @@ class _Cell extends StatelessWidget {
             decoration: BoxDecoration(
               // Opaque fills so the glow only shows around the cell, not through it.
               color: glow
-                  ? Color.alphaBlend(BP.amber.withValues(alpha: 0.12), BP.panel)
+                  ? Color.alphaBlend(BP.amber.withValues(alpha: 0.14), BP.panel)
                   : (hot ? Color.alphaBlend(BP.line.withValues(alpha: 0.06), BP.panel) : BP.panel),
               boxShadow: glow
-                  ? [BoxShadow(color: BP.amber.withValues(alpha: 0.28), blurRadius: 20)]
+                  ? [BoxShadow(color: BP.amber.withValues(alpha: 0.3), blurRadius: 24)]
                   : const [],
             ),
           ),
@@ -397,7 +372,7 @@ class _Cell extends StatelessWidget {
             delay: delay,
             duration: const Duration(milliseconds: 520),
             color: edge,
-            strokeWidth: glow ? 2 : 1,
+            strokeWidth: glow ? 2.5 : (own ? 2 : 1),
             dashed: own,
             path: (s) => Path()..addRect(Offset.zero & s),
           ),
@@ -407,25 +382,22 @@ class _Cell extends StatelessWidget {
           delay: delay + const Duration(milliseconds: 220),
           offset: const Offset(0, 8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: BT.mono(17, color: glow ? BP.amber : BP.ink, weight: glow ? 600 : 400),
-                    child: Text(main, softWrap: false),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 300),
+                  style: BT.mono(
+                    24,
+                    color: glow ? BP.amber : (own ? BP.violet : BP.ink),
+                    weight: glow ? 700 : 400,
                   ),
+                  child: Text(text, softWrap: false),
                 ),
-                if (sub != null) ...[
-                  const SizedBox(height: 3),
-                  Text(sub, softWrap: false, style: BT.mono(13, color: own ? BP.violet : BP.inkDim)),
-                ],
-              ],
+              ),
             ),
           ),
         ),
@@ -460,7 +432,7 @@ class _BusPainter extends CustomPainter {
   final double p;
   final double t;
 
-  static const _x0 = 132.0;
+  static const _x0 = _labelW - 24;
   static const _x1 = _labelW + 4.5 * _colW;
 
   @override
@@ -468,7 +440,7 @@ class _BusPainter extends CustomPainter {
     final x = _x0 + (_x1 - _x0) * p;
     final line = Paint()
       ..color = BP.amber
-      ..strokeWidth = 2
+      ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(const Offset(_x0, _busY), Offset(x, _busY), line);
     for (var c = 0; c < _engines.length; c++) {
@@ -476,32 +448,32 @@ class _BusPainter extends CustomPainter {
       if (cx > x) break;
       if (_isHarfBuzz(c, _shapingRow)) {
         canvas.drawLine(Offset(cx, _busY - _inset), Offset(cx, _busY), line);
-        canvas.drawCircle(Offset(cx, _busY), 5, Paint()..color = BP.amber);
+        canvas.drawCircle(Offset(cx, _busY), 7, Paint()..color = BP.amber);
         canvas.drawCircle(
           Offset(cx, _busY),
-          5,
+          7,
           Paint()
             ..color = BP.paper
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5,
+            ..strokeWidth = 2,
         );
       } else {
         // A jumper: crosses under Apple's own shaper without connecting.
         final hop = Path()
-          ..moveTo(cx - 6, _busY)
-          ..arcToPoint(Offset(cx + 6, _busY), radius: const Radius.circular(6), clockwise: false);
+          ..moveTo(cx - 9, _busY)
+          ..arcToPoint(Offset(cx + 9, _busY), radius: const Radius.circular(9), clockwise: false);
         canvas.drawLine(
-          Offset(cx - 6, _busY),
-          Offset(cx + 6, _busY),
+          Offset(cx - 9, _busY),
+          Offset(cx + 9, _busY),
           Paint()
             ..color = BP.paper
-            ..strokeWidth = 4,
+            ..strokeWidth = 6,
         );
         canvas.drawPath(
           hop,
           Paint()
             ..color = BP.amber
-            ..strokeWidth = 2
+            ..strokeWidth = 3
             ..style = PaintingStyle.stroke,
         );
       }
@@ -511,12 +483,12 @@ class _BusPainter extends CustomPainter {
       final px = _x0 + (_x1 - _x0) * Curves.easeInOutSine.transform(t);
       canvas.drawCircle(
         Offset(px, _busY),
-        10,
+        12,
         Paint()
           ..color = BP.amber.withValues(alpha: 0.35)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
       );
-      canvas.drawCircle(Offset(px, _busY), 3.5, Paint()..color = BP.ink);
+      canvas.drawCircle(Offset(px, _busY), 4.5, Paint()..color = BP.ink);
     }
   }
 

@@ -14,26 +14,25 @@ class FigmaSlide extends StatelessWidget {
   const FigmaSlide({super.key});
 
   @override
-  Widget build(BuildContext context) => const SlideFrame(
+  Widget build(BuildContext context) => SlideFrame(
     title: 'Figma',
-    child: _EngineLayout(
-      hero: _ZoomHero(),
-      layers: [
-        _Layer('C++ editor', 'own text layout engine'),
-        _Layer('HarfBuzz + ICU', 'shaping · bidi'),
-        _Layer('Noto fallback', 'per character'),
-        _Layer('WASM', 'Emscripten'),
-        _Layer('own renderer', 'one canvas'),
-        _Layer('WebGPU / WebGL', 'WebGPU since 2025'),
-      ],
-      caps: [
-        _Cap('RTL · 2022', _K.yes),
-        _Cap('vertical', _K.no),
-        _Cap('color fonts', _K.no),
-        _Cap('same on every OS', _K.yes),
-        _Cap('≈ Flutter · canvas + own engine', _K.flutter),
-      ],
+    trailing: Reveal(
+      visible: true,
+      delay: const Duration(milliseconds: 600),
+      offset: const Offset(16, 0),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 22),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: 'one canvas, own text engine  ', style: BT.display(28, color: BP.inkDim)),
+              TextSpan(text: '≈ Flutter', style: BT.display(28, color: BP.amber, weight: 600)),
+            ],
+          ),
+        ),
+      ),
     ),
+    child: const _ZoomHero(),
   );
 }
 
@@ -44,9 +43,10 @@ class FigmaSlide extends StatelessWidget {
 TextPainter _tp(String s, TextStyle style) =>
     TextPainter(text: TextSpan(text: s, style: style), textDirection: TextDirection.ltr)..layout();
 
-const _vpW = 470.0;
-const _vpH = 506.0;
-const _vpGap = 40.0;
+const _vpW = 700.0;
+const _vpH = 492.0;
+const _vpGap = 72.0;
+const _vpTop = 18.0;
 
 class _ZoomHero extends StatefulWidget {
   const _ZoomHero();
@@ -56,10 +56,13 @@ class _ZoomHero extends StatefulWidget {
 }
 
 class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixin {
-  static const _word = 'Type';
+  static const _word = '文字';
   static const _fs = 14.0;
   static const _pad = 2.0;
   static const _maxV = 6.0; // 2^6 = 64×
+
+  /// Auto zoom: in and out again; the deepest zoom lands ~4.2 s after arrival.
+  static const _autoPeriod = 8.4;
 
   late final TextPainter _small = _tp(_word, _style(_fs));
   ui.Image? _bitmap;
@@ -77,6 +80,9 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
   static TextStyle _style(double s) => BT.display(s, weight: 500);
   double get _z => math.pow(2, _v).toDouble();
   Rect get _textRect => Rect.fromLTWH(_pad, _pad, _small.width, _small.height);
+
+  /// Deepest auto zoom: the whole word just fits the viewport.
+  double get _peakV => (math.log(0.8 * _vpW / _small.width) / math.ln2).clamp(1.0, _maxV);
 
   @override
   void initState() {
@@ -105,9 +111,9 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
     final dt = ((e - _last).inMicroseconds / 1e6).clamp(0.0, 0.1);
     _last = e;
     if (!_auto) return;
-    _phase = (_phase + dt / 11) % 1.0;
+    _phase = (_phase + dt / _autoPeriod) % 1.0;
     setState(() {
-      _v = _maxV * (0.5 - 0.5 * math.cos(2 * math.pi * _phase));
+      _v = _peakV * (0.5 - 0.5 * math.cos(2 * math.pi * _phase));
       _pan = _pan * math.pow(0.08, dt).toDouble();
     });
   }
@@ -120,7 +126,9 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
   void _toggleAuto() => setState(() {
     _auto = !_auto;
     if (_auto) {
-      _phase = math.acos((1 - 2 * _v / _maxV).clamp(-1.0, 1.0)) / (2 * math.pi);
+      final v = _v.clamp(0.0, _peakV);
+      _v = v;
+      _phase = math.acos((1 - 2 * v / _peakV).clamp(-1.0, 1.0)) / (2 * math.pi);
     }
   });
 
@@ -155,47 +163,77 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
     required CustomPainter painter,
     required int rasters,
     required Color color,
-  }) => BpPanel(
-    label: label,
-    padding: EdgeInsets.zero,
-    child: Listener(
-      onPointerSignal: (e) {
-        if (e is PointerScrollEvent) {
-          _manual(() => _v = (_v - e.scrollDelta.dy / 240).clamp(0.0, _maxV));
-        }
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.grab,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanStart: (_) => _manual(() {}),
-          onPanUpdate: (d) => _manual(() => _pan = _clampPan(_pan - d.delta / _z)),
-          onDoubleTap: () => _manual(() => _pan = Offset.zero),
-          child: ClipRect(
-            child: Stack(
-              children: [
-                Positioned.fill(child: CustomPaint(painter: painter)),
-                Positioned(
-                  left: 16,
-                  bottom: 12,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text('rasterized', style: BT.mono(13, color: BP.inkFaint)),
-                      const SizedBox(width: 8),
-                      Text(
-                        '×${AnimatedCount.format(rasters)}',
-                        style: BT.mono(20, color: color, weight: 600),
-                      ),
-                    ],
+  }) => CustomPaint(
+    foregroundPainter: _FramePainter(color),
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: Listener(
+            onPointerSignal: (e) {
+              if (e is PointerScrollEvent) {
+                _manual(() => _v = (_v - e.scrollDelta.dy / 240).clamp(0.0, _maxV));
+              }
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (_) => _manual(() {}),
+                onPanUpdate: (d) => _manual(() => _pan = _clampPan(_pan - d.delta / _z)),
+                onDoubleTap: () => _manual(() => _pan = Offset.zero),
+                child: ClipRect(
+                  child: ColoredBox(
+                    color: BP.panel,
+                    child: CustomPaint(painter: painter, child: const SizedBox.expand()),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        // How many times the text has been rasterized so far.
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              decoration: BoxDecoration(
+                color: BP.paper.withValues(alpha: 0.92),
+                border: const Border(
+                  left: BorderSide(color: BP.lineDim),
+                  top: BorderSide(color: BP.lineDim),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text('rasterized', style: BT.mono(20, color: BP.inkDim)),
+                  const SizedBox(width: 12),
+                  Text(
+                    '×${AnimatedCount.format(rasters)}',
+                    style: BT.mono(30, color: color, weight: 600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // The label, notched into the top edge.
+        Positioned(
+          left: 18,
+          top: -18,
+          child: IgnorePointer(
+            child: Container(
+              color: BP.paper,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(label, style: BT.display(26, color: color)),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 
@@ -209,14 +247,14 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
       children: [
         Positioned(
           left: 0,
-          top: 0,
+          top: _vpTop,
           width: _vpW,
           height: _vpH,
           child: Reveal(
             visible: true,
             delay: const Duration(milliseconds: 150),
             child: _viewport(
-              label: 'bitmap',
+              label: 'scaled bitmap',
               painter: _BitmapPainter(image: _bitmap, z: z, cam: cam, text: _textRect),
               rasters: 1,
               color: BP.inkDim,
@@ -225,7 +263,7 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
         ),
         Positioned(
           left: _vpW + _vpGap,
-          top: 0,
+          top: _vpTop,
           width: _vpW,
           height: _vpH,
           child: Reveal(
@@ -241,34 +279,160 @@ class _ZoomHeroState extends State<_ZoomHero> with SingleTickerProviderStateMixi
         ),
         const Positioned(
           left: _vpW,
-          top: _vpH / 2 - 30,
+          top: _vpTop + _vpH / 2 - 40,
           width: _vpGap,
-          height: 60,
+          height: 80,
           child: CustomPaint(painter: _SyncPainter()),
         ),
         Positioned(
           left: 0,
-          top: _vpH + 40,
+          right: 0,
+          top: _vpTop + _vpH + 40,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              BpSlider(
-                label: 'zoom',
+              _ZoomSlider(
                 value: _v,
-                min: 0,
                 max: _maxV,
-                width: 560,
-                ticks: 6,
-                format: (v) => '${(math.pow(2, v) * 100).round()}%',
+                width: 820,
                 onChanged: (v) => _manual(() => _v = v),
               ),
-              const SizedBox(width: 10),
-              BpButton(label: 'auto', size: 14, selected: _auto, onTap: _toggleAuto),
+              const SizedBox(width: 28),
+              BpButton(label: 'auto', size: 20, selected: _auto, onTap: _toggleAuto),
             ],
           ),
         ),
       ],
     );
   }
+}
+
+/// Viewport outline with blueprint corner ticks.
+class _FramePainter extends CustomPainter {
+  _FramePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Offset.zero & size;
+    canvas.drawRect(
+      r,
+      Paint()
+        ..color = color == BP.amber ? BP.amber.withValues(alpha: 0.7) : BP.lineDim
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+    final t = Paint()
+      ..color = BP.line
+      ..strokeWidth = 2;
+    const l = 10.0;
+    for (final c in [r.topLeft, r.topRight, r.bottomLeft, r.bottomRight]) {
+      final dx = c.dx == 0 ? l : -l;
+      final dy = c.dy == 0 ? l : -l;
+      canvas.drawLine(c, c + Offset(dx, 0), t);
+      canvas.drawLine(c, c + Offset(0, dy), t);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FramePainter old) => old.color != color;
+}
+
+/// Ruler-style zoom slider (a larger copy of [BpSlider]): ticks at every
+/// doubling, a diamond thumb, and the zoom as a big readout.
+class _ZoomSlider extends StatelessWidget {
+  const _ZoomSlider({
+    required this.value,
+    required this.max,
+    required this.width,
+    required this.onChanged,
+  });
+
+  final double value;
+  final double max;
+  final double width;
+  final ValueChanged<double> onChanged;
+
+  static String _format(double v) {
+    final z = math.pow(2, v).toDouble();
+    return '${z < 10 ? z.toStringAsFixed(1) : z.round()}×';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    void update(Offset p) => onChanged((p.dx / width).clamp(0.0, 1.0) * max);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('zoom', style: BT.mono(22, color: BP.inkDim)),
+        const SizedBox(width: 20),
+        SizedBox(
+          width: width,
+          height: 48,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanDown: (d) => update(d.localPosition),
+              onPanUpdate: (d) => update(d.localPosition),
+              child: CustomPaint(
+                painter: _SliderPainter(t: (value / max).clamp(0.0, 1.0), ticks: max.round()),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        SizedBox(
+          width: 100,
+          child: Text(_format(value), style: BT.mono(28, color: BP.amber, weight: 600)),
+        ),
+      ],
+    );
+  }
+}
+
+class _SliderPainter extends CustomPainter {
+  _SliderPainter({required this.t, required this.ticks});
+
+  final double t;
+  final int ticks;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height / 2;
+    final dim = Paint()
+      ..color = BP.lineDim
+      ..strokeWidth = 1.5;
+    final hot = Paint()
+      ..color = BP.line
+      ..strokeWidth = 3;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), dim);
+    for (var i = 0; i <= ticks; i++) {
+      final x = size.width * i / ticks;
+      canvas.drawLine(Offset(x, y - 10), Offset(x, y + 10), dim);
+    }
+    final x = size.width * t;
+    canvas.drawLine(Offset(0, y), Offset(x, y), hot);
+    final d = Path()
+      ..moveTo(x, y - 13)
+      ..lineTo(x + 13, y)
+      ..lineTo(x, y + 13)
+      ..lineTo(x - 13, y)
+      ..close();
+    canvas.drawPath(d, Paint()..color = BP.paper);
+    canvas.drawPath(
+      d,
+      Paint()
+        ..color = BP.amber
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SliderPainter old) => old.t != t || old.ticks != ticks;
 }
 
 /// Figma-style selection: blue box with square handles, constant screen size.
@@ -278,17 +442,17 @@ void _drawSelection(Canvas canvas, Rect r) {
     Paint()
       ..color = BP.line
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2,
+      ..strokeWidth = 1.5,
   );
   for (final p in [r.topLeft, r.topRight, r.bottomLeft, r.bottomRight]) {
-    final h = Rect.fromCenter(center: p, width: 8, height: 8);
+    final h = Rect.fromCenter(center: p, width: 10, height: 10);
     canvas.drawRect(h, Paint()..color = BP.ink);
     canvas.drawRect(
       h,
       Paint()
         ..color = BP.line
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 1.5,
     );
   }
 }
@@ -375,384 +539,20 @@ class _SyncPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final p = Paint()
       ..color = BP.lineDim
-      ..strokeWidth = 1.2
+      ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
     final y1 = size.height * 0.35;
     final y2 = size.height * 0.65;
     canvas.drawPath(dashPath(Path()
-      ..moveTo(4, y1)
-      ..lineTo(size.width - 4, y1), dash: 4, gap: 3), p);
+      ..moveTo(8, y1)
+      ..lineTo(size.width - 8, y1), dash: 5, gap: 4), p);
     canvas.drawPath(dashPath(Path()
-      ..moveTo(size.width - 4, y2)
-      ..lineTo(4, y2), dash: 4, gap: 3), p);
-    drawArrowHead(canvas, Offset(size.width - 4, y1), Offset(4, y1), p, 6);
-    drawArrowHead(canvas, Offset(4, y2), Offset(size.width - 4, y2), p, 6);
+      ..moveTo(size.width - 8, y2)
+      ..lineTo(8, y2), dash: 5, gap: 4), p);
+    drawArrowHead(canvas, Offset(size.width - 8, y1), Offset(8, y1), p, 9);
+    drawArrowHead(canvas, Offset(8, y2), Offset(size.width - 8, y2), p, 9);
   }
 
   @override
   bool shouldRepaint(_SyncPainter old) => false;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Engine layout: hero (≈ 2/3) · stack strip · capability tags
-// ─────────────────────────────────────────────────────────────────────────────
-
-const _heroW = 980.0;
-const _sideX = 1016.0;
-const _stripH = 440.0;
-
-class _Layer {
-  const _Layer(this.name, this.sub);
-
-  final String name;
-  final String sub;
-}
-
-enum _K { yes, no, info, flutter }
-
-class _Cap {
-  const _Cap(this.text, [this.kind = _K.info]);
-
-  final String text;
-  final _K kind;
-}
-
-class _EngineLayout extends StatelessWidget {
-  const _EngineLayout({required this.hero, required this.layers, required this.caps});
-
-  final Widget hero;
-  final List<_Layer> layers;
-  final List<_Cap> caps;
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    clipBehavior: Clip.none,
-    children: [
-      Positioned(left: 0, top: 0, width: _heroW, bottom: 0, child: hero),
-      Positioned(
-        left: _sideX,
-        top: 0,
-        right: 0,
-        height: _stripH,
-        child: Reveal(
-          visible: true,
-          delay: const Duration(milliseconds: 250),
-          offset: const Offset(24, 0),
-          child: _StackStrip(layers: layers),
-        ),
-      ),
-      Positioned(
-        left: _sideX,
-        top: _stripH + 30,
-        right: 0,
-        bottom: 0,
-        child: _CapTags(caps: caps),
-      ),
-    ],
-  );
-}
-
-class _CapTags extends StatelessWidget {
-  const _CapTags({required this.caps});
-
-  final List<_Cap> caps;
-
-  @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 10,
-    runSpacing: 10,
-    children: [
-      for (var i = 0; i < caps.length; i++)
-        Reveal(
-          visible: true,
-          delay: Duration(milliseconds: 900 + 110 * i),
-          offset: const Offset(0, 12),
-          child: _tag(caps[i]),
-        ),
-    ],
-  );
-
-  static Widget _tag(_Cap c) {
-    final color = switch (c.kind) {
-      _K.yes => BP.green,
-      _K.no => BP.red,
-      _K.flutter => BP.amber,
-      _K.info => BP.line,
-    };
-    final mark = c.kind == _K.yes || c.kind == _K.no;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        border: Border.all(color: color),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (mark) ...[
-            _Mark(yes: c.kind == _K.yes, color: color, size: 12),
-            const SizedBox(width: 7),
-          ],
-          Text(c.text, style: BT.mono(14, color: color)),
-        ],
-      ),
-    );
-  }
-}
-
-/// A drawn ✓ / ✕ (the mono font has no check mark).
-class _Mark extends StatelessWidget {
-  const _Mark({required this.yes, required this.color, this.size = 13});
-
-  final bool yes;
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: size,
-    height: size,
-    child: CustomPaint(painter: _MarkPainter(yes, color)),
-  );
-}
-
-class _MarkPainter extends CustomPainter {
-  _MarkPainter(this.yes, this.color);
-
-  final bool yes;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size s) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = math.max(1.6, s.width * 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final w = s.width;
-    final h = s.height;
-    final path = yes
-        ? (Path()
-            ..moveTo(w * 0.1, h * 0.55)
-            ..lineTo(w * 0.4, h * 0.84)
-            ..lineTo(w * 0.92, h * 0.18))
-        : (Path()
-            ..moveTo(w * 0.18, h * 0.18)
-            ..lineTo(w * 0.82, h * 0.82)
-            ..moveTo(w * 0.82, h * 0.18)
-            ..lineTo(w * 0.18, h * 0.82));
-    canvas.drawPath(path, p);
-  }
-
-  @override
-  bool shouldRepaint(_MarkPainter old) => old.yes != yes || old.color != color;
-}
-
-/// The engine's layers, top to bottom, with a packet hopping through them.
-class _StackStrip extends StatefulWidget {
-  const _StackStrip({required this.layers});
-
-  final List<_Layer> layers;
-
-  @override
-  State<_StackStrip> createState() => _StackStripState();
-}
-
-class _StackStripState extends State<_StackStrip> {
-  int? _hover;
-
-  @override
-  Widget build(BuildContext context) {
-    final n = widget.layers.length;
-    return BpPanel(
-      label: 'stack',
-      padding: const EdgeInsets.fromLTRB(14, 30, 18, 18),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final slot = box.maxHeight / n;
-          final h = math.min(54.0, slot - 14);
-          return LoopBuilder(
-            period: Duration(milliseconds: 1000 * n + 1600),
-            builder: (context, t, _) {
-              final travel = n - 1.0;
-              final u = t * (travel + 1.6);
-              var pos = travel;
-              if (u < travel) {
-                final seg = u.floor();
-                final f = ((u - seg - 0.3) / 0.7).clamp(0.0, 1.0);
-                pos = seg + Curves.easeInOutCubic.transform(f);
-              }
-              final fade = u < 0.15
-                  ? u / 0.15
-                  : (u > travel + 1.0 ? (1 - (u - travel - 1.0) / 0.6).clamp(0.0, 1.0) : 1.0);
-              final active = (pos - pos.round()).abs() < 0.2 && fade > 0.3 ? pos.round() : -1;
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _RailPainter(n: n, slot: slot, pos: pos, alpha: fade, boxLeft: 34),
-                    ),
-                  ),
-                  for (var i = 0; i < n; i++)
-                    Positioned(
-                      left: 34,
-                      right: 0,
-                      top: slot * i + (slot - h) / 2,
-                      height: h,
-                      child: Reveal(
-                        visible: true,
-                        delay: Duration(milliseconds: 400 + 90 * i),
-                        offset: const Offset(16, 0),
-                        child: MouseRegion(
-                          onEnter: (_) => setState(() => _hover = i),
-                          onExit: (_) => setState(() => _hover = null),
-                          child: _LayerBox(
-                            layer: widget.layers[i],
-                            hot: i == active || i == _hover,
-                            passed: pos >= i - 0.01 && fade > 0.3,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _LayerBox extends StatelessWidget {
-  const _LayerBox({required this.layer, required this.hot, required this.passed});
-
-  final _Layer layer;
-  final bool hot;
-  final bool passed;
-
-  @override
-  Widget build(BuildContext context) => AnimatedContainer(
-    duration: const Duration(milliseconds: 220),
-    padding: const EdgeInsets.symmetric(horizontal: 14),
-    decoration: BoxDecoration(
-      color: hot ? BP.amber.withValues(alpha: 0.10) : BP.panel,
-      border: Border.all(
-        color: hot ? BP.amber : (passed ? BP.line.withValues(alpha: 0.7) : BP.lineDim),
-        width: hot ? 1.6 : 1,
-      ),
-    ),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          layer.name,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.fade,
-          style: BT.mono(16, color: hot ? BP.amber : BP.ink, weight: 500, height: 1.2),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          layer.sub,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.fade,
-          style: BT.mono(11.5, color: BP.inkFaint, height: 1.2),
-        ),
-      ],
-    ),
-  );
-}
-
-class _RailPainter extends CustomPainter {
-  _RailPainter({
-    required this.n,
-    required this.slot,
-    required this.pos,
-    required this.alpha,
-    required this.boxLeft,
-  });
-
-  final int n;
-  final double slot;
-  final double pos;
-  final double alpha;
-  final double boxLeft;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const x = 10.0;
-    double y(double i) => slot * i + slot / 2;
-    canvas.drawLine(
-      Offset(x, y(0)),
-      Offset(x, y(n - 1.0)),
-      Paint()
-        ..color = BP.lineDim
-        ..strokeWidth = 1,
-    );
-    canvas.drawLine(
-      Offset(x, y(0)),
-      Offset(x, y(pos)),
-      Paint()
-        ..color = BP.line.withValues(alpha: 0.8 * alpha)
-        ..strokeWidth = 2,
-    );
-    for (var i = 0; i < n; i++) {
-      final yi = y(i.toDouble());
-      final on = pos >= i - 0.01 && alpha > 0.3;
-      canvas.drawLine(
-        Offset(x, yi),
-        Offset(boxLeft, yi),
-        Paint()
-          ..color = (on ? BP.line : BP.lineDim)
-          ..strokeWidth = 1,
-      );
-      canvas.drawCircle(Offset(x, yi), 4.5, Paint()..color = BP.paper);
-      canvas.drawCircle(
-        Offset(x, yi),
-        4.5,
-        Paint()
-          ..color = (on ? BP.line : BP.lineDim)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-      if (i < n - 1) {
-        final ym = y(i + 0.5);
-        drawArrowHead(
-          canvas,
-          Offset(x, ym + 3),
-          Offset(x, ym - 5),
-          Paint()
-            ..color = BP.lineDim
-            ..strokeWidth = 1.2,
-          5,
-        );
-      }
-    }
-    if (alpha <= 0.01) return;
-    final py = y(pos);
-    for (var k = 1; k <= 6; k++) {
-      final ty = py - k * 7;
-      if (ty < y(0)) break;
-      canvas.drawCircle(
-        Offset(x, ty),
-        3.5 - k * 0.45,
-        Paint()..color = BP.amber.withValues(alpha: (0.5 - k * 0.07) * alpha),
-      );
-    }
-    final d = Path()
-      ..moveTo(x, py - 9)
-      ..lineTo(x + 9, py)
-      ..lineTo(x, py + 9)
-      ..lineTo(x - 9, py)
-      ..close();
-    canvas.drawPath(d, Paint()..color = BP.amber.withValues(alpha: alpha));
-  }
-
-  @override
-  bool shouldRepaint(_RailPainter old) =>
-      old.pos != pos || old.alpha != alpha || old.n != n || old.slot != slot;
 }

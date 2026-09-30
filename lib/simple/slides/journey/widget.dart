@@ -22,37 +22,41 @@ class JWidgetSlide extends StatelessWidget {
   );
 }
 
-// Tree geometry (content-area coordinates).
-const _nodeX = 430.0;
-const _nodeW = 300.0;
-const _nodeH = 72.0;
-const _nodeGap = 56.0;
+const _fontSize = 72.0;
+
+// Code panel (content-area coordinates).
+const _codeW = 400.0;
+
+// The chain.
+const _nodeX = 480.0;
+const _nodeW = 420.0;
+const _nodeH = 78.0;
+const _nodeGap = 44.0;
 const _nodeCx = _nodeX + _nodeW / 2;
-double _nodeTop(int i) => 14 + i * (_nodeH + _nodeGap);
+double _nodeTop(int i) => i * (_nodeH + _nodeGap);
 
-// Right column: parent → rails → RenderParagraph.
-const _rightX = 1060.0;
-const _parentW = 210.0;
-const _parentH = 40.0;
-const _boxTop = 176.0;
-const _downX = _rightX + 24;
-const _upX = _rightX + 50;
-const _railTop = _parentH + 6;
+// Right: rails → the real Text → a ruler that sets maxWidth.
+const _demoX = 1000.0;
+const _railTop = 112.0;
+const _boxTop = 250.0;
 const _railBottom = _boxTop - 8;
+const _downX = _demoX + 12;
+const _upX = _demoX + 36;
+const _rulerY = 572.0;
+const _minW = 120.0;
+const _maxRange = 460.0;
 
-const _stagger = 520;
-const _sideDelay = 300 + 5 * _stagger;
+const _stagger = 360;
+const _loopStart = 200 + 5 * _stagger + 400;
 
 const _nodes = [
-  ('Text', 'StatelessWidget', 'widgets'),
-  ('RichText', 'MultiChildRenderObjectWidget', 'widgets'),
-  ('RenderParagraph', 'RenderBox', 'rendering'),
-  ('TextPainter', 'layout · paint', 'painting'),
-  ('ui.Paragraph', '→ SkParagraph', 'dart:ui'),
+  ('Text', 'widgets'),
+  ('RichText', 'widgets'),
+  ('RenderParagraph', 'rendering'),
+  ('TextPainter', 'painting'),
+  ('ui.Paragraph', 'dart:ui'),
 ];
 const _edges = ['build()', 'createRenderObject()', 'owns', 'builds'];
-
-String _num(double v) => double.parse(v.toStringAsFixed(2)).toString();
 
 class _WidgetStage extends StatefulWidget {
   const _WidgetStage({required this.data});
@@ -64,7 +68,7 @@ class _WidgetStage extends StatefulWidget {
 }
 
 class _WidgetStageState extends State<_WidgetStage> {
-  double _maxW = 360;
+  double _maxW = 400;
   int _nonce = 0;
   bool _built = false;
   Timer? _timer;
@@ -78,11 +82,12 @@ class _WidgetStageState extends State<_WidgetStage> {
   void _arm() {
     _timer?.cancel();
     _built = false;
-    _timer = Timer(const Duration(milliseconds: _sideDelay + 700), () {
+    _timer = Timer(const Duration(milliseconds: _loopStart), () {
       if (mounted) setState(() => _built = true);
     });
   }
 
+  /// Tap the code: build the chain again.
   void _rebuild() => setState(() {
     _nonce++;
     _arm();
@@ -98,160 +103,142 @@ class _WidgetStageState extends State<_WidgetStage> {
   Widget build(BuildContext context) {
     final word = widget.data.text;
     final def = DefaultTextStyle.of(context).style;
-    final scaler = MediaQuery.textScalerOf(context);
 
     // Exactly what Text does: DefaultTextStyle ⊕ style, MediaQuery's scaler,
     // then RenderParagraph lays its TextPainter out with (0, maxWidth).
     final tp = TextPainter(
-      text: TextSpan(text: word, style: def.merge(journeyStyle(48))),
+      text: TextSpan(text: word, style: def.merge(journeyStyle(_fontSize))),
       textDirection: Directionality.of(context),
-      textScaler: scaler,
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: _maxW);
     final size = tp.size;
     tp.dispose();
 
-    final fromDefault = [
-      if (def.height != null) 'height ${_num(def.height!)}',
-      if (def.letterSpacing != null) 'spacing ${_num(def.letterSpacing!)}',
-    ].join(' · ');
-    final scale = scaler.scale(1);
-
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // ── Code ─────────────────────────────────────────────────────────
+        // ── Your code (tap: rebuild the chain) ───────────────────────────
         Positioned(
           left: 0,
-          top: 20,
-          width: 380,
-          child: Reveal(visible: true, child: _CodePanel(word: word)),
+          top: 0,
+          width: _codeW,
+          child: Reveal(
+            visible: true,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(onTap: _rebuild, child: _CodePanel(word: word)),
+            ),
+          ),
         ),
 
-        // ── The tree, drawn on in order ──────────────────────────────────
+        // ── The chain, drawn on in order ─────────────────────────────────
         Positioned.fill(
           child: IgnorePointer(
-            child: KeyedSubtree(
-              key: ValueKey(_nonce),
-              child: _Tree(fromDefault: fromDefault, scale: scale),
-            ),
+            child: KeyedSubtree(key: ValueKey(_nonce), child: const _Tree()),
           ),
         ),
 
         // ── Right: the real Text under real constraints ──────────────────
-        Positioned(
-          left: _rightX,
-          top: 0,
-          width: _parentW,
-          height: _parentH,
-          child: Reveal(
-            visible: true,
-            delay: const Duration(milliseconds: 500),
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: BP.panel,
-                border: Border.all(color: BP.lineDim),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Reveal(
+              visible: true,
+              delay: const Duration(milliseconds: 500),
+              offset: const Offset(16, 0),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Positioned.fill(child: CustomPaint(painter: _RailsPainter())),
+                  Positioned(
+                    left: _upX + 28,
+                    top: _railTop - 6,
+                    child: _Readout(arrow: 'constraints ↓', value: 'w ≤ ${_maxW.round()}', color: BP.amber),
+                  ),
+                  Positioned(
+                    left: _upX + 28,
+                    top: _railTop + 40,
+                    child: _Readout(
+                      arrow: 'size ↑',
+                      value: '${size.width.round()} × ${size.height.round()}',
+                      color: BP.green,
+                    ),
+                  ),
+                  // Dashed outline = RenderParagraph.size.
+                  Positioned(
+                    left: _demoX,
+                    top: _boxTop,
+                    width: size.width,
+                    height: size.height,
+                    child: CustomPaint(painter: DashedRectPainter(color: BP.line, strokeWidth: 1.5)),
+                  ),
+                  // The real widget: ConstrainedBox → Text → RichText → RenderParagraph.
+                  Positioned(
+                    left: _demoX,
+                    top: _boxTop,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: _maxW),
+                      child: Text(word, style: journeyStyle(_fontSize)),
+                    ),
+                  ),
+                  // maxWidth, down to the ruler's thumb.
+                  Positioned(
+                    left: _demoX + _maxW - 1,
+                    top: _boxTop - 26,
+                    width: 2,
+                    height: _rulerY - _boxTop + 14,
+                    child: const CustomPaint(painter: _VDashPainter(BP.amber)),
+                  ),
+                ],
               ),
-              child: Text('RenderConstrainedBox', style: BT.mono(14, color: BP.inkDim)),
             ),
           ),
         ),
-        const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _RailsPainter()))),
-        Positioned(
-          left: _rightX - 170,
-          top: 124,
-          width: 156,
-          child: Text(
-            'constraints ↓',
-            textAlign: TextAlign.right,
-            style: BT.mono(12, color: BP.amber.withValues(alpha: 0.8)),
-          ),
-        ),
-        Positioned(
-          left: _rightX - 170,
-          top: 144,
-          width: 156,
-          child: Text(
-            'size ↑',
-            textAlign: TextAlign.right,
-            style: BT.mono(12, color: BP.green.withValues(alpha: 0.8)),
-          ),
-        ),
-        Positioned(
-          left: _rightX - 200,
-          top: _boxTop + 4,
-          width: 186,
-          child: Text('RenderParagraph', textAlign: TextAlign.right, style: BT.mono(14, color: BP.line)),
-        ),
-        // Dashed outline = RenderParagraph.size.
-        Positioned(
-          left: _rightX,
-          top: _boxTop,
-          width: size.width,
-          height: size.height,
-          child: CustomPaint(painter: DashedRectPainter(color: BP.line)),
-        ),
-        // The real widget: Stack → ConstrainedBox → Text → RichText → RenderParagraph.
-        Positioned(
-          left: _rightX,
-          top: _boxTop,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: _maxW),
-            child: Text(word, style: journeyStyle(48)),
-          ),
-        ),
-        // maxWidth limit
-        Positioned(
-          left: _rightX + _maxW - 1,
-          top: _boxTop - 14,
-          width: 2,
-          height: 380,
-          child: const CustomPaint(painter: _VDashPainter(BP.amber)),
-        ),
-        Positioned(
-          left: _rightX + _maxW - 106,
-          top: _boxTop + 370,
-          width: 100,
-          child: Text('maxWidth', textAlign: TextAlign.right, style: BT.mono(12, color: BP.amber)),
-        ),
 
-        // ── Layout protocol, looping once the tree is built ──────────────
+        // ── Layout protocol, looping once the chain is built ─────────────
         if (_built)
           Positioned.fill(
             child: IgnorePointer(
               child: LoopBuilder(
-                period: const Duration(milliseconds: 3800),
-                builder: (context, t, _) => _Protocol(t: t, maxW: _maxW, size: size),
+                period: const Duration(milliseconds: 4000),
+                builder: (context, t, _) => CustomPaint(painter: _ProtocolPainter(t: t, size: size)),
               ),
             ),
           ),
 
-        // ── Controls (last, so they sit on top) ──────────────────────────
+        // ── maxWidth ruler (last, so it sits on top) ─────────────────────
         Positioned(
-          left: 0,
-          top: 300,
+          left: _demoX - _WidthRuler.pad,
+          top: _rulerY - 24,
           child: Reveal(
             visible: true,
-            delay: const Duration(milliseconds: 400),
-            child: BpButton(label: 'rebuild', icon: Icons.replay, size: 14, onTap: _rebuild),
-          ),
-        ),
-        Positioned(
-          left: _rightX,
-          top: 584,
-          child: BpSlider(
-            value: _maxW,
-            min: 60,
-            max: 400,
-            width: 210,
-            label: 'maxWidth',
-            format: (v) => '${v.round()} px',
-            onChanged: (v) => setState(() => _maxW = v),
+            delay: const Duration(milliseconds: 700),
+            child: _WidthRuler(
+              value: _maxW,
+              onChanged: (v) => setState(() => _maxW = v),
+            ),
           ),
         ),
       ],
     );
   }
+}
+
+class _Readout extends StatelessWidget {
+  const _Readout({required this.arrow, required this.value, required this.color});
+
+  final String arrow;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(text: '$arrow  ', style: BT.mono(20, color: color.withValues(alpha: 0.7))),
+        TextSpan(text: value, style: BT.mono(22, color: color, weight: 500)),
+      ],
+    ),
+  );
 }
 
 class _CodePanel extends StatelessWidget {
@@ -261,13 +248,12 @@ class _CodePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    TextSpan s(String t, Color c) => TextSpan(text: t, style: BT.mono(22, color: c));
+    TextSpan s(String t, Color c) => TextSpan(text: t, style: BT.mono(28, color: c));
     return BpPanel(
-      label: 'your code',
-      padding: const EdgeInsets.fromLTRB(24, 26, 20, 22),
+      padding: const EdgeInsets.fromLTRB(28, 26, 20, 26),
       child: Text.rich(
         TextSpan(
-          style: BT.mono(22, height: 1.55),
+          style: BT.mono(28, height: 1.5),
           children: [
             s('Text', BP.line),
             s('(\n', BP.inkDim),
@@ -278,7 +264,7 @@ class _CodePanel extends StatelessWidget {
             s('TextStyle', BP.line),
             s('(\n', BP.inkDim),
             s('    fontSize: ', BP.inkDim),
-            s('48', BP.coral),
+            s('${_fontSize.round()}', BP.coral),
             s(',\n', BP.inkDim),
             s('  ),\n', BP.inkDim),
             s(')', BP.inkDim),
@@ -289,12 +275,9 @@ class _CodePanel extends StatelessWidget {
   }
 }
 
-/// The five objects, revealed one by one with the calls that create them.
+/// The five objects, revealed one by one with the calls that link them.
 class _Tree extends StatelessWidget {
-  const _Tree({required this.fromDefault, required this.scale});
-
-  final String fromDefault;
-  final double scale;
+  const _Tree();
 
   @override
   Widget build(BuildContext context) {
@@ -305,12 +288,13 @@ class _Tree extends StatelessWidget {
         // code → Text
         Positioned.fill(
           child: DrawOn(
-            delay: ms(150),
-            duration: ms(450),
+            delay: ms(120),
+            duration: ms(400),
             arrow: true,
+            strokeWidth: 2,
             path: (_) => Path()
-              ..moveTo(386, 50)
-              ..lineTo(_nodeX - 8, 50),
+              ..moveTo(_codeW + 10, _nodeH / 2)
+              ..lineTo(_nodeX - 10, _nodeH / 2),
           ),
         ),
         for (var i = 0; i < _nodes.length; i++)
@@ -321,88 +305,45 @@ class _Tree extends StatelessWidget {
             height: _nodeH,
             child: Reveal(
               visible: true,
-              delay: ms(300 + i * _stagger),
+              delay: ms(200 + i * _stagger),
               offset: const Offset(0, 16),
-              child: _Node(name: _nodes[i].$1, kind: _nodes[i].$2, lib: _nodes[i].$3),
+              child: _Node(name: _nodes[i].$1, lib: _nodes[i].$2),
             ),
           ),
         for (var i = 0; i < _edges.length; i++) ...[
           Positioned.fill(
             child: DrawOn(
-              delay: ms(300 + i * _stagger + 260),
-              duration: ms(380),
+              delay: ms(200 + i * _stagger + 220),
+              duration: ms(320),
               arrow: true,
+              strokeWidth: 2,
               path: (_) => Path()
                 ..moveTo(_nodeCx, _nodeTop(i) + _nodeH + 4)
                 ..lineTo(_nodeCx, _nodeTop(i + 1) - 6),
             ),
           ),
           Positioned(
-            left: _nodeCx + 14,
-            top: _nodeTop(i) + _nodeH + 17,
+            left: _nodeCx + 16,
+            top: _nodeTop(i) + _nodeH + (_nodeGap - 24) / 2,
             child: Reveal(
               visible: true,
-              delay: ms(300 + i * _stagger + 420),
+              delay: ms(200 + i * _stagger + 360),
               offset: const Offset(-10, 0),
-              child: Text(_edges[i], style: BT.mono(14, color: BP.line)),
+              child: Text(_edges[i], style: BT.mono(18, color: BP.line)),
             ),
           ),
         ],
-        // Side inputs into Text
-        Positioned(
-          left: 780,
-          top: 2,
-          width: 250,
-          child: Reveal(
-            visible: true,
-            delay: ms(_sideDelay),
-            offset: const Offset(16, 0),
-            child: _SideInput(title: 'DefaultTextStyle', merge: 'style', detail: fromDefault),
-          ),
-        ),
-        Positioned(
-          left: 780,
-          top: 64,
-          width: 250,
-          child: Reveal(
-            visible: true,
-            delay: ms(_sideDelay + 200),
-            offset: const Offset(16, 0),
-            child: _SideInput(title: 'TextScaler', detail: 'MediaQuery · ×${scale.toStringAsFixed(1)}'),
-          ),
-        ),
-        Positioned.fill(
-          child: DrawOn(
-            delay: ms(_sideDelay + 150),
-            duration: ms(400),
-            arrow: true,
-            color: BP.lineDim,
-            path: (_) => Path()
-              ..moveTo(776, 26)
-              ..lineTo(_nodeX + _nodeW + 6, 38),
-          ),
-        ),
-        Positioned.fill(
-          child: DrawOn(
-            delay: ms(_sideDelay + 350),
-            duration: ms(400),
-            arrow: true,
-            color: BP.lineDim,
-            path: (_) => Path()
-              ..moveTo(776, 86)
-              ..lineTo(_nodeX + _nodeW + 6, 64),
-          ),
-        ),
         // RenderParagraph node ↔ the real box on the right
         Positioned.fill(
           child: DrawOn(
-            delay: ms(_sideDelay + 500),
-            duration: ms(600),
+            delay: ms(200 + 5 * _stagger),
+            duration: ms(500),
             dashed: true,
+            strokeWidth: 1.5,
             color: BP.lineDim,
             path: (_) => Path()
-              ..moveTo(_nodeX + _nodeW + 6, _nodeTop(2) + _nodeH / 2)
-              ..lineTo(_rightX - 158, _boxTop + 13),
+              ..moveTo(_nodeX + _nodeW + 8, _nodeTop(2) + _nodeH / 2)
+              ..lineTo(_demoX - 14, _nodeTop(2) + _nodeH / 2),
           ),
         ),
       ],
@@ -411,89 +352,35 @@ class _Tree extends StatelessWidget {
 }
 
 class _Node extends StatelessWidget {
-  const _Node({required this.name, required this.kind, required this.lib});
+  const _Node({required this.name, required this.lib});
 
   final String name;
-  final String kind;
   final String lib;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
+    padding: const EdgeInsets.symmetric(horizontal: 22),
     decoration: BoxDecoration(
       color: BP.panel,
-      border: Border.all(color: BP.line, width: 1.2),
+      border: Border.all(color: BP.line, width: 1.5),
     ),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(name, style: BT.display(22)),
-            const Spacer(),
-            Text(lib, style: BT.mono(11, color: BP.inkFaint)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(kind, style: BT.mono(13, color: BP.inkDim)),
+        Text(name, style: BT.display(32)),
+        const Spacer(),
+        Text(lib, style: BT.mono(16, color: BP.inkFaint)),
       ],
     ),
   );
 }
 
-class _SideInput extends StatelessWidget {
-  const _SideInput({required this.title, required this.detail, this.merge});
-
-  final String title;
-  final String detail;
-
-  /// Shown as "title ⊕ merge".
-  final String? merge;
-
-  @override
-  Widget build(BuildContext context) => DashedBox(
-    color: BP.lineDim,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text.rich(
-          TextSpan(
-            style: BT.mono(13, color: BP.ink),
-            children: [
-              TextSpan(text: title),
-              if (merge != null) ...[
-                const WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 7),
-                    child: CustomPaint(size: Size(12, 12), painter: _OPlusPainter()),
-                  ),
-                ),
-                TextSpan(text: merge, style: BT.mono(13, color: BP.amber)),
-              ],
-            ],
-          ),
-        ),
-        if (detail.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          Text(detail, style: BT.mono(11, color: BP.inkFaint)),
-        ],
-      ],
-    ),
-  );
-}
-
-/// Packets on the rails, node glows, and the two readouts.
-class _Protocol extends StatelessWidget {
-  const _Protocol({required this.t, required this.maxW, required this.size});
+/// One layout pass, looping: constraints run down the rail, the chain lays
+/// out (RenderParagraph → TextPainter → ui.Paragraph), the size runs back up.
+class _ProtocolPainter extends CustomPainter {
+  _ProtocolPainter({required this.t, required this.size});
 
   final double t;
-  final double maxW;
   final Size size;
 
   static double _ramp(double t, double a, double b) =>
@@ -503,144 +390,58 @@ class _Protocol extends StatelessWidget {
       ((t - a) / f).clamp(0.0, 1.0) * ((b - t) / f).clamp(0.0, 1.0);
 
   @override
-  Widget build(BuildContext context) {
-    final down = _ramp(t, 0.04, 0.28);
-    final up = _ramp(t, 0.60, 0.84);
-    final yDown = lerpDouble(_railTop, _railBottom, down)!;
-    final yUp = lerpDouble(_railBottom, _railTop, up)!;
-    final layoutCall = _win(t, 0.36, 0.60);
-    final paraCall = _win(t, 0.42, 0.54);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned.fill(child: CustomPaint(painter: _ProtocolPainter(t: t, size: size))),
-        Positioned(
-          left: _upX + 22,
-          top: yDown - 13,
-          child: Opacity(
-            opacity: _win(t, 0.03, 0.50),
-            child: BpTag('BoxConstraints(0 ≤ w ≤ ${maxW.round()})', color: BP.amber, size: 13),
-          ),
-        ),
-        Positioned(
-          left: _upX + 22,
-          top: yUp - 13,
-          child: Opacity(
-            opacity: _win(t, 0.58, 0.97),
-            child: BpTag(
-              'Size(${size.width.toStringAsFixed(1)} × ${size.height.toStringAsFixed(1)})',
-              color: BP.green,
-              size: 13,
-            ),
-          ),
-        ),
-        Positioned(
-          left: _nodeX + _nodeW + 18,
-          top: _nodeTop(3) + 26,
-          child: Opacity(
-            opacity: layoutCall,
-            child: Text('layout(minWidth: 0, maxWidth: ${maxW.round()})', style: BT.mono(13, color: BP.amber)),
-          ),
-        ),
-        Positioned(
-          left: _nodeX + _nodeW + 18,
-          top: _nodeTop(4) + 26,
-          child: Opacity(
-            opacity: paraCall,
-            child: Text(
-              'layout(ParagraphConstraints(width: ${maxW.round()}))',
-              style: BT.mono(12, color: BP.amber),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ProtocolPainter extends CustomPainter {
-  _ProtocolPainter({required this.t, required this.size});
-
-  final double t;
-  final Size size;
-
-  @override
   void paint(Canvas canvas, Size _) {
-    final win = _Protocol._win;
-    final ramp = _Protocol._ramp;
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+      ..strokeWidth = 2.5;
 
     void glow(Rect r, Color c, double g) {
       if (g <= 0) return;
-      canvas.drawRect(r, Paint()..color = c.withValues(alpha: 0.10 * g));
+      canvas.drawRect(r, Paint()..color = c.withValues(alpha: 0.06 * g));
       canvas.drawRect(r, stroke..color = c.withValues(alpha: g));
     }
 
     // Layout delegates down the chain: RenderParagraph → TextPainter → Paragraph.
-    for (final (i, a, b) in const [(2, 0.28, 0.68), (3, 0.36, 0.62), (4, 0.42, 0.56)]) {
-      glow(Rect.fromLTWH(_nodeX, _nodeTop(i), _nodeW, _nodeH).inflate(4), BP.amber, win(t, a, b));
+    for (final (i, a, b) in const [(2, 0.22, 0.70), (3, 0.30, 0.64), (4, 0.38, 0.56)]) {
+      glow(Rect.fromLTWH(_nodeX, _nodeTop(i), _nodeW, _nodeH).inflate(5), BP.amber, _win(t, a, b));
     }
-    // The real box lights while it lays out; the parent when the size lands.
-    glow(Rect.fromLTWH(_rightX, _boxTop, size.width, size.height).inflate(4), BP.amber, win(t, 0.28, 0.62));
-    glow(Rect.fromLTWH(_rightX, 0, _parentW, _parentH).inflate(3), BP.amber, win(t, 0.02, 0.10));
-    glow(Rect.fromLTWH(_rightX, 0, _parentW, _parentH).inflate(3), BP.green, win(t, 0.83, 0.98));
+    // The real box lights while it lays out.
+    glow(Rect.fromLTWH(_demoX, _boxTop, size.width, size.height).inflate(6), BP.amber, _win(t, 0.22, 0.66));
 
-    // Call dot running down owns/builds, result dot running back up.
+    // Call dot running down the chain, result dot running back up.
     final top = _nodeTop(2) + _nodeH;
     final bottom = _nodeTop(4);
-    if (t > 0.32 && t < 0.46) {
-      final y = lerpDouble(top, bottom, ramp(t, 0.32, 0.45))!;
-      canvas.drawCircle(Offset(_nodeCx, y), 5, Paint()..color = BP.amber);
+    if (t > 0.26 && t < 0.42) {
+      final y = lerpDouble(top, bottom, _ramp(t, 0.26, 0.41))!;
+      canvas.drawCircle(Offset(_nodeCx, y), 7, Paint()..color = BP.amber);
     }
-    if (t > 0.52 && t < 0.64) {
-      final y = lerpDouble(bottom, top, ramp(t, 0.52, 0.63))!;
-      canvas.drawCircle(Offset(_nodeCx, y), 5, Paint()..color = BP.green);
+    if (t > 0.54 && t < 0.68) {
+      final y = lerpDouble(bottom, top, _ramp(t, 0.54, 0.67))!;
+      canvas.drawCircle(Offset(_nodeCx, y), 7, Paint()..color = BP.green);
     }
 
     // Packets on the rails.
     void diamond(Offset c, Color color) {
+      const r = 11.0;
       final d = Path()
-        ..moveTo(c.dx, c.dy - 8)
-        ..lineTo(c.dx + 8, c.dy)
-        ..lineTo(c.dx, c.dy + 8)
-        ..lineTo(c.dx - 8, c.dy)
+        ..moveTo(c.dx, c.dy - r)
+        ..lineTo(c.dx + r, c.dy)
+        ..lineTo(c.dx, c.dy + r)
+        ..lineTo(c.dx - r, c.dy)
         ..close();
       canvas.drawPath(d, Paint()..color = color);
     }
 
-    if (t > 0.03 && t < 0.34) {
-      diamond(Offset(_downX, lerpDouble(_railTop, _railBottom, ramp(t, 0.04, 0.28))!), BP.amber);
+    if (t > 0.01 && t < 0.26) {
+      diamond(Offset(_downX, lerpDouble(_railTop, _railBottom, _ramp(t, 0.02, 0.22))!), BP.amber);
     }
-    if (t > 0.58 && t < 0.88) {
-      diamond(Offset(_upX, lerpDouble(_railBottom, _railTop, ramp(t, 0.60, 0.84))!), BP.green);
+    if (t > 0.66 && t < 0.92) {
+      diamond(Offset(_upX, lerpDouble(_railBottom, _railTop, _ramp(t, 0.68, 0.88))!), BP.green);
     }
   }
 
   @override
   bool shouldRepaint(_ProtocolPainter old) => old.t != t || old.size != size;
-}
-
-/// ⊕ (not in the bundled fonts, so drawn).
-class _OPlusPainter extends CustomPainter {
-  const _OPlusPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = BP.amber
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.3;
-    final c = size.center(Offset.zero);
-    final r = size.shortestSide / 2 - 0.5;
-    canvas.drawCircle(c, r, p);
-    canvas.drawLine(c - Offset(r, 0), c + Offset(r, 0), p);
-    canvas.drawLine(c - Offset(0, r), c + Offset(0, r), p);
-  }
-
-  @override
-  bool shouldRepaint(_OPlusPainter old) => false;
 }
 
 class _RailsPainter extends CustomPainter {
@@ -649,13 +450,13 @@ class _RailsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final down = Paint()
-      ..color = BP.amber.withValues(alpha: 0.45)
-      ..strokeWidth = 1.5;
+      ..color = BP.amber.withValues(alpha: 0.6)
+      ..strokeWidth = 2;
     final up = Paint()
-      ..color = BP.green.withValues(alpha: 0.45)
-      ..strokeWidth = 1.5;
-    drawArrow(canvas, const Offset(_downX, _railTop), const Offset(_downX, _railBottom), down, head: 7);
-    drawArrow(canvas, const Offset(_upX, _railBottom), const Offset(_upX, _railTop), up, head: 7);
+      ..color = BP.green.withValues(alpha: 0.6)
+      ..strokeWidth = 2;
+    drawArrow(canvas, const Offset(_downX, _railTop), const Offset(_downX, _railBottom), down, head: 10);
+    drawArrow(canvas, const Offset(_upX, _railBottom), const Offset(_upX, _railTop), up, head: 10);
   }
 
   @override
@@ -675,16 +476,92 @@ class _VDashPainter extends CustomPainter {
         Path()
           ..moveTo(x, 0)
           ..lineTo(x, size.height),
-        dash: 5,
+        dash: 6,
         gap: 5,
       ),
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 1.6,
     );
   }
 
   @override
   bool shouldRepaint(_VDashPainter old) => old.color != color;
+}
+
+/// A ruler under the word: the thumb sits exactly at x = maxWidth, so
+/// dragging it drags the constraint line.
+class _WidthRuler extends StatelessWidget {
+  const _WidthRuler({required this.value, required this.onChanged});
+
+  /// Room left of 0 so the thumb and the first tick aren't clipped.
+  static const pad = 16.0;
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    void update(Offset p) => onChanged((p.dx - pad).clamp(_minW, _maxRange));
+    return SizedBox(
+      width: _maxRange + 2 * pad,
+      height: 48,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeLeftRight,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanDown: (d) => update(d.localPosition),
+          onPanUpdate: (d) => update(d.localPosition),
+          child: CustomPaint(painter: _RulerPainter(value)),
+        ),
+      ),
+    );
+  }
+}
+
+class _RulerPainter extends CustomPainter {
+  _RulerPainter(this.value);
+
+  final double value;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const x0 = _WidthRuler.pad;
+    final y = size.height / 2;
+    final dim = Paint()
+      ..color = BP.lineDim
+      ..strokeWidth = 1.5;
+    canvas.drawLine(Offset(x0, y), Offset(x0 + _maxRange, y), dim);
+    for (var v = 0.0; v <= _maxRange + 0.1; v += 20) {
+      final h = v % 100 == 0 ? 10.0 : 5.0;
+      canvas.drawLine(Offset(x0 + v, y - h), Offset(x0 + v, y + h), dim);
+    }
+    final x = x0 + value;
+    canvas.drawLine(
+      Offset(x0, y),
+      Offset(x, y),
+      Paint()
+        ..color = BP.line
+        ..strokeWidth = 3,
+    );
+    const r = 13.0;
+    final d = Path()
+      ..moveTo(x, y - r)
+      ..lineTo(x + r, y)
+      ..lineTo(x, y + r)
+      ..lineTo(x - r, y)
+      ..close();
+    canvas.drawPath(d, Paint()..color = BP.paper);
+    canvas.drawPath(
+      d,
+      Paint()
+        ..color = BP.amber
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RulerPainter old) => old.value != value;
 }

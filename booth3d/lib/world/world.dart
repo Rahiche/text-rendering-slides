@@ -25,7 +25,7 @@ class World3D {
   late final life = Life3D(scene);
   final director = Director();
   bool ready = false;
-  bool _skipped = false; // TEMP debug
+  bool _skipped = false;
 
   Future<void> init() async {
     await Scene.initializeStaticResources();
@@ -63,7 +63,9 @@ class World3D {
   /// Call once per frame after stepping the model.
   void update(BoothModel m, double dt) {
     if (!ready) return;
-    const skipAt = String.fromEnvironment('BOOTH3D_SKIP_AT'); // TEMP debug
+    // Capture aid: --dart-define=BOOTH3D_SKIP_AT=<t> presses the operator's
+    // skip at scene time t (to check what an interrupted build does).
+    const skipAt = String.fromEnvironment('BOOTH3D_SKIP_AT');
     if (skipAt.isNotEmpty && !_skipped && m.t >= double.parse(skipAt)) {
       _skipped = true;
       m.skip();

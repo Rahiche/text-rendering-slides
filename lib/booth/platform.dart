@@ -10,6 +10,9 @@ abstract final class BoothPlatform {
 
   static Future<void> toggleFullScreen() => _call('toggleFullScreen');
 
+  /// Goes full screen (does nothing if already full screen).
+  static Future<void> enterFullScreen() => _call('enterFullScreen');
+
   static Future<void> _call(String method) async {
     try {
       await _ch.invokeMethod<void>(method);

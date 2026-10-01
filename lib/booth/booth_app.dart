@@ -4,9 +4,13 @@ import '../deck/theme.dart';
 import 'model.dart';
 import 'platform.dart';
 import 'scene.dart';
-import 'store.dart';
+import 'ui/cursor.dart';
 
 /// The booth app: an endless "Name Factory" for the conference stall.
+///
+/// Opens full screen (`--dart-define=BOOTH_WINDOWED=true` keeps a window),
+/// keeps the display awake and hides the mouse pointer when it rests. The
+/// history of built names lives with the UI (lib/booth/ui/booth_ui.dart).
 class BoothApp extends StatefulWidget {
   const BoothApp({super.key});
 
@@ -16,21 +20,14 @@ class BoothApp extends StatefulWidget {
 
 class _BoothAppState extends State<BoothApp> {
   final _model = BoothModel()..mode = initialBuildMode();
-  final _store = createStore();
-  final _history = <BuiltName>[];
 
   @override
   void initState() {
     super.initState();
     BoothPlatform.keepAwake();
-    _store.load().then((h) {
-      _history.addAll(h);
-      _model.built.addAll(h.map((b) => b.name));
-    });
-    _model.onBuilt = (m) {
-      _history.add(BuiltName(m.built.last, DateTime.now()));
-      _store.save(_history);
-    };
+    if (!const bool.fromEnvironment('BOOTH_WINDOWED')) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => BoothPlatform.enterFullScreen());
+    }
   }
 
   @override
@@ -40,7 +37,8 @@ class _BoothAppState extends State<BoothApp> {
   }
 
   @override
-  Widget build(BuildContext context) => boothMaterialApp(BoothScene(model: _model));
+  Widget build(BuildContext context) =>
+      boothMaterialApp(CursorHider(child: BoothScene(model: _model)));
 }
 
 /// MaterialApp shell shared by the app and capture mode.

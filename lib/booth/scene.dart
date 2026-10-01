@@ -13,8 +13,7 @@ import 'layers/workshop.dart';
 import 'layout.dart';
 import 'model.dart';
 import 'platform.dart';
-import 'ui/board.dart';
-import 'ui/input.dart';
+import 'ui/booth_ui.dart';
 
 /// The booth loop: the city, the factory and the construction site on one
 /// 1600×900 canvas scaled to the screen, plus the name input.
@@ -107,30 +106,38 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
   }
 
   /// Operator shortcuts (Ctrl+Shift+…): S skip, ⌫ drop the last queued name,
-  /// F full screen, ↑/↓ fast-forward.
+  /// F full screen, ↑/↓ fast-forward, H help, R reset today's count (press
+  /// twice), M Name Factory ↔ Name Workshop (from the next name). Only exactly these combinations are taken: everything else
+  /// (typing, the input method's own keys) goes on to the name input.
   bool _onKey(KeyEvent e) {
-    if (e is! KeyDownEvent) return false;
     final k = HardwareKeyboard.instance;
-    if (!(k.isControlPressed && k.isShiftPressed)) return false;
+    if (!k.isControlPressed || !k.isShiftPressed || k.isAltPressed || k.isMetaPressed) return false;
+    final ui = BoothUi.of(widget.model);
     final key = e.logicalKey;
+    final void Function() action;
     if (key == LogicalKeyboardKey.keyS) {
-      widget.model.skip();
+      action = ui.operatorSkip;
     } else if (key == LogicalKeyboardKey.backspace) {
-      widget.model.dropLast();
+      action = ui.operatorDropLast;
     } else if (key == LogicalKeyboardKey.keyM) {
-      // Factory ↔ Workshop, from the next name on.
-      final m = widget.model;
-      m.mode = m.mode == BuildMode.bricks ? BuildMode.craft : BuildMode.bricks;
+      action = ui.operatorMode;
     } else if (key == LogicalKeyboardKey.keyF) {
-      BoothPlatform.toggleFullScreen();
+      action = BoothPlatform.toggleFullScreen;
     } else if (key == LogicalKeyboardKey.arrowUp) {
-      _speed = math.min(_speed * 2, 32);
+      action = () => ui.operatorSpeed(_speed = math.min(_speed * 2, 32));
     } else if (key == LogicalKeyboardKey.arrowDown) {
-      _speed = math.max(_speed / 2, 1);
+      action = () => ui.operatorSpeed(_speed = math.max(_speed / 2, 1));
+    } else if (key == LogicalKeyboardKey.keyH) {
+      action = ui.toggleHelp;
+    } else if (key == LogicalKeyboardKey.keyR) {
+      action = ui.operatorReset;
     } else {
       return false;
     }
-    return true;
+    if (e is KeyDownEvent) action();
+    // Held down, a combination repeats: swallow the repeats too, or e.g.
+    // Ctrl+H / Ctrl+⌫ would reach the text field and delete what was typed.
+    return e is! KeyUpEvent;
   }
 
   @override
@@ -148,14 +155,8 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
                 children: [
                   for (final p in _painters) Positioned.fill(child: CustomPaint(painter: p)),
                   for (final p in _fronts) Positioned.fill(child: CustomPaint(painter: p)),
-                  Positioned.fromRect(
-                    rect: BL.board,
-                    child: BoothBoard(model: m),
-                  ),
-                  Positioned.fromRect(
-                    rect: BL.input,
-                    child: NameInput(model: m),
-                  ),
+                  // The UI (lib/booth/ui/): board, input, tally, help.
+                  Positioned.fill(child: BoothOverlay(model: m)),
                 ],
               ),
             ),

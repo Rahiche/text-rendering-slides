@@ -1,11 +1,14 @@
 import 'store.dart';
 
-BoothStore createStore() => _MemoryStore();
+BoothStore createStore({String? path}) => MemoryStore();
 
-class _MemoryStore implements BoothStore {
-  @override
-  Future<List<BuiltName>> load() async => [];
+/// Keeps the names for this run only (web).
+class MemoryStore extends BoothStore {
+  var _names = <BuiltName>[];
 
   @override
-  Future<void> save(List<BuiltName> names) async {}
+  Future<List<BuiltName>> load() async => List.of(_names);
+
+  @override
+  Future<void> save(List<BuiltName> names) async => _names = List.of(names);
 }

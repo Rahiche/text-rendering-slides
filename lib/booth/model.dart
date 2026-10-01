@@ -72,6 +72,10 @@ class BuildPace {
   /// Samples (built while nobody waits) take this much of [nominal].
   double get sample => 0.7;
 
+  /// Seconds [p] lasts (not [Phase.build]: that's per name): the booth's
+  /// [phaseSeconds]. An app with more to show in a phase lengthens it here.
+  double phaseLen(Phase p) => phaseSeconds[p]!;
+
   /// The booth's pace: 35 s plus 0.075 s a brick, 50…140 s.
   static double forBricks(int bricks) => (35 + 0.075 * bricks).clamp(50.0, 140.0);
 }
@@ -232,17 +236,22 @@ class BoothModel extends ChangeNotifier {
     return now + queue.length * (_overhead + pace.typical / _rush(queue.length));
   }
 
-  static final _overhead = phaseSeconds.values.fold<double>(0, (a, b) => a + b);
+  /// Every phase but the build, at [pace].
+  double get _overhead => phaseSeconds.keys.fold<double>(0, (a, p) => a + pace.phaseLen(p));
 
   double _remaining(Job j) {
     var s = j.phaseLen - j.since(t);
     var after = false;
     for (final p in Phase.values) {
-      if (after) s += p == Phase.build ? j.buildLen : phaseSeconds[p]!;
+      if (after) s += p == Phase.build ? j.buildLen : pace.phaseLen(p);
       if (p == j.phase) after = true;
     }
     return math.max(0, s);
   }
+
+  /// The name built after the current one: the first in the queue, or the
+  /// next sample when nobody is waiting. (What the next blueprint shows.)
+  String get upcoming => queue.isNotEmpty ? queue.first.name : sampleNames[_sample % sampleNames.length];
 
   /// A queue speeds the crew up: build times are divided by this.
   static double _rush(int waiting) => 1 + 0.22 * math.min(waiting, 6);
@@ -367,7 +376,7 @@ class BoothModel extends ChangeNotifier {
   void _enter(Job j, Phase p) {
     j.phase = p;
     j.phaseStart = t;
-    j.phaseLen = p == Phase.build ? j.buildLen : phaseSeconds[p]!;
+    j.phaseLen = p == Phase.build ? j.buildLen : pace.phaseLen(p);
     if (p == Phase.build) j.buildStart = t;
     // A sample cut short makes way quickly.
     if (j.cutAt case final c? when p == Phase.demolish || p == Phase.cleanup) {

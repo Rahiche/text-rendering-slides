@@ -113,6 +113,9 @@ class Site3D {
   /// When the ball first hits the wall (scene time), once known.
   double? impactAt;
 
+  /// The model's pace (how long each phase lasts), as of this frame.
+  BuildPace _pace = const BuildPace();
+
   /// What the camera should follow this frame (see [Focus]): filled during
   /// [update] by the site, the crew and the deliveries.
   final focus = <Focus>[];
@@ -398,6 +401,7 @@ class Site3D {
     final j = m.job;
     final t = m.t;
     focus.clear();
+    _pace = m.pace;
     if (j == null) return;
     if (!identical(j, _job)) _startJob(j);
     final r = j.raster;
@@ -832,7 +836,7 @@ class Site3D {
       fx.puff(p.x, 0.05, p.z, age, 0.55, seed: i, n: 2);
     }
     // Confetti from the celebration still lies about.
-    if (wasRevealed) fx.confettiShow(u + phaseSeconds[Phase.celebrate]!, wallWidth, j.serial);
+    if (wasRevealed) fx.confettiShow(u + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
   }
 
   List<_Fall> _planFalls(Job j, _Swing sw) {
@@ -952,7 +956,7 @@ class Site3D {
     }
     _wallHidden = false;
     if (j.cutAt == null) {
-      fx.confettiShow(u + phaseSeconds[Phase.celebrate]! + phaseSeconds[Phase.demolish]!, wallWidth, j.serial, fade: c01(f / 0.3));
+      fx.confettiShow(u + _pace.phaseLen(Phase.celebrate) + _pace.phaseLen(Phase.demolish), wallWidth, j.serial, fade: c01(f / 0.3));
     }
   }
 }

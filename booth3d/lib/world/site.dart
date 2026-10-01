@@ -509,7 +509,8 @@ class Site3D {
       if (st == null || t < st.a - 1.2 || t > st.e + 0.7) continue;
       final (eye, target, fov, w) = Kern3D.shot(st, t);
       if (w <= 0) continue;
-      focus.add(Focus('kern ${st.letter}', Shot(eye, target, fov: fov, settle: st.full ? 1.2 : 1.7, drift: 0.5), priority: 3, weight: w));
+      final shot = Shot(eye, target, fov: fov, settle: st.full ? 1.2 : 1.7, drift: 0.5);
+      focus.add(Focus('kern ${st.letter}', shot, priority: 3, weight: w));
     }
     return at == null ? -1 : at.$2;
   }

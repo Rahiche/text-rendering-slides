@@ -208,7 +208,10 @@ class WorksName {
     const pad = 3;
     final n = letters.length;
     final line = TextPainter(
-      text: TextSpan(text: name, style: NameRaster.nameStyle(size, color: white)),
+      text: TextSpan(
+        text: name,
+        style: NameRaster.nameStyle(size, color: white),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     final w = line.width.ceil() + 2 * pad, h = line.height.ceil() + 2 * pad;
@@ -411,7 +414,9 @@ class WorksName {
         ..write('  ${l.text}  UTF-8 ${l.bytes.map(WorksLetter.byte).join(' ')} → ${l.codePoints.map(WorksLetter.hex).join(' ')}')
         ..write(' → ${[for (var i = 0; i < l.codePoints.length; i++) worksFonts[i < l.fonts.length ? l.fonts[i] : 2]].join(', ')}')
         ..write('  advance ${f(l.advance, 3)} em, pen ${f(l.pen, 3)} em, kern ${em(l.kern)} em${l.spaced ? ' (after a space)' : ''}')
-        ..write('  outline ${l.outline.length - l.holes}+${l.holes} holes  ${l.w}×${l.h} px at (${l.x - x0}, ${l.y - y0}), pen ${f(l.penPx, 2)} px: ${l.full} full, ${l.edge} edge');
+        ..write(
+          '  outline ${l.outline.length - l.holes}+${l.holes} holes  ${l.w}×${l.h} px at (${l.x - x0}, ${l.y - y0}), pen ${f(l.penPx, 2)} px: ${l.full} full, ${l.edge} edge',
+        );
     }
     return out.toString();
   }

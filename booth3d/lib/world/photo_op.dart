@@ -476,8 +476,9 @@ class PhotoOp {
     final close = (u >= 1.5 && u < 2.9) || (u >= 4.1 && u < 5.1);
     final Shot shot;
     if (close) {
-      final back = math.max(1.6, works.boardWidth * 1.15);
-      shot = Shot(vm.Vector3(0.14, 1.0, _spot.z - back), vm.Vector3(0, _hold + works.boardHeight * 0.55, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
+      // The board left of the middle, clear of the countdown (top right).
+      final back = math.max(1.6, works.boardWidth * 1.35), s = 0.1 * back;
+      shot = Shot(vm.Vector3(0.14 + s, 1.0, _spot.z - back), vm.Vector3(s, _hold + works.boardHeight * 0.55, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
     } else {
       // From the pavement, a wide lens: the whole name, the team in front.
       final eye = vm.Vector3(0.3, 3.0, -10.0), tg = vm.Vector3(0, h * 0.42 + 0.2, -0.3);
@@ -629,9 +630,7 @@ class _Plan {
 /// early: the demolition came first), they turn back from wherever they've
 /// got to, and whoever hadn't set out stays put.
 class _Now {
-  _Now(this.p, this.c, this.away, {required double boardW, required Map<int, vm.Vector3> watch})
-    : ready = p.readyAt(c),
-      calledOff = away < p.backAt(c) - 1e-6 {
+  _Now(this.p, this.c, this.away, {required double boardW, required Map<int, vm.Vector3> watch}) : ready = p.readyAt(c), calledOff = away < p.backAt(c) - 1e-6 {
     // (Never: far off, not infinite, so the easing over it stays a number.)
     flash = away > ready + PhotoOp._flash ? ready + PhotoOp._flash : 1e9;
     // The board home: back the way it came from where it got to (in a hurry

@@ -43,8 +43,10 @@ abstract final class WorksLayout {
   /// (shaping), the wire bender (outline), the rasterizer.
   static const stepX = [-16.05, -15.15, -14.15, -12.94, -11.8, -10.8];
 
-  /// Where a maker stands to work a step (behind the belt, facing out),
+  /// Where a maker stands to work each step (behind the belt, facing out;
+  /// beside the bender and the rasterizer, at their crank and controls),
   /// and the lane behind for walking back.
+  static const workX = [-16.05, -15.15, -14.15, -12.94, -11.3, -10.3];
   static const workZ = 6.8, laneZ = 7.3;
 
   /// The walkway past the belt's right end, from the back to the front.
@@ -236,7 +238,7 @@ class GlyphWorks {
         ..castsShadows = false
         ..visible = false;
     }
-    _display.localTransform = trs(vm.Vector3(-15.15, WorksLayout.beltY + 0.31, WorksLayout.beltZ - 0.285));
+    _display.localTransform = trs(vm.Vector3(-15.15, WorksLayout.beltY + 0.19, WorksLayout.beltZ - 0.282));
     scene
       ..add(_plateNode)
       ..add(_boardRoot)
@@ -290,9 +292,9 @@ class GlyphWorks {
   void planFor(BuildPlan plan, {List<(double, double)> busyCam = const []}) {
     _clear();
     _plan = plan;
-    _schedule(plan, const {});
-    _planCuts(plan, busyCam);
     final name = _name = WorksName.measure(plan.job.name, plan.letters, latin: _latin, arabic: _arabic);
+    _schedule(plan, const {});
+    _planCuts(plan, busyCam, name);
     final job = _job = _Job(name);
     pending = _prepare(plan, name, job);
     if (const String.fromEnvironment('BOOTH3D_TIMES') == '') return;
@@ -300,7 +302,9 @@ class GlyphWorks {
     for (final s in _steps) {
       final l = name.letters[s.k];
       // ignore: avoid_print
-      print('PLAN works ${l.text} maker ${s.maker}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].$2.split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}');
+      print(
+        'PLAN works ${l.text} maker ${s.maker}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].$2.split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}',
+      );
     }
     for (final c in _cuts) {
       // ignore: avoid_print
@@ -427,7 +431,7 @@ class GlyphWorks {
   /// little sooner) and the line planned again. A visit opens on the whole
   /// works (the board shows how far the name has come), then moves in on
   /// the step and follows the letter.
-  void _planCuts(BuildPlan plan, List<(double, double)> busyCam) {
+  void _planCuts(BuildPlan plan, List<(double, double)> busyCam, WorksName name) {
     _cuts.clear();
     camWindows.clear();
     final s = plan.job.serial;
@@ -452,12 +456,17 @@ class GlyphWorks {
       print('PLAN works free for visits: ${gaps.map((g) => '${g.$1.toStringAsFixed(1)}–${g.$2.toStringAsFixed(1)}').join(', ')}');
     }
     // The steps to show, in order, for about as many visits as there's time
-    // for.
+    // for: the rasterizer always; with two, the shaping (the kerning) for a
+    // name in the name's own font, the fallback for one in a script it
+    // hasn't (Japanese: nothing kerns there); with three, the decoder
+    // first. (Before the fonts' cmaps are in, anything past Latin is taken
+    // to fall back.)
+    final fallback = name.letters.any((l) => l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0);
     final room = ((last - first) / 38).floor() + 1;
     final want = switch (room) {
       <= 1 => const [5],
-      2 => const [1, 5],
-      3 => const [1, 3, 5],
+      2 => fallback ? const [2, 5] : const [3, 5],
+      3 => fallback ? const [1, 2, 5] : const [1, 3, 5],
       4 => const [1, 2, 3, 5],
       5 => const [1, 2, 3, 4, 5],
       _ => const [1, 2, 3, 4, 5, 6],
@@ -466,16 +475,19 @@ class GlyphWorks {
     final pins = <int, (int, double)>{};
     final picks = <(_Cut, (double, double))>[];
     // The letter whose step [x] comes nearest [at]: a little early (it
-    // waits, up to a third of its way down the line), else just late (it
-    // sets off sooner). A visit for the decoder comes as the bytes leave
-    // the feeder, to see both.
+    // waits, up to a third of its way down the line, if it still lands
+    // before the build ends), else a little late (it sets off sooner). A
+    // visit for the decoder comes as the bytes leave the feeder, to see
+    // both.
+    final deadline = plan.t0 + plan.len - 0.5;
     int? letterFor(int x, double at) {
       int? best;
       var cost = double.infinity;
       for (var k = 0; k < natural.length; k++) {
         if (pins.containsKey(k)) continue;
         final turn = natural[k][7] - natural[k][0], dt = at - natural[k][x == 1 ? 0 : x];
-        final c = dt >= 0 ? (dt <= 0.35 * turn ? dt : double.infinity) : (-dt <= 0.2 * turn ? -1.6 * dt : double.infinity);
+        if (natural[k][7] + math.max(0.0, dt) > deadline) continue;
+        final c = dt >= 0 ? (dt <= 0.35 * turn ? dt : double.infinity) : (-dt <= 0.3 * turn ? -1.6 * dt : double.infinity);
         if (c < cost) {
           cost = c;
           best = k;
@@ -484,32 +496,55 @@ class GlyphWorks {
       return best;
     }
 
-    var next = plan.t0 + 12 + 6 * rnd(s, 61);
+    // A visit about [next] (somewhere between half a minute and
+    // three-quarters of one after the last began), [earliest] at the
+    // soonest: the step wanted next (after the rasterizer, from the start
+    // again) in the first gap that has it, up to 20 s past [next]; else
+    // the nearest step further down the line, in the first gap that has
+    // one.
+    var next = plan.t0 + 12 + 6 * rnd(s, 61), earliest = first;
     var done = 0;
-    for (final g in gaps) {
-      while (true) {
-        final a0 = math.max(next, g.$1);
-        if (a0 + 5.5 > g.$2 + 1e-6) break;
-        // The step wanted next (after the rasterizer, from the start again)
-        // anywhere in the gap, else the nearest further down the line.
-        final goal = want.firstWhere((w) => w > done, orElse: () => want.first);
-        final from = goal == want.first ? 0 : done;
-        (int, int, double)? pick;
-        for (final x in [goal, for (var x = from + 1; x <= 6; x++) x]) {
-          for (var a = a0; a + 5.5 <= g.$2 + 1e-6 && pick == null; a += 1.0) {
+    // Long enough to see the step through (the bytes out and decoded; the
+    // lookups up to the case that has the glyph; the scan…): 6–9 s.
+    (int, int, double, double, (double, double))? find(List<int> steps, double until) {
+      for (final g in gaps) {
+        final a0 = math.max(earliest, g.$1);
+        final starts = [for (var a = a0; a + 5.5 <= g.$2 + 1e-6 && a <= until; a += 0.5) a]..sort((x, y) => (x - next).abs().compareTo((y - next).abs()));
+        for (final x in steps) {
+          for (final a in starts) {
             final k = letterFor(x, a + _lead);
-            if (k != null) pick = (x, k, a);
+            if (k == null) continue;
+            final n = natural[k];
+            final need = switch (x) {
+              1 => 0.75 * (n[2] - n[0]),
+              // (To the case that has the glyph, and the glyph out of it.)
+              2 => _catchAt(n[3] - n[2], name.letters[k].font) + 0.4,
+              _ => 0.85 * (n[x + 1] - n[x]),
+            };
+            final e = math.min(a + (_lead + need + 1.0).clamp(6.0, 9.0), g.$2);
+            if (e - a - _lead >= need - 1e-6) return (x, k, a, e, g);
           }
-          if (pick != null) break;
         }
-        if (pick == null) break;
-        final (x, k, a) = pick;
-        final e = math.min(a + 7.5, g.$2), step = x == 1 ? 0 : x;
-        pins[k] = (step, a + _lead);
-        picks.add((_Cut(a, e, step, k), g));
-        done = x >= 5 ? 0 : x;
-        next = e + 22 + 12 * rnd(picks.length, s, 62);
       }
+      return null;
+    }
+
+    var raster = false;
+    while (true) {
+      // (The last visit there's time for comes for the rasterizer, if none
+      // has yet.)
+      final goal = next + 27 > last - 6 && !raster ? 5 : want.firstWhere((w) => w > done, orElse: () => want.first);
+      final from = goal == want.first ? 0 : done;
+      final pick = find([goal], next + 20) ?? find([for (var x = from + 1; x <= 6; x++) x], double.infinity);
+      if (pick == null) break;
+      final (x, k, a, e, g) = pick;
+      final step = x == 1 ? 0 : x;
+      pins[k] = (step, a + _lead);
+      picks.add((_Cut(a, e, step, k), g));
+      done = x >= 5 ? 0 : x;
+      raster |= x >= 5;
+      earliest = a + 27;
+      next = a + 30 + 14 * rnd(picks.length, s, 62);
     }
     _schedule(plan, pins);
     // Where a pinned step was held up (by the letter before), the visit
@@ -519,7 +554,7 @@ class GlyphWorks {
       var a = c.from, e = c.to;
       if ((at - (a + _lead)).abs() > 0.25) {
         a = at - _lead;
-        e = math.min(a + 7.5, g.$2);
+        e = math.min(a + (c.to - c.from), g.$2);
         if (a < g.$1 - 1e-6 || e - a < 5.5 - 1e-6) continue;
       }
       _cuts.add(_Cut(a, e, c.step, c.k));
@@ -542,12 +577,14 @@ class GlyphWorks {
       if (t < c.from || t >= c.to) continue;
       final u = t - c.from;
       final st = _steps[c.k];
-      final step = st.stepAt(t).clamp(c.step, 6);
+      // (On to the letter's next step only with time left to see it there.)
+      final step = st.stepAt(math.min(t, c.to - 1.5)).clamp(c.step, 6);
       final drift = 0.2 * seg(u, 1.5, c.to - c.from);
       final Shot shot;
       if (u < 1.8) {
-        // The whole works, its sign over the open front, the board inside.
-        shot = Shot(vm.Vector3(WorksLayout.cx + 0.9, 1.95, WorksLayout.z0 - 5.6), vm.Vector3(WorksLayout.cx - 0.4, 1.7, 6.0), fov: 54, settle: 0.6, drift: 0.4);
+        // The whole works, its sign over the open front, the board inside
+        // (from over the heads of whoever's about in front).
+        shot = Shot(vm.Vector3(WorksLayout.cx + 0.9, 2.5, WorksLayout.z0 - 5.4), vm.Vector3(WorksLayout.cx - 0.3, 1.25, 6.0), fov: 54, settle: 0.6, drift: 0.4);
       } else {
         shot = _stepShot(step, drift);
         _caption(name, c.k, step, t, seg(u, 1.7, 2.3) * (1 - seg(t, c.to - 0.5, c.to)));
@@ -557,18 +594,19 @@ class GlyphWorks {
     }
   }
 
-  /// In on step [step] through the open front.
+  /// In on step [step] through the open front (clear of the smoking corner
+  /// in front, past the board's left for the rasterizer).
   static Shot _stepShot(int step, double drift) {
     const z = WorksLayout.beltZ;
     return switch (step) {
-      // The string's bytes over the feeder and the decoder.
-      0 || 1 => Shot(vm.Vector3(-14.55 - drift, 1.62, 4.25), vm.Vector3(-15.45, 1.08, z + 0.35), fov: 42, settle: 1.3, drift: 0.3),
-      2 => Shot(vm.Vector3(-13.45 - drift, 1.55, 4.3), vm.Vector3(-14.15, 0.98, z), fov: 38, settle: 1.3, drift: 0.3),
-      3 => Shot(vm.Vector3(-12.3 - drift, 1.5, 4.35), vm.Vector3(-12.94, 0.95, z), fov: 38, settle: 1.3, drift: 0.3),
-      4 => Shot(vm.Vector3(-11.15 - drift, 1.55, 4.35), vm.Vector3(-11.8, 0.92, z + 0.1), fov: 38, settle: 1.3, drift: 0.3),
-      5 => Shot(vm.Vector3(-11.75 + drift, 1.58, 4.3), vm.Vector3(-10.8, 0.92, z + 0.05), fov: 38, settle: 1.3, drift: 0.3),
+      // The string's bytes on the wall, the feeder and the decoder.
+      0 || 1 => Shot(vm.Vector3(-15.0 + drift, 1.6, 4.1), vm.Vector3(-15.35, 1.12, z + 0.55), fov: 48, settle: 1.3, drift: 0.3),
+      2 => Shot(vm.Vector3(-13.95 - drift, 1.72, 4.15), vm.Vector3(-14.15, 0.95, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
+      3 => Shot(vm.Vector3(-12.8 - drift, 1.72, 4.15), vm.Vector3(-12.95, 0.92, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
+      4 => Shot(vm.Vector3(-11.65 - drift, 1.75, 4.2), vm.Vector3(-11.8, 0.85, z + 0.15), fov: 44, settle: 1.3, drift: 0.3),
+      5 => Shot(vm.Vector3(-11.25 + drift, 1.75, 4.15), vm.Vector3(-10.8, 0.85, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
       // The board, the pixels set in.
-      _ => Shot(vm.Vector3(-10.55 + drift, 1.5, 3.45), vm.Vector3(-9.95, 0.82, WorksLayout.boardZ + 0.1), fov: 40, settle: 1.3, drift: 0.3),
+      _ => Shot(vm.Vector3(-10.0 + drift, 1.62, 3.0), vm.Vector3(-9.72, 0.62, WorksLayout.boardZ + 0.2), fov: 44, settle: 1.3, drift: 0.3),
     };
   }
 
@@ -604,7 +642,9 @@ class GlyphWorks {
           ..value = 'advance ${l.advance.toStringAsFixed(2)} em   kern ${k == 0 ? '—' : em(l.kern)}'
           ..note = k == 0
               ? 'the first letter: pen at 0'
-              : (l.spaced ? 'after a space: pen at ${l.pen.toStringAsFixed(2)} em' : '${name.letters[k - 1].text} ${l.text}: pen at ${l.pen.toStringAsFixed(2)} em');
+              : (l.spaced
+                    ? 'after a space: pen at ${l.pen.toStringAsFixed(2)} em'
+                    : '${name.letters[k - 1].text} ${l.text}: pen at ${l.pen.toStringAsFixed(2)} em');
       case 4:
         final outer = l.outline.length - l.holes;
         caption
@@ -707,7 +747,7 @@ class GlyphWorks {
   // ── The string, and the letters down the line ─────────────────────────────
 
   /// The string board over the feeder: its middle.
-  static const _stripX = -15.55, _stripY = 1.62;
+  static const _stripX = -15.15, _stripY = 1.62;
 
   /// Lights up the letter being read on the string board.
   void _string(_Job job, WorksName name, double tt, bool stopped) {
@@ -763,10 +803,18 @@ class GlyphWorks {
 
   /// The font cases (their middles), and the height a tile is held up to
   /// them at.
-  static const _caseX = [-14.45, -14.15, -13.85], _caseY = 1.0, _lookY = 0.9;
+  static const _caseX = [-14.45, -14.15, -13.85], _caseY = 1.12, _lookY = 1.02;
+
+  /// When (seconds into a font step [d] long) a glyph from font [f] comes
+  /// out of its case: the tile moved over and lifted, a look in each case
+  /// up to it.
+  static double _catchAt(double d, int f) {
+    final mv = math.min(0.6, 0.2 * d), per = (d - mv - 0.35 - 0.9) / (f + 1);
+    return mv + 0.35 + (f + 0.8) * per;
+  }
 
   /// How many cases the tile of [s] has been held up to at [tt] (−1: not
-  /// yet), and when each look and the catch happen.
+  /// yet).
   int _lookup(_Steps s, double tt) {
     final f = _name!.letters[s.k].font;
     final a = s.at[2], d = s.end[2] - a, mv = math.min(0.6, 0.2 * d);
@@ -812,7 +860,7 @@ class GlyphWorks {
 
   /// The composing stick: its left end (em 0, before scrolling), its rail's
   /// top, the sorts' middle line; and its em.
-  static const _stickX0 = -13.44, _railY = 0.86, _sortZ = WorksLayout.beltZ + 0.07, _em = 0.2, _stickEm = 5.15;
+  static const _stickX0 = -13.44, _railY = 0.74, _sortZ = WorksLayout.beltZ + 0.07, _em = 0.2, _stickEm = 5.15;
 
   /// Where the stick's line starts (em) while letter [k] is set in it: far
   /// enough along that the letter fits.
@@ -854,7 +902,7 @@ class GlyphWorks {
 
   /// The bender's board and the rasterizer's plate lean back this much; a
   /// frame's origin is the middle of its bottom edge.
-  static const _tilt = 0.55, _frameY = 0.66, _frameZ = WorksLayout.beltZ - 0.1;
+  static const _tilt = 0.95, _frameY = 0.66, _frameZ = WorksLayout.beltZ - 0.2;
 
   /// The leaning frame at [x] (the bender's or the plate's), into [out].
   static vm.Matrix4 _frame(double x, vm.Matrix4 out, {double lift = 0}) => setTrs(out, x, _frameY + lift, _frameZ - 0.6 * lift, pitch: _tilt);
@@ -1179,7 +1227,7 @@ class GlyphWorks {
       }
       _decoderDisplay(tt);
     }
-    final lx = _feedOut - 0.06, ly = by + 0.3, lz = z - 0.29;
+    final lx = _feedOut - 0.06, ly = by + 0.2, lz = z - 0.29;
     final a = -0.5 + 1.0 * pull;
     _p.setValues(lx, ly, lz);
     _q.setValues(lx + 0.02, ly + 0.16 * math.cos(a), lz - 0.16 * math.sin(a));
@@ -1194,7 +1242,7 @@ class GlyphWorks {
         if (p > 0 && p < 1) crank = t * 7;
       }
     }
-    final cx = WorksLayout.stepX[4] + 0.38, cy = by + 0.38, cz = z - 0.12;
+    final cx = WorksLayout.stepX[4] + 0.42, cy = by + 0.32, cz = z + 0.16;
     props.cyl(cx + 0.02 * math.cos(crank), cy + 0.09 * math.sin(crank), cz - 0.09 * math.cos(crank), 0.012, 0.08, _brass, roll: math.pi / 2);
   }
 
@@ -1211,19 +1259,21 @@ class GlyphWorks {
       if (f < at) continue;
       final lead = l.bytes[b] & 0xC0 != 0x80;
       final x = -15.15 + (b - (n - 1) / 2) * 0.06;
-      props.glow(x, WorksLayout.beltY + 0.1, WorksLayout.beltZ - 0.282, 0.035, 0.035, 0.008, lead ? _amberGlow : _greenGlow);
+      props.glow(x, WorksLayout.beltY + 0.075, WorksLayout.beltZ - 0.28, 0.03, 0.03, 0.008, lead ? _amberGlow : _greenGlow);
     }
   }
 
   int _displayK = -1;
 
-  /// The decoder's display: the last letter decoded, bytes → code points.
+  /// The decoder's display: the last letter decoded, bytes → code points
+  /// (blank while the next one's bytes go in).
   void _decoderDisplay(double tt) {
-    var k = -1;
+    _Steps? last;
     for (final s in _steps) {
-      if (tt >= s.at[1] + 0.4 * (s.end[1] - s.at[1])) k = s.k;
+      if (tt >= s.at[1]) last = s;
     }
-    if (k < 0) return;
+    if (last == null || tt < last.at[1] + 0.4 * (last.end[1] - last.at[1])) return;
+    final k = last.k;
     final piece = _job!.pieces[k];
     if (piece.display == null) return;
     if (k != _displayK) {
@@ -1238,16 +1288,17 @@ class GlyphWorks {
     if (tt < s.at[2] || tt >= s.end[2] + 0.4) return;
     final n = _lookup(s, tt);
     final fade = 1 - seg(tt, s.end[2], s.end[2] + 0.4);
+    // Stamped over the case's sample glyphs, under its name card.
     for (var i = 0; i <= n; i++) {
-      final x = _caseX[i], y = _caseY + 0.2, z = WorksLayout.beltZ - 0.1 - 0.012;
+      final x = _caseX[i], y = _caseY + 0.09, z = WorksLayout.beltZ - 0.1 - 0.012;
       if (i < l.font) {
         props
-          ..glow(x + 0.09, y, z, 0.075, 0.014, 0.006, _redGlow * fade, roll: 0.785)
-          ..glow(x + 0.09, y, z, 0.075, 0.014, 0.006, _redGlow * fade, roll: -0.785);
+          ..glow(x, y, z, 0.12, 0.016, 0.006, _redGlow * fade, roll: 0.6)
+          ..glow(x, y, z, 0.12, 0.016, 0.006, _redGlow * fade, roll: -0.6);
       } else {
         props
-          ..glow(x + 0.07, y - 0.012, z, 0.04, 0.014, 0.006, _greenGlow * fade, roll: -0.785)
-          ..glow(x + 0.105, y + 0.004, z, 0.075, 0.014, 0.006, _greenGlow * fade, roll: 0.95);
+          ..glow(x - 0.03, y - 0.012, z, 0.05, 0.016, 0.006, _greenGlow * fade, roll: -0.785)
+          ..glow(x + 0.02, y + 0.008, z, 0.1, 0.016, 0.006, _greenGlow * fade, roll: 0.95);
       }
     }
   }
@@ -1278,33 +1329,28 @@ class GlyphWorks {
   /// it, a step at a time, its pixels to the board, and home.
   void _work(FigurePose p, _Steps s, double tt, double t) {
     final seed = 40 + s.maker * 7;
-    final home = WorksLayout.homes[s.maker];
-    final feeder = vm.Vector3(WorksLayout.stepX[0], 0, WorksLayout.workZ);
+    _walksOf(s);
     if (tt < s.at[0]) {
-      Walk(WorksLayout.route(home, feeder), s.walkIn, 1.2).pose(p, tt, seed);
+      s.toFeeder!.pose(p, tt, seed);
       if (tt >= s.walkIn + _walkIn - 0.05) p.yaw = 0;
       return;
     }
     final step = s.stepAt(tt);
-    final slot = vm.Vector3(_slotX(s.k), 0, WorksLayout.placeZ);
     if (step >= 7) {
-      final way = WorksLayout.route(slot, home);
-      Walk(way, s.at[7] + 0.3, Walk.lengthOf(way) / math.max(0.5, s.homeAt - s.at[7] - 0.3)).pose(p, tt, seed);
+      s.toHome!.pose(p, tt, seed);
       return;
     }
     if (step == 6) {
       // The pixels to the board: round the belt's end, behind the board,
       // leaning over it to set them in.
-      final from = vm.Vector3(WorksLayout.stepX[5], 0, WorksLayout.workZ);
-      final way = [from, vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ), vm.Vector3(WorksLayout.walkX, 0, WorksLayout.placeZ), slot];
-      final go = s.at[6] + 0.3, there = s.at[7] - 0.6;
+      final there = s.at[7] - 0.6;
       if (tt < there) {
-        Walk(way, go, Walk.lengthOf(way) / math.max(0.4, there - go)).pose(p, tt, seed);
-        if (tt < go) p.yaw = 0;
+        s.toBoard!.pose(p, tt, seed);
+        if (tt < s.toBoard!.start) p.yaw = 0;
         _holdOut(p);
         return;
       }
-      p.pos.setFrom(slot);
+      p.pos.setValues(s.slotX, 0, WorksLayout.placeZ);
       p.yaw = 0;
       OffDuty.stand(p, t, seed);
       final k = math.sin(math.pi * seg(tt, there, s.at[7] + 0.3));
@@ -1314,12 +1360,14 @@ class GlyphWorks {
       return;
     }
     // At the step (walking along from the last one as it starts).
-    final x = WorksLayout.stepX[step];
+    final x = WorksLayout.workX[step];
     final a = s.at[step], d = s.end[step] - a;
-    final prev = step == 0 ? x : WorksLayout.stepX[step - 1];
+    final prev = step == 0 ? x : WorksLayout.workX[step - 1];
     final mv = math.min(0.6, 0.2 * d);
     if (tt < a + mv && (x - prev).abs() > 0.05) {
-      Walk([vm.Vector3(prev, 0, WorksLayout.workZ), vm.Vector3(x, 0, WorksLayout.workZ)], a, (x - prev).abs() / mv).pose(p, tt, seed);
+      p.pos.setValues(lerp(prev, x, seg(tt, a, a + mv)), 0, WorksLayout.workZ);
+      OffDuty.walk(p, t, (x - prev).abs() / mv, seed);
+      p.yaw = x > prev ? -math.pi / 2 : math.pi / 2;
       return;
     }
     p.pos.setValues(x, 0, WorksLayout.workZ);
@@ -1330,12 +1378,12 @@ class GlyphWorks {
     switch (step) {
       case 0:
         // Pulling the feeder's lever.
-        _p.setValues(_feedOut - 0.04, WorksLayout.beltY + 0.36, WorksLayout.beltZ - 0.22);
+        _p.setValues(_feedOut - 0.04, WorksLayout.beltY + 0.3, WorksLayout.beltZ - 0.22);
         _reach(p, 1, _p, math.sin(math.pi * seg(tt, a - 0.1, a + 0.7)));
         p.lean = 0.12;
       case 1:
         // A hand on the decoder, watching the bytes go in.
-        _p.setValues(-15.1, WorksLayout.beltY + 0.47, WorksLayout.beltZ + 0.12);
+        _p.setValues(-15.1, WorksLayout.beltY + 0.36, WorksLayout.beltZ + 0.12);
         crew.aim(p, 1, _p);
         p.lean = 0.18;
       case 2 || 3:
@@ -1356,7 +1404,7 @@ class GlyphWorks {
       case 4:
         // Turning the bender's crank.
         final c = t * 7;
-        _p.setValues(WorksLayout.stepX[4] + 0.4, WorksLayout.beltY + 0.38 + 0.09 * math.sin(c), WorksLayout.beltZ - 0.12 - 0.09 * math.cos(c));
+        _p.setValues(WorksLayout.stepX[4] + 0.44, WorksLayout.beltY + 0.32 + 0.09 * math.sin(c), WorksLayout.beltZ + 0.16 - 0.09 * math.cos(c));
         crew.aim(p, 1, _p);
         p.lean = 0.22;
         p.armRoll[0] = 0.85;
@@ -1373,13 +1421,34 @@ class GlyphWorks {
           }
           p.lean = 0.3;
         } else {
-          _p.setValues(WorksLayout.stepX[5] + 0.42, WorksLayout.beltY + 0.2, WorksLayout.beltZ - 0.1);
+          _p.setValues(WorksLayout.stepX[5] + 0.42, WorksLayout.beltY + 0.2, WorksLayout.beltZ + 0.12);
           crew.aim(p, 1, _p);
           p.lean = 0.15;
           p.armRoll[0] = 0.85;
           p.armPitch[0] = -0.3;
         }
     }
+  }
+
+  /// [s]'s maker's walks (made once, and again if the letter's place on
+  /// the board moves, once its pixels are in): from home to the feeder,
+  /// with its pixels to the board, and home again.
+  void _walksOf(_Steps s) {
+    final x = _slotX(s.k);
+    if (s.toBoard != null && s.slotX == x) return;
+    s.slotX = x;
+    final home = WorksLayout.homes[s.maker], slot = vm.Vector3(x, 0, WorksLayout.placeZ);
+    s.toFeeder = Walk(WorksLayout.route(home, vm.Vector3(WorksLayout.workX[0], 0, WorksLayout.workZ)), s.walkIn, 1.2);
+    final way = [
+      vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.workZ),
+      vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ),
+      vm.Vector3(WorksLayout.walkX, 0, WorksLayout.placeZ),
+      slot,
+    ];
+    final go = s.at[6] + 0.3, there = s.at[7] - 0.6;
+    s.toBoard = Walk(way, go, Walk.lengthOf(way) / math.max(0.4, there - go));
+    final back = WorksLayout.route(slot, home);
+    s.toHome = Walk(back, s.at[7] + 0.3, Walk.lengthOf(back) / math.max(0.5, s.homeAt - s.at[7] - 0.3));
   }
 
   /// Arm [s] of [p] towards [at], by [k] (0: as it was).
@@ -1428,9 +1497,7 @@ class GlyphWorks {
     final c = piece.crate = math.min(0.085, 0.42 / n);
     const gap = 0.008;
     final rowW = piece.rowW = n * c + (n - 1) * gap;
-    final crates = [
-      for (var b = 0; b < n; b++) _labelBox(atlas.bytes[k][b], -rowW / 2 + c / 2 + b * (c + gap), c / 2, 0, c, c, c, _wood),
-    ];
+    final crates = [for (var b = 0; b < n; b++) _labelBox(atlas.bytes[k][b], -rowW / 2 + c / 2 + b * (c + gap), c / 2, 0, c, c, c, _wood)];
     piece.crates = _node('crates ${l.text}', Mesh(merged(crates), job.mat!));
     const tw = 0.2, th = 0.07;
     final m = l.codePoints.length;
@@ -1476,13 +1543,31 @@ class GlyphWorks {
         ..[i * 4 + 2] = c.z
         ..[i * 4 + 3] = 1;
     }
-    return MeshData(positions: p, vertexCount: data.vertexCount, normals: nr, texCoords: uv, colors: colors, indices: data.indices).transformed(vm.Matrix4.translationValues(x, y, z));
+    return MeshData(
+      positions: p,
+      vertexCount: data.vertexCount,
+      normals: nr,
+      texCoords: uv,
+      colors: colors,
+      indices: data.indices,
+    ).transformed(vm.Matrix4.translationValues(x, y, z));
   }
 
   /// A thin board [w]×[h] (centred at (x, y, z), [thick]) showing [region]
   /// of an atlas [size] px square on its front, [edge] round the edges
   /// (the atlas's [plain] white under it).
-  static MeshData _region(int size, Rect region, double w, double h, double x, double y, double z, double thick, {Rect plain = _Atlas.plain, int edge = 0x1B2233}) {
+  static MeshData _region(
+    int size,
+    Rect region,
+    double w,
+    double h,
+    double x,
+    double y,
+    double z,
+    double thick, {
+    Rect plain = _Atlas.plain,
+    int edge = 0x1B2233,
+  }) {
     final d = CuboidGeometry(vm.Vector3(w, h, thick)).extractMeshData();
     final uv = Float32List(d.vertexCount * 2), nr = d.normals!, p = d.positions;
     final colors = Float32List(d.vertexCount * 4), side = v4(hex3(edge));
@@ -1497,7 +1582,14 @@ class GlyphWorks {
         ..[i * 4 + 2] = c.z
         ..[i * 4 + 3] = 1;
     }
-    return MeshData(positions: p, vertexCount: d.vertexCount, normals: nr, texCoords: uv, colors: colors, indices: d.indices).transformed(vm.Matrix4.translationValues(x, y, z));
+    return MeshData(
+      positions: p,
+      vertexCount: d.vertexCount,
+      normals: nr,
+      texCoords: uv,
+      colors: colors,
+      indices: d.indices,
+    ).transformed(vm.Matrix4.translationValues(x, y, z));
   }
 
   /// Letter [k]'s wire: its outline as a thin tube in the leaning frame's
@@ -1508,7 +1600,9 @@ class GlyphWorks {
     final cell = job.cell = job.cell > 0 ? job.cell : _cellFor(name);
     final loops = [
       for (final o in l.outline)
-        Float32List.fromList([for (var i = 0; i < o.length; i += 2) ...[(o[i] - l.w / 2) * cell, 0.04 + (l.h - o[i + 1]) * cell]]),
+        Float32List.fromList([
+          for (var i = 0; i < o.length; i += 2) ...[(o[i] - l.w / 2) * cell, 0.04 + (l.h - o[i + 1]) * cell],
+        ]),
     ];
     final wire = piece.wireData = _Wire(loops);
     const runs = 6;
@@ -1551,7 +1645,7 @@ class GlyphWorks {
     Rect.fromLTWH(8, 350, 330, 84),
   ];
   static const _cases = [Rect.fromLTWH(346, 350, 220, 196), Rect.fromLTWH(574, 350, 220, 196), Rect.fromLTWH(802, 350, 220, 196)];
-  static const _poster = Rect.fromLTWH(8, 556, 420, 300), _decoderPanel = Rect.fromLTWH(436, 556, 300, 84), _screen = Rect.fromLTWH(436, 648, 160, 100);
+  static const _poster = Rect.fromLTWH(8, 556, 420, 300), _decoderPanel = Rect.fromLTWH(436, 556, 300, 42), _screen = Rect.fromLTWH(436, 648, 160, 100);
   static const _ruler = Rect.fromLTWH(8, 868, 1008, 48), _plateGrid = Rect.fromLTWH(744, 556, 272, 272);
   static const _white = Rect.fromLTWH(968, 968, 48, 48), _glowPatch = Rect.fromLTWH(908, 968, 48, 48), _lampPatch = Rect.fromLTWH(848, 968, 48, 48);
 
@@ -1625,8 +1719,18 @@ class GlyphWorks {
   }
 
   /// A thin board whose front (local −z) shows [region] of the atlas.
-  MeshData _board(double x, double y, double z, double w, double h, Rect region, {int edge = 0x1B2233, double thick = 0.03, double yaw = 0, double pitch = 0}) =>
-      _region(_atlas, region, w, h, 0, 0, 0, thick, plain: _white, edge: edge).transformed(trs(vm.Vector3(x, y, z), rotY: yaw, rotX: pitch));
+  MeshData _board(
+    double x,
+    double y,
+    double z,
+    double w,
+    double h,
+    Rect region, {
+    int edge = 0x1B2233,
+    double thick = 0.03,
+    double yaw = 0,
+    double pitch = 0,
+  }) => _region(_atlas, region, w, h, 0, 0, 0, thick, plain: _white, edge: edge).transformed(trs(vm.Vector3(x, y, z), rotY: yaw, rotX: pitch));
 
   List<MeshData> _walls() {
     const x0 = WorksLayout.x0, x1 = WorksLayout.x1, z0 = WorksLayout.z0, z1 = WorksLayout.z1, cx = WorksLayout.cx;
@@ -1659,28 +1763,28 @@ class GlyphWorks {
     for (final x in [bx0 + 0.02, bx1 - 0.02]) {
       parts.add(_cyl(x, by - 0.035, bz, 0.035, bw - 0.03, 0x8A96A6, pitch: math.pi / 2));
     }
-    // 1 The feeder: a hopper over the belt's start, the bytes come out of
-    // its slot; the string's board on the wall above.
+    // 1 The feeder: a low hopper over the belt's start, the bytes come out
+    // of its slot; the string's board on the wall above.
     parts
-      ..add(_box(-16.12, by + 0.21, bz, 0.6, 0.42, 0.52, 0x2E6DA8))
-      ..add(_box(-16.12, by + 0.47, bz, 0.66, 0.1, 0.58, 0x2A3344))
+      ..add(_box(-16.12, by + 0.14, bz, 0.6, 0.28, 0.52, 0x2E6DA8))
+      ..add(_box(-16.12, by + 0.3, bz, 0.66, 0.05, 0.58, 0x2A3344))
       ..add(_box(_feedOut + 0.002, by + 0.06, bz, 0.004, 0.11, 0.3, 0x0B0F16))
-      ..add(_box(_feedOut - 0.06, by + 0.3, bz - 0.27, 0.05, 0.05, 0.03, 0x1B2233))
+      ..add(_box(_feedOut - 0.06, by + 0.2, bz - 0.27, 0.05, 0.05, 0.03, 0x1B2233))
       ..add(_box(_stripX, _stripY, z1 - 0.125, 1.84, 0.3, 0.01, 0x2A3344));
-    // 2 The decoder: over the belt (the bytes go in one side, the code
-    // point comes out of the other), its panel and lamp sockets in front.
+    // 2 The decoder: low over the belt (the bytes go in one side, the code
+    // point comes out of the other), its label, display and lamps in front.
     parts
-      ..add(_box(-15.15, by + 0.23, bz, 0.5, 0.46, 0.54, 0x3A4558))
-      ..add(_box(-15.15, by + 0.47, bz, 0.54, 0.04, 0.58, 0x2A3344))
-      ..add(_board(-15.15, by + 0.385, bz - 0.282, 0.42, 0.11, _decoderPanel, thick: 0.01))
-      ..add(_box(-15.15, by + 0.1, bz - 0.274, 0.4, 0.06, 0.006, 0x0B0F16))
-      ..add(_box(-15.15, by + 0.31, bz - 0.276, 0.4, 0.09, 0.006, 0x0B0F16));
+      ..add(_box(-15.15, by + 0.16, bz, 0.5, 0.32, 0.54, 0x3A4558))
+      ..add(_box(-15.15, by + 0.335, bz, 0.54, 0.03, 0.58, 0x2A3344))
+      ..add(_board(-15.15, by + 0.285, bz - 0.278, 0.36, 0.05, _decoderPanel, thick: 0.006))
+      ..add(_box(-15.15, by + 0.075, bz - 0.274, 0.4, 0.05, 0.006, 0x0B0F16))
+      ..add(_box(-15.15, by + 0.19, bz - 0.274, 0.4, 0.09, 0.006, 0x0B0F16));
     // 3 The font cases on a gantry over the belt, in the order they're
     // looked in.
     for (final x in [-14.64, -13.66]) {
-      parts.add(_box(x, (by + 1.29) / 2, bz + 0.2, 0.04, 1.29 - by + 0.02, 0.04, steel));
+      parts.add(_box(x, (by + _caseY + 0.29) / 2, bz + 0.2, 0.04, _caseY + 0.29 - by + 0.02, 0.04, steel));
     }
-    parts.add(_box(-14.15, 1.3, bz + 0.2, 1.02, 0.04, 0.05, steel));
+    parts.add(_box(-14.15, _caseY + 0.3, bz + 0.2, 1.02, 0.04, 0.05, steel));
     for (var i = 0; i < 3; i++) {
       parts
         ..add(_box(_caseX[i], _caseY + 0.125, bz + 0.04, 0.28, 0.25, 0.28, 0x9C6B3C))
@@ -1708,7 +1812,7 @@ class GlyphWorks {
       ..add(leaning(bx, 0.3, 0.015, 0.62, 0.62, 0.02, 0x9C6B3C))
       ..add(leaning(bx, 0.3, 0.03, 0.66, 0.66, 0.02, 0x2A3344))
       ..add(_cyl(bx - 0.36, by + 0.12, bz + 0.12, 0.08, 0.06, 0xE8A04A, pitch: math.pi / 2))
-      ..add(_cyl(bx + 0.38, by + 0.38, bz - 0.12, 0.1, 0.03, 0x3A4558, roll: math.pi / 2));
+      ..add(_cyl(bx + 0.38, by + 0.32, bz + 0.16, 0.1, 0.03, 0x3A4558, roll: math.pi / 2));
     // 6 The rasterizer: the plate leaning back on its stand (a grid under
     // the pixels), its gantry's rails, the control box.
     parts
@@ -1716,8 +1820,8 @@ class GlyphWorks {
       ..add(leaning(rx, 0.3, 0.035, 0.68, 0.68, 0.02, 0x2A3344))
       ..add(leaning(rx - 0.33, 0.3, -0.03, 0.025, 0.66, 0.04, steel))
       ..add(leaning(rx + 0.33, 0.3, -0.03, 0.025, 0.66, 0.04, steel))
-      ..add(_box(rx + 0.42, by + 0.09, bz - 0.1, 0.14, 0.18, 0.13, 0x2E6DA8))
-      ..add(_board(rx + 0.42, by + 0.12, bz - 0.168, 0.1, 0.07, _screen, thick: 0.004));
+      ..add(_box(rx + 0.42, by + 0.09, bz + 0.12, 0.14, 0.18, 0.13, 0x2E6DA8))
+      ..add(_board(rx + 0.42, by + 0.12, bz + 0.052, 0.1, 0.07, _screen, thick: 0.004));
     for (final x in [bx, rx]) {
       for (final s in [-0.25, 0.25]) {
         parts.add(_box(x + s, (by + _frameY) / 2, _frameZ + 0.1, 0.035, _frameY - by + 0.1, 0.035, steel));
@@ -1857,7 +1961,10 @@ class GlyphWorks {
       c.drawRect(card, Paint()..color = cream);
       _text(c, worksFonts[i], card.deflate(6), 30, navy);
       _text(c, samples[i], Rect.fromLTWH(b.left + 14, b.top + 92, b.width - 28, 70), 54, const Color(0xFF2A1A0E), sample: true);
-      c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(b.center.dx - 34, b.bottom - 26, 68, 12), const Radius.circular(6)), Paint()..color = const Color(0xFF3A2A1A));
+      c.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(b.center.dx - 34, b.bottom - 26, 68, 12), const Radius.circular(6)),
+        Paint()..color = const Color(0xFF3A2A1A),
+      );
     }
     // A poster for the talk: the pipeline in seven boxes.
     final p = _poster;
@@ -1875,7 +1982,15 @@ class GlyphWorks {
             ..strokeWidth = 3,
         );
         _text(c, '${i + 1}', Rect.fromLTWH(x, y, 44, 44), 26, navy);
-        if (i < 6) c.drawLine(Offset(x + 46, y + 22), Offset(x + 54, y + 22), Paint()..color = navy..strokeWidth = 3);
+        if (i < 6) {
+          c.drawLine(
+            Offset(x + 46, y + 22),
+            Offset(x + 54, y + 22),
+            Paint()
+              ..color = navy
+              ..strokeWidth = 3,
+          );
+        }
       }
       _text(c, 'UTF-8 → U+ → cmap → shape → outline → raster → pixels', Rect.fromLTWH(p.left + 14, p.top + 196, p.width - 28, 30), 20, const Color(0xFF2E6DA8));
       _text(c, '名前の街 · NAME CITY', Rect.fromLTWH(p.left + 14, p.top + 244, p.width - 28, 36), 24, navy);
@@ -1956,6 +2071,11 @@ class _Steps {
   final int k, maker;
   final at = Float64List(8), end = Float64List(7);
   double walkIn = 0, homeAt = 0;
+
+  /// Its maker's walks (see [GlyphWorks._walksOf]), and where on the board
+  /// they were made for.
+  Walk? toFeeder, toBoard, toHome;
+  double slotX = double.nan;
 
   /// The step it's at, at [t]: −1 before, 7 once on the board.
   int stepAt(double t) {
@@ -2252,7 +2372,10 @@ class _Atlas {
     for (var i = 0; i < name.string.length; i++) {
       final g = name.string[i], r = _groups[i];
       final ch = TextPainter(
-        text: TextSpan(text: g.text, style: NameRaster.nameStyle(_charPx * _scale, color: g.letter == null ? dim : cream)),
+        text: TextSpan(
+          text: g.text,
+          style: NameRaster.nameStyle(_charPx * _scale, color: g.letter == null ? dim : cream),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       final top = r.top + (r.height - _groupH * _scale) / 2;
@@ -2271,7 +2394,10 @@ class _Atlas {
       final r = faces[l.k];
       c.drawRect(r, Paint()..color = const Color(0xFF3A4558));
       final tp = TextPainter(
-        text: TextSpan(text: l.text, style: NameRaster.nameStyle(_faceEm, color: const Color(0xFFFFE9B0))),
+        text: TextSpan(
+          text: l.text,
+          style: NameRaster.nameStyle(_faceEm, color: const Color(0xFFFFE9B0)),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(c, r.topLeft);
@@ -2285,7 +2411,14 @@ class _Atlas {
       for (var i = 0; i < l.codePoints.length; i++) {
         _label(c, codes[l.k][i], WorksLetter.hex(l.codePoints[i]), const Color(0xFF1B2A44), amber, 28);
       }
-      _label(c, displays[l.k], '${l.bytes.map(WorksLetter.byte).join(' ')} → ${l.codePoints.map(WorksLetter.hex).join(' ')}', ground, const Color(0xFF6CE5B1), 22);
+      _label(
+        c,
+        displays[l.k],
+        '${l.bytes.map(WorksLetter.byte).join(' ')} → ${l.codePoints.map(WorksLetter.hex).join(' ')}',
+        ground,
+        const Color(0xFF6CE5B1),
+        22,
+      );
     }
   }
 

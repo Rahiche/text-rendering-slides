@@ -657,7 +657,7 @@ class Crew3D {
       final st = plan.steps[k];
       // In front of the letter before, beside the gap (out of the close-up's
       // line of sight).
-      if (st != null) go(st.a - 0.8, st.gapL - 0.85, -0.8);
+      if (st != null) go(st.a - 0.8, st.gapL - 1.15, -0.7);
     }
     go(plan.at(sc.downB[plan.letterCount - 1]), w / 2 + 0.75, -1.55);
     var px = w / 2 + 0.75, pz = -1.55;

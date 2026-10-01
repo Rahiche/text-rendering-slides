@@ -4,6 +4,7 @@ import '../../deck/theme.dart';
 import '../model.dart';
 import '../raster.dart';
 import 'factory_plan.dart';
+import 'site_wall.dart' show pieceColor;
 
 // Pallets of bricks as the glyph factory draws them on its belt. Public so
 // whoever takes a pallet over at BL.pickup (the site's crane) can draw it
@@ -53,7 +54,10 @@ void paintPallet(Canvas c, NameRaster raster, int i, Offset bottom, {double widt
     final n = i * palletSize + k;
     if (n >= raster.bricks.length) break;
     final col = k % 6, layer = k ~/ 6;
-    _fill.color = brickColor(raster.bricks[n].cover).withValues(alpha: opacity);
+    // Same colours the site's crane and wall use, so nothing changes at the
+    // hand-off at BL.pickup.
+    final col0 = Color(pieceColor(raster.bricks[n]));
+    _fill.color = opacity >= 1 ? col0 : col0.withValues(alpha: col0.a * opacity);
     c.drawRect(Rect.fromLTWH(x0 + 0.5 + col * bw, y - 4 - (layer + 1) * bh, bw - 0.6, bh - 0.6), _fill);
   }
 }

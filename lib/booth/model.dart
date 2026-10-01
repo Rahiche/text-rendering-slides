@@ -56,6 +56,26 @@ const phaseSeconds = {
   Phase.cleanup: 10.0,
 };
 
+/// How long a name takes to build at the normal pace. An app that builds
+/// names its own way sets [BoothModel.pace] (Name City lays one letter at a
+/// time, with a kerning step between letters); the default is the booth's.
+/// A queue speeds every pace up the same way.
+class BuildPace {
+  const BuildPace();
+
+  /// Seconds to build [r] with nobody waiting: longer names take longer.
+  double nominal(NameRaster r) => forBricks(r.bricks.length);
+
+  /// [nominal] for a typical name (the wait estimate).
+  double get typical => forBricks(700);
+
+  /// Samples (built while nobody waits) take this much of [nominal].
+  double get sample => 0.7;
+
+  /// The booth's pace: 35 s plus 0.075 s a brick, 50…140 s.
+  static double forBricks(int bricks) => (35 + 0.075 * bricks).clamp(50.0, 140.0);
+}
+
 /// One name, from the queue to the rubble.
 class Job {
   Job(
@@ -190,6 +210,9 @@ class BoothModel extends ChangeNotifier {
   /// How the next names are built (the current one keeps its mode).
   BuildMode mode = BuildMode.bricks;
 
+  /// How long brick builds take (see [BuildPace]).
+  BuildPace pace = const BuildPace();
+
   final systems = <BoothSystem>[];
 
   /// Called after a real name finishes (to persist history).
@@ -206,7 +229,7 @@ class BoothModel extends ChangeNotifier {
   double get estimatedWait {
     final j = job;
     final now = j == null || j.sample ? 0.0 : _remaining(j);
-    return now + queue.length * (_overhead + _buildLenFor(700, queue.length));
+    return now + queue.length * (_overhead + pace.typical / _rush(queue.length));
   }
 
   static final _overhead = phaseSeconds.values.fold<double>(0, (a, b) => a + b);
@@ -221,11 +244,8 @@ class BoothModel extends ChangeNotifier {
     return math.max(0, s);
   }
 
-  /// Build time: longer names take longer; a queue speeds the crew up.
-  static double _buildLenFor(int bricks, int waiting) {
-    final base = (35 + 0.075 * bricks).clamp(50.0, 140.0);
-    return base / (1 + 0.22 * math.min(waiting, 6));
-  }
+  /// A queue speeds the crew up: build times are divided by this.
+  static double _rush(int waiting) => 1 + 0.22 * math.min(waiting, 6);
 
   /// Submits a typed name. Returns the check result (and its queue position
   /// via [queue] when accepted).
@@ -297,7 +317,7 @@ class BoothModel extends ChangeNotifier {
     job.startedAt = t;
     _enter(job, Phase.intake);
     if (job.mode == BuildMode.craft) {
-      final rush = 1 + 0.22 * math.min(queue.length, 6);
+      final rush = _rush(queue.length);
       _pending = CraftPlan.of(job.name).then((p) {
         job.plan = p;
         job.buildLen = p.nominal / rush * (job.sample ? 0.7 : 1);
@@ -310,7 +330,7 @@ class BoothModel extends ChangeNotifier {
     }
     _pending = NameRaster.of(next.name).then((r) {
       next.raster = r;
-      next.buildLen = _buildLenFor(r.bricks.length, queue.length) * (next.sample ? 0.7 : 1);
+      next.buildLen = pace.nominal(r) / _rush(queue.length) * (next.sample ? pace.sample : 1);
       if (next.phase == Phase.intake) {
         next.buildStart = math.max(t, next.phaseStart + next.phaseLen);
       }

@@ -80,13 +80,18 @@ class _Leg {
 /// every pair has work. A pure function of the build plan.
 class FinishPlan {
   FinishPlan(this.plan, {required this.len, required List<vm.Vector3> watch, required this.corner}) : b = plan.b, w = plan.width {
+    final clock = Stopwatch()..start();
     per = math.max(1, (plan.r.rows / 12).ceil());
     _makeUnits();
     _measure();
     _schedule(watch);
     _hide();
     _tracks(watch);
+    _ms = clock.elapsedMicroseconds / 1000;
   }
+
+  /// How long the planning took (for the capture log).
+  double _ms = 0;
 
   final BuildPlan plan;
 
@@ -317,6 +322,23 @@ class FinishPlan {
     watch,
   ];
 
+  /// How long [_round] and [_off] are (without making them: the planning
+  /// tries a great many).
+  double _roundLength(int who, double e, double x, double z, bool behind) {
+    final rx = plan.restX(who), cx = e * (w / 2 + 1.25), fx = e * (w / 2 + 1.35);
+    final l = (cx - rx).abs() + _dist(cx, SiteLayout.crewZ, fx, -0.6);
+    return l + (behind ? 2.1 + (x - fx).abs() + (z + 2.7).abs() : _dist(fx, -0.6, x, z));
+  }
+
+  double _offLength(double x, double z, vm.Vector3 watch) {
+    final lx = w / 2 + 1.6;
+    return (z - zLane).abs() + (x < w / 2 + 1.0 ? lx - x + _dist(lx, zLane, watch.x, watch.z) : _dist(x, zLane, watch.x, watch.z));
+  }
+
+  static double _dist(double ax, double az, double bx, double bz) => math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+
+  final _plasterAt = <double>[];
+
   /// Runs pair [p] through [order] (coming round end [e], past the others
   /// if [behind]) at pace [v0], writing the units' times when [write];
   /// returns how late the pair is for its deadlines (≤ 0: in time).
@@ -326,8 +348,8 @@ class FinishPlan {
     final pz = 2 * p, cz = 2 * p + 1;
     // The plasterer.
     final u0 = order.first;
-    var tp = _setOff(pz) + Walk.lengthOf(_round(pz, e, bodyX(u0, 0, plasterer: true), zPole, behind: behind)) / jog;
-    final plasterAt = <double>[];
+    var tp = _setOff(pz) + _roundLength(pz, e, bodyX(u0, 0, plasterer: true), zPole, behind) / jog;
+    final plasterAt = _plasterAt..clear();
     for (var i = 0; i < order.length; i++) {
       final u = order[i];
       if (i > 0) {
@@ -338,7 +360,7 @@ class FinishPlan {
       tp = plasterAt.last + u.run / v0;
     }
     // The painter, a little above.
-    var tc = _setOff(cz) + Walk.lengthOf(_round(cz, e, bodyX(u0, 0, plasterer: false), zPaint, behind: behind)) / jog;
+    var tc = _setOff(cz) + _roundLength(cz, e, bodyX(u0, 0, plasterer: false), zPaint, behind) / jog;
     for (var i = 0; i < order.length; i++) {
       final u = order[i];
       if (i > 0) {
@@ -355,8 +377,8 @@ class FinishPlan {
       tc = paint + u.run / v0;
     }
     final last = order.last;
-    final offC = Walk.lengthOf(_off(bodyX(last, last.run / v0, plasterer: false), zPaint, watch[cz])) / off;
-    final offP = Walk.lengthOf(_off(bodyX(last, last.run / v0, plasterer: true), zPole, watch[pz])) / off;
+    final offC = _offLength(bodyX(last, last.run / v0, plasterer: false), zPaint, watch[cz]) / off;
+    final offP = _offLength(bodyX(last, last.run / v0, plasterer: true), zPole, watch[pz]) / off;
     return math.max(tc - (len - _spare), tc + 0.2 + math.max(offC, offP) - (len + overrun));
   }
 
@@ -384,7 +406,14 @@ class FinishPlan {
   /// [runs] make their deadlines.
   double _paceFor(List<List<FinishUnit>> runs, List<int> perm, List<vm.Vector3> watch) {
     final orders = [for (var g = 0; g < 3; g++) _orderOf(runs[g], _entryOf(g, runs))];
-    bool fits(double v) => [for (var g = 0; g < 3; g++) _run(perm[g], orders[g], _entryOf(g, runs), g == 1, v, watch)].every((late) => late <= 0);
+    final entries = [for (var g = 0; g < 3; g++) _entryOf(g, runs)];
+    bool fits(double v) {
+      for (var g = 0; g < 3; g++) {
+        if (_run(perm[g], orders[g], entries[g], g == 1, v, watch) > 0) return false;
+      }
+      return true;
+    }
+
     var lo = 0.2, hi = 12.0;
     if (!fits(hi)) return hi;
     for (var k = 0; k < 22; k++) {
@@ -586,7 +615,9 @@ class FinishPlan {
   /// The timeline in words, for the capture log.
   String describe() {
     String f(double x) => x.toStringAsFixed(1);
-    final out = StringBuffer('finish ${plan.job.name}: ${units.length} units, pace ${v.toStringAsFixed(2)} m/s, painted by ${f(end)} of ${f(len)} s\n');
+    final out = StringBuffer(
+      'finish ${plan.job.name}: ${units.length} units, pace ${v.toStringAsFixed(2)} m/s, painted by ${f(end)} of ${f(len)} s (planned in ${_ms.toStringAsFixed(1)} ms)\n',
+    );
     for (var p = 0; p < 3; p++) {
       out.write('  pair $p (from the ${_entry[p] < 0 ? 'left' : 'right'}${_behind[p] ? ', behind' : ''}):');
       for (final u in _order[p]) {
@@ -647,12 +678,31 @@ class Finish3D {
     _job = j;
     final p = _plan;
     _on = false;
+    _calledOff = null;
     if (p == null || plan == null || !identical(p.plan, plan)) return;
     _u = t - revealAt;
-    // The reveal, and the walk off into the celebration; called off in the
-    // reveal (a sample giving way), the crew's own walk takes them off.
+    // The reveal, and the walk off into the celebration.
     _on = (j.phase == Phase.reveal || (j.phase == Phase.celebrate && _u < p.len + FinishPlan.overrun + 0.5)) && j.cutAt == null;
+    // Called off in it (a sample giving way): the builders walk off with
+    // their tools (the crew's walk, from where the finish had them), the
+    // foreman back to his corner from where he was looking on.
+    if (j.cutAt != null && j.phase == Phase.demolish) {
+      final c = j.phaseStart - revealAt;
+      if (c < 0 || c >= p.len) return;
+      _calledOff = c;
+      if (_offFor != j) {
+        _offFor = j;
+        final at = (c < p._foremanOut.start ? p._foremanIn : p._foremanOut).posAt(c, vm.Vector3.zero());
+        _foremanOff = Walk([at, p.corner], c + 0.4, 2.6, face: math.atan2(-(0 - p.corner.x), -(0.4 - p.corner.z)) * 0.8);
+      }
+    }
   }
+
+  /// When (seconds into the finish) it was called off, and the foreman's way
+  /// back then.
+  double? _calledOff;
+  Job? _offFor;
+  Walk? _foremanOff;
 
   // ── The crew ──────────────────────────────────────────────────────────────
 
@@ -688,7 +738,23 @@ class Finish3D {
 
   /// The crew's stage hook: the builders and the foreman through the finish.
   void pose(int who, FigurePose f) {
-    final p = _plan;
+    final p = _plan, back = _foremanOff, off = _calledOff;
+    if (off != null && p != null) {
+      if (who == Crew3D.foreman && back != null && _u < back.end) {
+        f
+          ..rest()
+          ..clipboard = true;
+        back.pose(f, _u, 3);
+        f.armPitch[0] = 1.0;
+      } else if (who < Crew3D.builders && _u < off + 4.5 && off < p.arrive[who]) {
+        // Walking off with their tools.
+        f
+          ..armPitch[1] = 2.05
+          ..armRoll[1] = 0.1
+          ..armPitch[0] = 0.05;
+      }
+      return;
+    }
     if (!_on || p == null) return;
     if (who == Crew3D.foreman) {
       if (_u < p.arrive[Crew3D.builders]) _foreman(p, f);
@@ -875,7 +941,7 @@ class Finish3D {
   /// go where the hands are) and puffs the dust and the drips.
   void drawTools() {
     tools.begin();
-    final p = _plan;
+    final p = _plan, off = _calledOff;
     if (_on && p != null) {
       for (var z = 0; z < Crew3D.builders; z++) {
         if (_u >= p.arrive[z]) continue;
@@ -883,23 +949,33 @@ class Finish3D {
         if (leg == null) continue;
         _toolsOf(p, z, leg);
       }
+    } else if (off != null && p != null && _u < off + 4.5) {
+      // Called off: carried off (the crew's walk has them).
+      for (var z = 0; z < Crew3D.builders; z++) {
+        if (off < p.arrive[z]) _carry(p, z);
+      }
     }
     tools.end();
+  }
+
+  /// Builder [z]'s pole (telescoped in) over the shoulder, its head up
+  /// front, and the bucket or the tray in the other hand.
+  void _carry(FinishPlan p, int z) {
+    final f = crew.poses[z], plasterer = z.isEven;
+    OffDuty.hand(f, 1, _a);
+    final fx = -math.sin(f.yaw) * 0.8, fz = -math.cos(f.yaw) * 0.8;
+    _b.setValues(_a.x + fx * 1.0, _a.y + 0.6, _a.z + fz * 1.0);
+    _c.setValues(_a.x - fx * 0.55, _a.y - 0.33, _a.z - fz * 0.55);
+    tools.rod(_c, _b, 0.018, _pole);
+    _head(plasterer, _b.x, _b.y + 0.04, _b.z, _colourOf(p, z), 0.6);
+    OffDuty.hand(f, 0, _a);
+    _carried(p, z, plasterer, _a.x, _a.y - 0.08, _a.z, f.yaw);
   }
 
   void _toolsOf(FinishPlan p, int z, _Leg leg) {
     final f = crew.poses[z], plasterer = z.isEven;
     if (leg.walk != null) {
-      // The pole (telescoped in) over the shoulder, its head up front; the
-      // bucket or the tray in the other hand.
-      OffDuty.hand(f, 1, _a);
-      final fx = -math.sin(f.yaw) * 0.8, fz = -math.cos(f.yaw) * 0.8;
-      _b.setValues(_a.x + fx * 1.0, _a.y + 0.6, _a.z + fz * 1.0);
-      _c.setValues(_a.x - fx * 0.55, _a.y - 0.33, _a.z - fz * 0.55);
-      tools.rod(_c, _b, 0.018, _pole);
-      _head(plasterer, _b.x, _b.y + 0.04, _b.z, _colourOf(p, z), 0.6);
-      OffDuty.hand(f, 0, _a);
-      _carried(p, z, plasterer, _a.x, _a.y - 0.08, _a.z, f.yaw);
+      _carry(p, z);
       return;
     }
     final unit = leg.unit!, u = _u;
@@ -1125,14 +1201,18 @@ class Finish3D {
       }
     }
     if (plaster != null) shots.add(plaster);
-    // Then a painter: the first with a good run still to go.
+    // Then a painter: the first with a good run still to go (a short one
+    // only if there's nothing better).
     final t1 = (plaster?.to ?? 3.0) + 0.3;
     FinishUnit? best;
-    var at = double.infinity;
+    var score = double.infinity, at = 0.0;
     for (final unit in p.units) {
       if (unit.empty || unit.pair < 0) continue;
       final from = math.max(t1, unit.paint + 0.3), to = unit.paint + unit.run / p.v - 0.2;
-      if (to - from < 1.4 || from >= at) continue;
+      if (to - from < 1.4) continue;
+      final s = from + (to - from < 2.2 ? 10 : 0);
+      if (s >= score) continue;
+      score = s;
       at = from;
       best = unit;
     }

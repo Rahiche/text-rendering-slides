@@ -950,7 +950,8 @@ class Site3D {
     // cut short in it) until the ball gets to each letter; then, under a
     // burst of dust, it's bricks again — painted bricks — and down they go.
     final done = _finishedBy(j, fp);
-    if (!_bricksPainted) {
+    if (!_bricksPainted && _lettersReady) {
+      // (Once the letters are all made: they say which bricks are smoothed.)
       _bricksPainted = true;
       if (done >= 0) _paintBricks(plan, fp, done);
     }

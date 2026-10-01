@@ -1,0 +1,1430 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:flutter_scene/scene.dart';
+import 'package:vector_math/vector_math.dart' as vm;
+
+import 'crew.dart' show FigurePose;
+import 'kit.dart';
+import 'site_geo.dart' show setTrs;
+
+/// Name City's people, drawn: everyone — the crew and the people in the
+/// streets — is the same low-poly human (a torso that narrows to the waist
+/// and widens to the hips, a head with a face and hair, arms with elbows
+/// and mitten hands, legs with knees and shoes), posed from a [FigurePose]
+/// by [FigureRig] and dressed by a [FigureLook]: work clothes, hi-vis vests,
+/// hard hats, lab coats, suits, jackets, coats, skirts, bags.
+///
+/// One [Figures] per scene draws them all: every part is an instanced mesh
+/// (one draw for everybody's heads, one for everybody's forearms…), its
+/// colour per instance, its details (eyes, soles, a vest's opening) in the
+/// geometry. Nothing is allocated per frame.
+
+// ── The skeleton ────────────────────────────────────────────────────────────
+
+/// A figure's skeleton in one pose: the world transform of each part,
+/// worked out from a [FigurePose] (the poses were written for a toy with a
+/// big head and short arms; this reads them for a grown-up).
+///
+/// What the pose leaves unset follows from what it does set:
+/// - Arms: pitch and roll point from the shoulder to the hand. How far the
+///   hand is (the elbow's bend) follows from where it points: near straight
+///   hanging or raised, bent to hold something out, folded to bring a can
+///   to the mouth or a hand to the hat; arms rolled back and out are hands
+///   on hips, rolled in at chest height are folded arms. [FigurePose.elbow]
+///   sets the bend instead ([Crew3D.aim] does, so the hand gets to the
+///   target). The elbow points out and back, or down for a hand at the
+///   face.
+/// - Legs: the feet stay on the ground. A walk ([FigurePose.stride]) bends
+///   the swinging knee, rolls each foot from heel to toe, bobs the hips over
+///   the stance leg and turns the shoulders against the hips; standing, a
+///   negative bob is a crouch (the knees bend), a positive one a jump (they
+///   tuck); both thighs raised forward is sitting, the hips where the toy's
+///   were (on the seat), the shins hanging.
+/// - The head leans back a little to look ahead from a deep bend, and keeps
+///   looking forward as the shoulders swing.
+class FigureRig {
+  /// Measurements (metres) of a figure of size 1, 1.72 m tall: the ankle
+  /// above the sole, the shin and the thigh; the hip joints' spread.
+  static const ankle = 0.08, shin = 0.41, thigh = 0.42, hipX = 0.09;
+
+  /// The hip joints' height standing (the spine's pivot), 0.91 m.
+  static const hip = ankle + shin + thigh;
+
+  /// The shoulder joints (out from the middle, above the hips) and the neck.
+  static const shoulderX = 0.185, shoulderY = 0.5, neckY = 0.555;
+
+  /// The arm: shoulder to elbow, elbow to wrist, wrist to the palm's middle.
+  static const upperArm = 0.29, forearm = 0.25, palm = 0.07;
+  static const lowerArm = forearm + palm;
+
+  /// The mouth (in the head's frame, from the neck).
+  static const mouthY = 0.066, mouthZ = -0.098;
+
+  /// Where the toy's hips were: seated poses put them there (on the seat).
+  static const _toyHip = 0.36;
+
+  /// The root (feet, facing), the pelvis (the legs hang from it), the
+  /// chest (the torso, the arms hang from it) and the head.
+  final root = vm.Matrix4.identity(), pelvis = vm.Matrix4.identity(), chest = vm.Matrix4.identity(), head = vm.Matrix4.identity();
+
+  /// Per side (0 = −x, 1 = +x): the upper arm (from the shoulder), the
+  /// forearm (from the elbow) and the hand (from the wrist), each along its
+  /// −y; the thigh, the shin (along −y) and the foot (from the ankle).
+  final upper = [vm.Matrix4.identity(), vm.Matrix4.identity()], lower = [vm.Matrix4.identity(), vm.Matrix4.identity()];
+  final hand = [vm.Matrix4.identity(), vm.Matrix4.identity()];
+  final thighs = [vm.Matrix4.identity(), vm.Matrix4.identity()], shins = [vm.Matrix4.identity(), vm.Matrix4.identity()];
+  final feet = [vm.Matrix4.identity(), vm.Matrix4.identity()];
+
+  /// Each palm's middle (world).
+  final palms = [vm.Vector3.zero(), vm.Vector3.zero()];
+
+  // Scratch, in the chest's or the pelvis's frame.
+  final _l = vm.Matrix4.identity();
+  final _knee = [0.0, 0.0], _thigh = [0.0, 0.0], _foot = [0.0, 0.0], _ext = [0.0, 0.0];
+
+  /// Poses the skeleton for [p]. [size] scales it (1: 1.72 m); [width] the
+  /// shoulders; [cab]: sits with the legs out (a cramped seat). Without
+  /// [arms], only the trunk, the head and the legs.
+  void solve(FigurePose p, {double size = 1, double width = 1, bool cab = false, bool arms = true}) {
+    final yaw = p.yaw, lean = p.lean, bob = p.bob;
+    _setYaw(root, p.pos.x, p.pos.y, p.pos.z, yaw);
+    // ── Legs: the hips' height from them.
+    final walking = p.stride.isFinite;
+    var pelvisYaw = 0.0, chestYaw = p.twist, look = 0.0;
+    double hipY;
+    if (walking) {
+      // A grown-up's stride (the toy's swing would slide its feet).
+      final swing = (p.legPitch[0] - p.legPitch[1]) / 2;
+      pelvisYaw = -0.12 * swing;
+      chestYaw += 0.16 * swing;
+      look = -0.85 * 0.16 * swing;
+      for (var s = 0; s < 2; s++) {
+        final psi = p.stride + s * math.pi;
+        _thigh[s] = 0.8 * p.legPitch[s];
+        _knee[s] = p.knee[s].isNaN ? _gaitKnee(psi) : p.knee[s];
+        _foot[s] = _gaitFoot(psi);
+        _ext[s] = _extent(_thigh[s], _knee[s], _foot[s]);
+      }
+      hipY = math.max(_ext[0], _ext[1]) * size;
+    } else {
+      final sit = smooth(0.95, 1.35, math.min(p.legPitch[0], p.legPitch[1]));
+      // A crouch: the thighs come forward and the shins back, the feet
+      // stay under the hips.
+      final d = math.max(0.0, -bob) * (1 - sit) / size;
+      final a = d > 0 ? math.acos(math.max(0.3, 1 - d / (thigh + shin))) : 0.0;
+      final tuck = smooth(0.03, 0.18, bob);
+      for (var s = 0; s < 2; s++) {
+        final th = p.legPitch[s];
+        var k = p.knee[s];
+        if (k.isNaN) k = lerp(0.07 + 0.55 * tuck, cab ? math.max(0.0, th - 1.15) : th, sit);
+        _thigh[s] = th + a;
+        _knee[s] = k + 2 * a;
+        _foot[s] = -0.35 * tuck;
+        _ext[s] = _extent(_thigh[s], _knee[s], _foot[s]);
+      }
+      hipY = lerp((_ext[0] + _ext[1]) / 2 * size + math.max(0.0, bob), _toyHip + bob, sit);
+    }
+    // Looking ahead from a deep bend; a laugh throws the head back.
+    final nod = p.headPitch - 0.45 * math.max(0.0, lean - 0.35) + 0.4 * math.min(0.0, lean + 0.05);
+    _setYawPitch(_l, 0, hipY, 0, pelvisYaw, 0);
+    pelvis
+      ..setFrom(root)
+      ..multiply(_l);
+    _setYawPitch(_l, 0, hipY, 0, chestYaw, -lean);
+    chest
+      ..setFrom(root)
+      ..multiply(_l);
+    _setYawPitch(_l, 0, neckY * size, 0, p.headYaw + look, -nod);
+    head
+      ..setFrom(chest)
+      ..multiply(_l);
+    for (var s = 0; s < 2; s++) {
+      final side = s == 0 ? -1.0 : 1.0;
+      // Thigh from the hip joint, shin from the knee, the foot level (or as
+      // the walk rolls it).
+      final th = _thigh[s], sh = th - _knee[s];
+      final hx = side * hipX * size;
+      _setPitch(_l, hx, 0, 0, th);
+      thighs[s]
+        ..setFrom(pelvis)
+        ..multiply(_l);
+      final ky = -thigh * size * math.cos(th), kz = -thigh * size * math.sin(th);
+      _setPitch(_l, hx, ky, kz, sh);
+      shins[s]
+        ..setFrom(pelvis)
+        ..multiply(_l);
+      _setPitch(_l, hx, ky - shin * size * math.cos(sh), kz - shin * size * math.sin(sh), _foot[s]);
+      feet[s]
+        ..setFrom(pelvis)
+        ..multiply(_l);
+      if (arms) _arm(p, s, side, size, width);
+    }
+  }
+
+  /// How far below the hip joint the sole's lowest point is (size 1).
+  static double _extent(double th, double knee, double foot) {
+    final c = math.cos(foot), n = math.sin(foot);
+    return thigh * math.cos(th) + shin * math.cos(th - knee) + math.max(ankle * c + 0.055 * n, ankle * c - 0.185 * n);
+  }
+
+  /// The knee's bend at a leg's walk phase [psi] (its thigh swings as
+  /// sin ψ: forward while cos ψ > 0): most early in the swing, straight for
+  /// the heel strike, a give as the weight comes on.
+  static double _gaitKnee(double psi) {
+    final swing = math.max(0.0, math.cos(psi + 0.42));
+    var k = 0.06 + swing * math.sqrt(swing);
+    final w = psi % (2 * math.pi) - math.pi / 2; // since the heel strike
+    if (w > 0 && w < math.pi / 2) k += 0.18 * math.sin(2 * w);
+    return k;
+  }
+
+  /// The foot's pitch (toe up) through the walk: the heel strikes, the foot
+  /// goes flat, the heel lifts, it pushes off the toe, swings through.
+  static const _footKeys = [0.0, -0.25, 1.2, 0.15, 1.571, 0.22, 2.1, 0.0, 3.8, 0.0, 4.712, -0.68, 5.35, -0.45, 2 * math.pi, -0.25];
+
+  static double _gaitFoot(double psi) {
+    final u = psi % (2 * math.pi);
+    for (var i = 0; i + 3 < _footKeys.length; i += 2) {
+      if (u <= _footKeys[i + 2]) return lerp(_footKeys[i + 1], _footKeys[i + 3], smooth(_footKeys[i], _footKeys[i + 2], u));
+    }
+    return _footKeys[1];
+  }
+
+  // ── Arms ────────────────────────────────────────────────────────────────
+
+  /// Arm [s]: where its hand goes, then the elbow between (two bones, the
+  /// elbow towards the pole).
+  void _arm(FigurePose p, int s, double side, double size, double width) {
+    final pitch = p.armPitch[s], roll = p.armRoll[s];
+    final cp = math.cos(pitch), sp = math.sin(pitch), cr = math.cos(roll), sr = math.sin(roll);
+    // Shoulder to hand (chest frame: x out to the right, y up, z back).
+    final dx = side * cp * sr, dy = -cp * cr, dz = -sp;
+    final sx = side * shoulderX * width, sy = shoulderY;
+    double tx, ty, tz, px, py, pz;
+    final bend = p.elbow[s];
+    if (!bend.isNaN) {
+      final r = reachOf(bend);
+      tx = sx + dx * r;
+      ty = sy + dy * r;
+      tz = dz * r;
+      px = side * 0.4;
+      py = -0.45;
+      pz = 0.8;
+    } else {
+      // Out at a natural reach, bent a little more held out in front.
+      final rb = 0.585 - 0.09 * smooth(0.2, 0.9, pitch) * (1 - smooth(2.2, 2.8, pitch));
+      tx = sx + dx * rb;
+      ty = sy + dy * rb;
+      tz = dz * rb;
+      px = side * 0.4;
+      py = -0.45;
+      pz = 0.8;
+      // Close to the body, the hand goes where the toy's did (the two
+      // torsos are much the same): at the face (a can, a cigarette, the
+      // hat), or on the chest or belly.
+      final ox = side * 0.205 + 0.36 * dx, oy = 0.5 + 0.36 * dy, oz = 0.36 * dz;
+      final hy = oy - 0.72, toFace = math.sqrt(ox * ox + hy * hy + oz * oz);
+      final wh = smooth(0.3, 0.16, toFace) * smooth(0.45, 0.8, roll);
+      final ay = oy.clamp(0.155, 0.425);
+      final toBody = math.sqrt(ox * ox + (oy - ay) * (oy - ay) + oz * oz) - 0.155;
+      final wt = smooth(0.22, 0.08, toBody);
+      final w = math.max(wh, wt);
+      if (w > 0) {
+        final fx = ox * 0.86, fy = 0.685 + hy * 0.86, fz = -0.01 + oz * 0.86;
+        final k = 1 / (wh + wt);
+        tx = lerp(tx, (wh * fx + wt * ox) * k, w);
+        ty = lerp(ty, (wh * fy + wt * oy) * k, w);
+        tz = lerp(tz, (wh * fz + wt * oz) * k, w);
+        px = lerp(px, side * 0.55, wh);
+        py = lerp(py, -0.8, wh);
+        pz = lerp(pz, -0.25, wh);
+      }
+      // Rolled back and out: hands on the hips, elbows out.
+      final wa = smooth(0.45, 0.8, roll) * smooth(0.25, -0.15, pitch);
+      if (wa > 0) {
+        tx = lerp(tx, side * 0.165, wa);
+        ty = lerp(ty, 0.12, wa);
+        tz = lerp(tz, 0.03, wa);
+        px = lerp(px, side, wa);
+        py = lerp(py, -0.05, wa);
+        pz = lerp(pz, 0.35, wa);
+      }
+      // Rolled in at chest height: arms folded.
+      final wf = smooth(-0.4, -0.65, roll) * smooth(0.5, 0.8, pitch) * smooth(1.55, 1.25, pitch);
+      if (wf > 0) {
+        tx = lerp(tx, -side * 0.085, wf);
+        ty = lerp(ty, 0.33, wf);
+        tz = lerp(tz, -0.19, wf);
+        px = lerp(px, side * 0.7, wf);
+        py = lerp(py, -0.7, wf);
+        pz = lerp(pz, 0.1, wf);
+      }
+    }
+    // Two bones: the hand at [r] from the shoulder along d, the elbow off
+    // the line towards the pole.
+    var ex = tx - sx, ey = ty - sy, ez = tz;
+    var r = math.sqrt(ex * ex + ey * ey + ez * ez);
+    if (r < 1e-5) {
+      ex = 0;
+      ey = -1;
+      ez = 0;
+      r = 0.3;
+    } else {
+      ex /= r;
+      ey /= r;
+      ez /= r;
+    }
+    r = r.clamp(0.12, upperArm + lowerArm - 0.002);
+    const a = upperArm, b = lowerArm;
+    final along = (a * a - b * b + r * r) / (2 * r), off = math.sqrt(math.max(0.0, a * a - along * along));
+    // The pole, square to the arm.
+    final pd = px * ex + py * ey + pz * ez;
+    var nx = px - pd * ex, ny = py - pd * ey, nz = pz - pd * ez;
+    var nl = math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (nl < 1e-4) {
+      // Pointing along the pole: the elbow out to the side instead.
+      final qd = side * ex;
+      nx = side - qd * ex;
+      ny = -qd * ey;
+      nz = -qd * ez;
+      nl = math.max(1e-4, math.sqrt(nx * nx + ny * ny + nz * nz));
+    }
+    nx /= nl;
+    ny /= nl;
+    nz /= nl;
+    // Shoulder S, elbow E, palm P (size 1, chest frame).
+    final elx = sx + ex * along + nx * off, ely = sy + ey * along + ny * off, elz = ez * along + nz * off;
+    final pax = sx + ex * r, pay = sy + ey * r, paz = ez * r;
+    // Upper arm: y from the elbow up to the shoulder, z towards the pole
+    // (the back of the elbow), x the hinge.
+    var uyx = (sx - elx) / a, uyy = (sy - ely) / a, uyz = -elz / a;
+    final nd = nx * uyx + ny * uyy + nz * uyz;
+    var uzx = nx - nd * uyx, uzy = ny - nd * uyy, uzz = nz - nd * uyz;
+    final ul = math.sqrt(uzx * uzx + uzy * uzy + uzz * uzz);
+    if (ul > 1e-6) {
+      uzx /= ul;
+      uzy /= ul;
+      uzz /= ul;
+    } else {
+      uzx = 0;
+      uzy = 0;
+      uzz = 1;
+    }
+    final hxx = uyy * uzz - uyz * uzy, hxy = uyz * uzx - uyx * uzz, hxz = uyx * uzy - uyy * uzx;
+    _setBasis(_l, hxx, hxy, hxz, uyx, uyy, uyz, uzx, uzy, uzz, sx * size, sy * size, 0);
+    upper[s]
+      ..setFrom(chest)
+      ..multiply(_l);
+    // Forearm: y from the palm up to the elbow, the same hinge.
+    var lyx = elx - pax, lyy = ely - pay, lyz = elz - paz;
+    final ll = math.max(1e-6, math.sqrt(lyx * lyx + lyy * lyy + lyz * lyz));
+    lyx /= ll;
+    lyy /= ll;
+    lyz /= ll;
+    final lzx = hxy * lyz - hxz * lyy, lzy = hxz * lyx - hxx * lyz, lzz = hxx * lyy - hxy * lyx;
+    _setBasis(_l, hxx, hxy, hxz, lyx, lyy, lyz, lzx, lzy, lzz, elx * size, ely * size, elz * size);
+    lower[s]
+      ..setFrom(chest)
+      ..multiply(_l);
+    final wx = elx - lyx * forearm, wy = ely - lyy * forearm, wz = elz - lyz * forearm;
+    _setBasis(_l, hxx, hxy, hxz, lyx, lyy, lyz, lzx, lzy, lzz, wx * size, wy * size, wz * size);
+    hand[s]
+      ..setFrom(chest)
+      ..multiply(_l);
+    palms[s].setValues(pax * size, pay * size, paz * size);
+    chest.transform3(palms[s]);
+  }
+
+  /// The hand's distance from the shoulder with the elbow bent by [bend].
+  static double reachOf(double bend) => math.sqrt(upperArm * upperArm + lowerArm * lowerArm + 2 * upperArm * lowerArm * math.cos(bend));
+
+  /// The elbow's bend that puts the hand [r] from the shoulder.
+  static double bendFor(double r) {
+    const a = upperArm, b = lowerArm;
+    final c = ((a * a + b * b - r * r) / (2 * a * b)).clamp(-1.0, 1.0);
+    return math.pi - math.acos(c);
+  }
+
+  /// The longest reach, and the shortest.
+  static const maxReach = upperArm + lowerArm - 0.002, minReach = 0.12;
+
+  /// Shoulder [s] (world), as posed by the last [solve].
+  vm.Vector3 shoulder(int s, double size, vm.Vector3 out) => chest.transform3(out..setValues((s == 0 ? -1 : 1) * shoulderX * size, shoulderY * size, 0));
+
+  /// The mouth (world), as posed by the last [solve].
+  vm.Vector3 mouth(double size, vm.Vector3 out) => head.transform3(out..setValues(0, mouthY * size, mouthZ * size));
+
+  // ── Matrices written in place ───────────────────────────────────────────
+
+  static void _setBasis(
+    vm.Matrix4 m,
+    double xx,
+    double xy,
+    double xz,
+    double yx,
+    double yy,
+    double yz,
+    double zx,
+    double zy,
+    double zz,
+    double tx,
+    double ty,
+    double tz,
+  ) {
+    m.storage
+      ..[0] = xx
+      ..[1] = xy
+      ..[2] = xz
+      ..[3] = 0
+      ..[4] = yx
+      ..[5] = yy
+      ..[6] = yz
+      ..[7] = 0
+      ..[8] = zx
+      ..[9] = zy
+      ..[10] = zz
+      ..[11] = 0
+      ..[12] = tx
+      ..[13] = ty
+      ..[14] = tz
+      ..[15] = 1;
+  }
+
+  /// translate · rotateY(yaw).
+  static void _setYaw(vm.Matrix4 m, double x, double y, double z, double yaw) {
+    final c = math.cos(yaw), s = math.sin(yaw);
+    _setBasis(m, c, 0, -s, 0, 1, 0, s, 0, c, x, y, z);
+  }
+
+  /// translate · rotateY(yaw), returned: things that hang.
+  static vm.Matrix4 _yawAt(vm.Matrix4 m, double x, double y, double z, double yaw) {
+    _setYaw(m, x, y, z, yaw);
+    return m;
+  }
+
+  /// translate · rotateX(pitch).
+  static void _setPitch(vm.Matrix4 m, double x, double y, double z, double pitch) {
+    final c = math.cos(pitch), s = math.sin(pitch);
+    _setBasis(m, 1, 0, 0, 0, c, s, 0, -s, c, x, y, z);
+  }
+
+  /// translate · rotateY(yaw) · rotateX(pitch).
+  static void _setYawPitch(vm.Matrix4 m, double x, double y, double z, double yaw, double pitch) {
+    final cb = math.cos(yaw), sb = math.sin(yaw), ca = math.cos(pitch), sa = math.sin(pitch);
+    _setBasis(m, cb, 0, -sb, sb * sa, ca, cb * sa, sb * ca, -sa, cb * ca, x, y, z);
+  }
+}
+
+// ── What they wear ──────────────────────────────────────────────────────────
+
+/// The hairstyles: none (or under a hat, cropped), short, medium (over the
+/// ears), a bob, long.
+enum Hair { none, short, medium, bob, long }
+
+/// What a person looks like: their build, skin and hair, and what they
+/// wear (linear colours). Fixed for good when they're added to [Figures].
+class FigureLook {
+  /// Height (1: 1.72 m), girth (1: average), and a slimmer build (narrow
+  /// shoulders, a waist, wider hips).
+  double size = 1, girth = 1;
+  bool slim = false;
+
+  /// Sits with the legs out when seated (the crane's cramped cab).
+  bool cab = false;
+
+  vm.Vector4 skin = _white, hairColor = _white;
+  Hair hair = Hair.short;
+
+  /// The top (shirt, jacket, coat) and its sleeves (null: the top's), an
+  /// open layer over it (a vest, an open jacket; null: none) and the
+  /// reflective stripes on it.
+  vm.Vector4 top = _white;
+  vm.Vector4? sleeves, layer;
+  bool stripes = false;
+
+  /// Bare forearms (short sleeves).
+  bool bareArms = false;
+
+  /// Trousers (the thighs and shins), the shins if not (bare legs or
+  /// tights under a skirt), the shoes; gloves (null: bare hands).
+  vm.Vector4 legs = _white, shoes = _white;
+  vm.Vector4? shins, gloves;
+
+  /// A skirt, or a coat's or a lab coat's tail, and its length (1: to the
+  /// knee).
+  vm.Vector4? skirt;
+  double skirtLength = 1;
+
+  /// A hard hat, a cap.
+  vm.Vector4? hardHat, cap;
+
+  /// A backpack, a bag in the left hand, a parasol in the right, a
+  /// clipboard in the left.
+  vm.Vector4? backpack, bag, parasol;
+  bool clipboard = false;
+
+  static final _white = vm.Vector4(1, 1, 1, 1);
+}
+
+/// sRGB 0xRRGGBB as a linear colour.
+vm.Vector4 rgbHex(int c) => v4(hex3(c));
+
+// ── Drawing them ────────────────────────────────────────────────────────────
+
+/// One person's instances.
+class _Body {
+  _Body(this.look, this.n);
+  final FigureLook look;
+
+  /// Its number (its head; its arms and legs are 2n, 2n + 1).
+  final int n;
+  InstancedMesh? torso, hair;
+  int torsoAt = -1, hairAt = -1, hat = -1, cap = -1, vest = -1, stripes = -1, skirt = -1, backpack = -1, bag = -1, board = -1, parasol = -1;
+  bool hidden = false;
+}
+
+/// Everybody's parts in one scene: a draw per part for everybody (about
+/// 1,500 triangles a person), colours per instance. [add] a person, then
+/// [draw] them every frame (or [hide] them).
+class Figures {
+  Figures._(this.scene) {
+    _build();
+  }
+
+  static final _of = Expando<Figures>('figures');
+
+  /// The scene's figures (made on first use).
+  static Figures of(Scene scene) => _of[scene] ??= Figures._(scene);
+
+  final Scene scene;
+  final rig = FigureRig();
+  final _bodies = <_Body>[];
+
+  late final InstancedMesh _torso, _torsoSlim, _head, _upperArm, _forearm, _hand, _thigh, _shin, _foot;
+  late final InstancedMesh _hardHat, _cap, _vest, _stripes, _skirt, _backpack, _bag, _board, _parasol;
+  final _hairs = <InstancedMesh>[];
+  late final PhysicallyBasedMaterial _stripeMat;
+
+  /// The reflective stripes catch the floodlights after dark (0 day … 1
+  /// night).
+  set night(double v) => _stripeMat.emissiveStrength = 0.02 + 0.9 * smooth(0.15, 0.6, v);
+
+  void _build() {
+    final cloth = pbr(rgb(1, 1, 1), roughness: 0.82);
+    final skin = pbr(rgb(1, 1, 1), roughness: 0.6);
+    final hair = pbr(rgb(1, 1, 1), roughness: 0.55);
+    final shiny = pbr(rgb(1, 1, 1), roughness: 0.3, metallic: 0.05);
+    final shoe = pbr(rgb(1, 1, 1), roughness: 0.5);
+    _stripeMat = pbr(rgb(1, 1, 1), roughness: 0.25, metallic: 0.25, emissive: rgb(0.85, 0.88, 0.9), emissiveStrength: 0.02);
+    InstancedMesh im(MeshGeometry g, Material m, String name) {
+      final mesh = InstancedMesh(geometry: g, material: m);
+      scene.add(Node(name: 'people $name')..addComponent(InstancedMeshComponent(mesh)));
+      return mesh;
+    }
+
+    _torso = im(_torsoGeometry(slim: false), cloth, 'torsos');
+    _torsoSlim = im(_torsoGeometry(slim: true), cloth, 'slim torsos');
+    _head = im(_headGeometry(), skin, 'heads');
+    for (final h in Hair.values.skip(1)) {
+      _hairs.add(im(_hairGeometry(h), hair, 'hair ${h.name}'));
+    }
+    _upperArm = im(_upperArmGeometry(), cloth, 'upper arms');
+    _forearm = im(_forearmGeometry(), cloth, 'forearms');
+    _hand = im(_handGeometry(), skin, 'hands');
+    _thigh = im(_thighGeometry(), cloth, 'thighs');
+    _shin = im(_shinGeometry(), cloth, 'shins');
+    _foot = im(_footGeometry(), shoe, 'shoes');
+    _hardHat = im(_hardHatGeometry(), shiny, 'hard hats');
+    _cap = im(_capGeometry(), cloth, 'caps');
+    _vest = im(_vestGeometry(), cloth, 'vests');
+    _stripes = im(_stripesGeometry(), _stripeMat, 'vest stripes');
+    _skirt = im(_skirtGeometry(), cloth, 'skirts');
+    _backpack = im(_backpackGeometry(), cloth, 'backpacks');
+    _bag = im(_bagGeometry(), cloth, 'bags');
+    _board = im(_boardGeometry(), cloth, 'clipboards');
+    _parasol = im(_parasolGeometry(), cloth, 'parasols');
+  }
+
+  /// Adds a person who looks like [look]; returns their number for [draw].
+  int add(FigureLook look) {
+    final b = _Body(look, _bodies.length);
+    _bodies.add(b);
+    int one(InstancedMesh m, vm.Vector4 c) => m.addInstance(hidden, color: c);
+    b.torso = look.slim ? _torsoSlim : _torso;
+    b.torsoAt = one(b.torso!, look.top);
+    one(_head, look.skin);
+    if (look.hair != Hair.none) {
+      b.hair = _hairs[look.hair.index - 1];
+      b.hairAt = one(b.hair!, look.hairColor);
+    }
+    final sleeves = look.sleeves ?? look.top;
+    for (var s = 0; s < 2; s++) {
+      one(_upperArm, sleeves);
+      one(_forearm, look.bareArms ? look.skin : sleeves);
+      one(_hand, look.gloves ?? look.skin);
+      one(_thigh, look.legs);
+      one(_shin, look.shins ?? look.legs);
+      one(_foot, look.shoes);
+    }
+    if (look.hardHat case final c?) b.hat = one(_hardHat, c);
+    if (look.cap case final c?) b.cap = one(_cap, c);
+    if (look.layer case final c?) b.vest = one(_vest, c);
+    if (look.stripes) b.stripes = one(_stripes, vm.Vector4(1, 1, 1, 1));
+    if (look.skirt case final c?) b.skirt = one(_skirt, c);
+    if (look.backpack case final c?) b.backpack = one(_backpack, c);
+    if (look.bag case final c?) b.bag = one(_bag, c);
+    if (look.clipboard) b.board = one(_board, vm.Vector4(1, 1, 1, 1));
+    if (look.parasol case final c?) b.parasol = one(_parasol, c);
+    return b.n;
+  }
+
+  /// The look person [n] was added with.
+  FigureLook lookOf(int n) => _bodies[n].look;
+
+  /// Hides person [n].
+  void hide(int n) {
+    final b = _bodies[n];
+    if (b.hidden) return;
+    b.hidden = true;
+    b.torso!.setInstanceTransform(b.torsoAt, hidden);
+    _head.setInstanceTransform(n, hidden);
+    b.hair?.setInstanceTransform(b.hairAt, hidden);
+    for (var k = 2 * n; k < 2 * n + 2; k++) {
+      _upperArm.setInstanceTransform(k, hidden);
+      _forearm.setInstanceTransform(k, hidden);
+      _hand.setInstanceTransform(k, hidden);
+      _thigh.setInstanceTransform(k, hidden);
+      _shin.setInstanceTransform(k, hidden);
+      _foot.setInstanceTransform(k, hidden);
+    }
+    _hideExtras(b);
+  }
+
+  void _hideExtras(_Body b) {
+    if (b.hat >= 0) _hardHat.setInstanceTransform(b.hat, hidden);
+    if (b.cap >= 0) _cap.setInstanceTransform(b.cap, hidden);
+    if (b.vest >= 0) _vest.setInstanceTransform(b.vest, hidden);
+    if (b.stripes >= 0) _stripes.setInstanceTransform(b.stripes, hidden);
+    if (b.skirt >= 0) _skirt.setInstanceTransform(b.skirt, hidden);
+    if (b.backpack >= 0) _backpack.setInstanceTransform(b.backpack, hidden);
+    if (b.bag >= 0) _bag.setInstanceTransform(b.bag, hidden);
+    if (b.board >= 0) _board.setInstanceTransform(b.board, hidden);
+    if (b.parasol >= 0) _parasol.setInstanceTransform(b.parasol, hidden);
+  }
+
+  final _m = vm.Matrix4.identity(), _t = vm.Matrix4.identity();
+
+  /// Poses person [n] as [p] and draws them ([p.visible] false hides them).
+  void draw(int n, FigurePose p) {
+    final b = _bodies[n], look = b.look;
+    if (!p.visible) {
+      hide(n);
+      return;
+    }
+    b.hidden = false;
+    final size = look.size, g = look.girth * size, r = rig;
+    r.solve(p, size: size, width: look.slim ? 0.92 : 1, cab: look.cab);
+    _put(b.torso!, b.torsoAt, r.chest, g, size, g);
+    // Children's heads are big for their size.
+    final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
+    _put(_head, n, r.head, hs, hs, hs);
+    if (b.hair case final h?) _put(h, b.hairAt, r.head, hs, hs, hs);
+    final limb = math.sqrt(look.girth) * size;
+    for (var s = 0; s < 2; s++) {
+      final k = 2 * n + s;
+      _put(_upperArm, k, r.upper[s], limb, size, limb);
+      _put(_forearm, k, r.lower[s], limb, size, limb);
+      _put(_hand, k, r.hand[s], size, size, size);
+      _put(_thigh, k, r.thighs[s], limb, size, limb);
+      _put(_shin, k, r.shins[s], limb, size, limb);
+      _put(_foot, k, r.feet[s], size, size, size);
+    }
+    if (b.hat >= 0) {
+      // On the head; or tossed in the air, spinning.
+      _t
+        ..setFrom(r.head)
+        ..multiply(setTrs(_m, 0, p.hatUp, 0, yaw: p.hatSpin, roll: 0.3 * math.sin(p.hatSpin)));
+      _put(_hardHat, b.hat, _t, hs, hs, hs);
+    }
+    if (b.cap >= 0) _put(_cap, b.cap, r.head, hs, hs, hs);
+    if (b.vest >= 0) _put(_vest, b.vest, r.chest, g, size, g);
+    if (b.stripes >= 0) _put(_stripes, b.stripes, r.chest, g, size, g);
+    if (b.skirt >= 0) _put(_skirt, b.skirt, r.pelvis, g, size * look.skirtLength, g);
+    if (b.backpack >= 0) _put(_backpack, b.backpack, r.chest, size, size, size);
+    if (b.bag >= 0) {
+      // Hanging from the left hand.
+      final at = r.palms[0];
+      _put(_bag, b.bag, FigureRig._yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+    }
+    if (b.board >= 0) {
+      if (p.clipboard) {
+        // Held up in the left hand, its face tilted to be read.
+        _t
+          ..setFrom(r.hand[0])
+          ..multiply(setTrs(_m, 0, -0.075, -0.12, pitch: -0.35));
+        _put(_board, b.board, _t, size, size, size);
+      } else {
+        _board.setInstanceTransform(b.board, hidden);
+      }
+    }
+    if (b.parasol >= 0) {
+      final at = r.palms[1];
+      _put(_parasol, b.parasol, FigureRig._yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+    }
+  }
+
+  void _put(InstancedMesh mesh, int i, vm.Matrix4 frame, double sx, double sy, double sz) {
+    final s = _m.storage, f = frame.storage;
+    for (var k = 0; k < 16; k++) {
+      s[k] = f[k];
+    }
+    for (var k = 0; k < 3; k++) {
+      s[k] *= sx;
+      s[4 + k] *= sy;
+      s[8 + k] *= sz;
+    }
+    mesh.setInstanceTransform(i, _m);
+  }
+
+  // ── The parts' shapes (size 1; each in its own frame: y up, z back) ─────
+
+  static final _w = vm.Vector4(1, 1, 1, 1);
+
+  /// The torso, from the crotch to the neck, its origin at the hip joints'
+  /// height: hips, waist, chest, shoulders (the arms' tops round them off).
+  static MeshGeometry _torsoGeometry({required bool slim}) {
+    final m = _Mesh();
+    // (y, half width, half depth, z offset)
+    final rings = slim
+        ? const [
+            [-0.128, 0.0, 0.0, 0.012],
+            [-0.115, 0.115, 0.085, 0.012],
+            [-0.07, 0.172, 0.112, 0.008],
+            [0.0, 0.17, 0.108, 0.0],
+            [0.09, 0.138, 0.094, -0.004],
+            [0.2, 0.142, 0.096, -0.008],
+            [0.3, 0.156, 0.112, -0.022],
+            [0.38, 0.163, 0.108, -0.014],
+            [0.45, 0.168, 0.094, -0.004],
+            [0.51, 0.122, 0.074, 0.004],
+            [0.552, 0.058, 0.054, 0.004],
+            [0.562, 0.0, 0.0, 0.004],
+          ]
+        : const [
+            [-0.128, 0.0, 0.0, 0.012],
+            [-0.115, 0.118, 0.085, 0.012],
+            [-0.07, 0.162, 0.108, 0.006],
+            [0.0, 0.168, 0.112, 0.0],
+            [0.09, 0.157, 0.104, -0.006],
+            [0.2, 0.162, 0.108, -0.01],
+            [0.32, 0.178, 0.116, -0.012],
+            [0.42, 0.188, 0.112, -0.006],
+            [0.48, 0.186, 0.098, 0.0],
+            [0.53, 0.13, 0.078, 0.005],
+            [0.565, 0.064, 0.058, 0.005],
+            [0.575, 0.0, 0.0, 0.005],
+          ];
+    m.loft(rings, seg: 14, e: 2.6, color: _w);
+    return m.build();
+  }
+
+  /// The head and neck, origin at the neck's pivot, the face to −z: skull,
+  /// jaw and chin, a nose, ears, eyes and a mouth (dark, in the geometry).
+  static MeshGeometry _headGeometry() {
+    final m = _Mesh();
+    // The neck, from inside the collar up under the jaw.
+    m.loft(
+      const [
+        [-0.06, 0.046, 0.048, 0.006],
+        [0.03, 0.044, 0.046, 0.0],
+        [0.07, 0.042, 0.044, 0.006],
+      ],
+      seg: 10,
+      color: _w,
+      capStart: false,
+    );
+    m.loft(_skull, seg: 12, e: 2.15, color: _w);
+    // Nose: a small wedge.
+    final nose = [vm.Vector3(0, 0.142, -0.094), vm.Vector3(0, 0.103, -0.121), vm.Vector3(-0.017, 0.097, -0.097), vm.Vector3(0.017, 0.097, -0.097)];
+    final c = vm.Vector3(0, 0.11, -0.08);
+    m
+      ..tri(nose[0], nose[2], nose[1], _w, c)
+      ..tri(nose[0], nose[1], nose[3], _w, c)
+      ..tri(nose[2], nose[3], nose[1], _w, c);
+    // Ears, eyes (dark brown: the skin colour barely shows), the mouth.
+    for (final side in const [-1.0, 1.0]) {
+      m.ellipsoid(side * 0.078, 0.122, 0.006, 0.012, 0.028, 0.019, _w, seg: 6, rings: 4);
+      m.ellipsoid(side * 0.031, 0.132, -0.086, 0.011, 0.0085, 0.008, _eye, seg: 7, rings: 4);
+    }
+    m.box(0, 0.07, -0.095, 0.016, 0.0035, 0.004, _lips);
+    return m.build();
+  }
+
+  static final _eye = vm.Vector4(0.035, 0.028, 0.025, 1), _lips = vm.Vector4(0.62, 0.36, 0.34, 1);
+
+  /// The skull, from the chin up (y, half width, half depth, z offset).
+  static const _skull = [
+    [0.012, 0.0, 0.0, -0.062],
+    [0.022, 0.03, 0.026, -0.068],
+    [0.04, 0.052, 0.05, -0.044],
+    [0.068, 0.066, 0.076, -0.022],
+    [0.1, 0.074, 0.09, -0.008],
+    [0.13, 0.078, 0.096, -0.002],
+    [0.16, 0.08, 0.098, 0.002],
+    [0.19, 0.076, 0.093, 0.004],
+    [0.22, 0.062, 0.076, 0.006],
+    [0.243, 0.038, 0.047, 0.008],
+    [0.255, 0.0, 0.0, 0.008],
+  ];
+
+  /// The skull's half width, half depth and z offset at height [y].
+  static (double, double, double) _skullAt(double y) {
+    if (y <= _skull.first[0]) return (_skull.first[1], _skull.first[2], _skull.first[3]);
+    for (var i = 0; i + 1 < _skull.length; i++) {
+      final a = _skull[i], b = _skull[i + 1];
+      if (y <= b[0]) {
+        final f = (y - a[0]) / (b[0] - a[0]);
+        return (lerp(a[1], b[1], f), lerp(a[2], b[2], f), lerp(a[3], b[3], f));
+      }
+    }
+    return (0, 0, _skull.last[3]);
+  }
+
+  /// A hairstyle over the skull (and the brows, in the hair's colour).
+  static MeshGeometry _hairGeometry(Hair h) {
+    final m = _Mesh();
+    // Where the hair stops, by angle round the head (a: 0 at the right,
+    // π/2 at the back, −π/2 at the face), and how thick it is there.
+    double edge(double a) {
+      final face = math.max(0.0, -math.sin(a)); // 1 at the face
+      final back = math.max(0.0, math.sin(a));
+      return switch (h) {
+        Hair.short => lerp(lerp(0.148, 0.192, face * face), 0.07, back),
+        Hair.medium => lerp(lerp(0.11, 0.17, face * face), 0.04, back),
+        Hair.bob => lerp(0.035, 0.168, smooth(0.6, 0.82, face)),
+        _ => lerp(lerp(0.03, -0.2, smooth(0.3, 0.8, back)), 0.172, smooth(0.6, 0.82, face)),
+      };
+    }
+
+    final puff = switch (h) {
+      Hair.short => 0.009,
+      Hair.medium => 0.014,
+      _ => 0.016,
+    };
+    m.shell(edge, puff, flare: h == Hair.bob || h == Hair.long ? 0.02 : 0.0, seg: 16, rings: 6);
+    // Brows.
+    for (final side in const [-1.0, 1.0]) {
+      m.box(side * 0.032, 0.153, -0.089, 0.017, 0.004, 0.006, _w, rotZ: side * 0.12);
+    }
+    return m.build();
+  }
+
+  /// Shoulder to elbow (a rounded top over the joint).
+  static MeshGeometry _upperArmGeometry() =>
+      (_Mesh()..loft(
+            const [
+              [0.052, 0.0, 0.0, 0.0],
+              [0.035, 0.046, 0.046, 0.0],
+              [0.0, 0.058, 0.056, 0.0],
+              [-0.07, 0.054, 0.05, 0.0],
+              [-0.16, 0.048, 0.045, 0.0],
+              [-0.25, 0.042, 0.041, 0.0],
+              [-0.3, 0.039, 0.039, 0.0],
+              [-0.325, 0.0, 0.0, 0.0],
+            ],
+            seg: 8,
+            color: _w,
+          ))
+          .build();
+
+  /// Elbow to wrist (the sleeve's cuff at the wrist).
+  static MeshGeometry _forearmGeometry() =>
+      (_Mesh()..loft(
+            const [
+              [0.03, 0.0, 0.0, 0.0],
+              [0.012, 0.04, 0.04, 0.0],
+              [-0.05, 0.044, 0.041, 0.0],
+              [-0.15, 0.036, 0.032, 0.0],
+              [-0.235, 0.031, 0.027, 0.0],
+              [-0.252, 0.0, 0.0, 0.0],
+            ],
+            seg: 8,
+            color: _w,
+          ))
+          .build();
+
+  /// A mitten from the wrist: flat (the palm faces ±x), the thumb forward.
+  static MeshGeometry _handGeometry() {
+    final m = _Mesh()
+      ..loft(
+        const [
+          [0.012, 0.0, 0.0, 0.0],
+          [0.0, 0.019, 0.024, 0.0],
+          [-0.03, 0.021, 0.037, 0.0],
+          [-0.075, 0.021, 0.042, 0.0],
+          [-0.12, 0.017, 0.04, 0.003],
+          [-0.155, 0.011, 0.03, 0.006],
+          [-0.168, 0.0, 0.0, 0.006],
+        ],
+        seg: 8,
+        e: 2.4,
+        color: _w,
+      );
+    m.limb(vm.Vector3(0, -0.035, -0.028), vm.Vector3(0, -0.085, -0.062), 0.012, 0.009, _w, seg: 6);
+    return m.build();
+  }
+
+  /// Hip to knee (its top inside the hips).
+  static MeshGeometry _thighGeometry() =>
+      (_Mesh()..loft(
+            const [
+              [0.07, 0.0, 0.0, 0.0],
+              [0.045, 0.062, 0.062, 0.0],
+              [0.0, 0.08, 0.086, 0.0],
+              [-0.1, 0.075, 0.08, 0.0],
+              [-0.24, 0.066, 0.068, 0.004],
+              [-0.37, 0.055, 0.056, 0.0],
+              [-0.43, 0.052, 0.054, -0.004],
+              [-0.455, 0.0, 0.0, -0.004],
+            ],
+            seg: 9,
+            color: _w,
+          ))
+          .build();
+
+  /// Knee to ankle: the calf, the trousers' hem over the shoe.
+  static MeshGeometry _shinGeometry() =>
+      (_Mesh()..loft(
+            const [
+              [0.035, 0.0, 0.0, 0.0],
+              [0.012, 0.05, 0.051, 0.0],
+              [-0.09, 0.05, 0.054, 0.008],
+              [-0.22, 0.042, 0.043, 0.004],
+              [-0.36, 0.037, 0.037, 0.0],
+              [-0.395, 0.039, 0.04, 0.0],
+              [-0.41, 0.0, 0.0, 0.0],
+            ],
+            seg: 8,
+            color: _w,
+          ))
+          .build();
+
+  /// A shoe from the ankle: heel, instep, toe; the sole a shade darker.
+  static MeshGeometry _footGeometry() {
+    final m = _Mesh();
+    // Sections along −z (forward): (z, half width, top y, bottom y).
+    const secs = [
+      [0.065, 0.0, -0.035, -0.055],
+      [0.058, 0.034, -0.005, -0.08],
+      [0.02, 0.042, 0.025, -0.08],
+      [-0.06, 0.046, -0.012, -0.08],
+      [-0.14, 0.046, -0.038, -0.08],
+      [-0.185, 0.036, -0.05, -0.08],
+      [-0.2, 0.0, -0.062, -0.074],
+    ];
+    m.sweepZ(secs, seg: 10, e: 3.2, top: _w, sole: _sole);
+    return m.build();
+  }
+
+  static final _sole = vm.Vector4(0.55, 0.55, 0.55, 1);
+
+  /// A hard hat: the dome, a ridge along the top, the brim (a peak at the
+  /// front).
+  static MeshGeometry _hardHatGeometry() {
+    final m = _Mesh();
+    m.loft(
+      const [
+        [0.168, 0.106, 0.124, 0.006],
+        [0.205, 0.103, 0.121, 0.006],
+        [0.24, 0.092, 0.108, 0.008],
+        [0.268, 0.07, 0.083, 0.01],
+        [0.286, 0.04, 0.048, 0.011],
+        [0.292, 0.0, 0.0, 0.011],
+      ],
+      seg: 16,
+      color: _w,
+      capStart: false,
+    );
+    m.box(0, 0.282, 0.008, 0.012, 0.012, 0.095, _w);
+    m.brim(0.168, 0.102, 0.12, 0.026, 0.006, peak: 0.05, seg: 16, color: _w);
+    return m.build();
+  }
+
+  /// A cap: a soft crown and a visor.
+  static MeshGeometry _capGeometry() {
+    final m = _Mesh();
+    m.loft(
+      const [
+        [0.165, 0.088, 0.106, 0.006],
+        [0.2, 0.087, 0.104, 0.006],
+        [0.235, 0.075, 0.09, 0.008],
+        [0.258, 0.048, 0.058, 0.01],
+        [0.266, 0.0, 0.0, 0.01],
+      ],
+      seg: 14,
+      color: _w,
+      capStart: false,
+    );
+    m.visor(0.168, -0.095, 0.075, 0.075, _w);
+    return m.build();
+  }
+
+  /// An open layer over the torso (a hi-vis vest; an open jacket's front):
+  /// from the waist over the shoulders, open down the front in a V.
+  static MeshGeometry _vestGeometry() {
+    final m = _Mesh();
+    m.loft(_vestRings, seg: 16, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+    return m.build();
+  }
+
+  static const _vestRings = [
+    [0.07, 0.172, 0.118, -0.006],
+    [0.2, 0.174, 0.12, -0.012],
+    [0.32, 0.19, 0.128, -0.014],
+    [0.42, 0.2, 0.124, -0.006],
+    [0.485, 0.198, 0.108, 0.0],
+    [0.535, 0.142, 0.088, 0.005],
+  ];
+
+  /// The vest's V: open at the front, wider towards the top.
+  static bool _vestKeep(double a, double y) {
+    final face = -math.sin(a); // 1 at the front
+    final open = lerp(0.97, 0.72, smooth(0.07, 0.5, y));
+    return face < open;
+  }
+
+  /// The vest's reflective bands: two round it, and two over each shoulder.
+  static MeshGeometry _stripesGeometry() {
+    final m = _Mesh();
+    for (final y in const [0.16, 0.3]) {
+      final rings = [
+        for (final dy in const [-0.022, 0.022])
+          () {
+            final r = _vestAt(y + dy);
+            return [y + dy, r.$1 + 0.004, r.$2 + 0.004, r.$3];
+          }(),
+      ];
+      m.loft(rings, seg: 16, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+    }
+    // Over the shoulders: front and back.
+    for (final side in const [-1.0, 1.0]) {
+      for (final back in const [-1.0, 1.0]) {
+        final y0 = 0.32, y1 = 0.5;
+        final r0 = _vestAt(y0), r1 = _vestAt(y1);
+        final x = side * (back < 0 ? 0.148 : 0.12);
+        final z0 = r0.$3 + back * (r0.$2 * 0.9 + 0.005), z1 = r1.$3 + back * (r1.$2 * 0.88 + 0.005);
+        m.strip(vm.Vector3(x, y0, z0), vm.Vector3(x, y1, z1), 0.022, vm.Vector3(0, 0, back), _w);
+      }
+    }
+    return m.build();
+  }
+
+  static (double, double, double) _vestAt(double y) {
+    for (var i = 0; i + 1 < _vestRings.length; i++) {
+      final a = _vestRings[i], b = _vestRings[i + 1];
+      if (y <= b[0]) {
+        final f = ((y - a[0]) / (b[0] - a[0])).clamp(0.0, 1.0);
+        return (lerp(a[1], b[1], f), lerp(a[2], b[2], f), lerp(a[3], b[3], f));
+      }
+    }
+    final l = _vestRings.last;
+    return (l[1], l[2], l[3]);
+  }
+
+  /// A skirt from the waist to the knee, flared (and a coat's tail).
+  static MeshGeometry _skirtGeometry() =>
+      (_Mesh()..loft(
+            const [
+              [-0.45, 0.25, 0.22, 0.01],
+              [-0.3, 0.225, 0.19, 0.008],
+              [-0.15, 0.198, 0.158, 0.006],
+              [0.0, 0.178, 0.128, 0.004],
+              [0.1, 0.165, 0.112, 0.0],
+            ],
+            seg: 16,
+            e: 2.2,
+            color: _w,
+            capStart: false,
+            capEnd: false,
+          ))
+          .build();
+
+  /// A backpack on the back, its straps over the shoulders.
+  static MeshGeometry _backpackGeometry() {
+    final m = _Mesh()
+      ..loft(
+        const [
+          [0.12, 0.12, 0.055, 0.185],
+          [0.16, 0.13, 0.065, 0.19],
+          [0.36, 0.13, 0.065, 0.19],
+          [0.43, 0.115, 0.055, 0.185],
+          [0.45, 0.0, 0.0, 0.18],
+        ],
+        seg: 10,
+        e: 4,
+        color: _w,
+      );
+    for (final side in const [-1.0, 1.0]) {
+      m.strip(vm.Vector3(side * 0.085, 0.47, 0.05), vm.Vector3(side * 0.095, 0.47, -0.08), 0.03, vm.Vector3(0, 1, 0), _strap);
+      m.strip(vm.Vector3(side * 0.095, 0.47, -0.105), vm.Vector3(side * 0.1, 0.17, -0.12), 0.03, vm.Vector3(0, 0, -1), _strap);
+    }
+    return m.build();
+  }
+
+  static final _strap = vm.Vector4(0.45, 0.45, 0.45, 1);
+
+  /// A tote bag hanging from the hand (its origin at the palm).
+  static MeshGeometry _bagGeometry() {
+    final m = _Mesh()..box(0, -0.26, 0, 0.045, 0.14, 0.15, _w);
+    for (final z in const [-0.06, 0.06]) {
+      m.strip(vm.Vector3(0, -0.12, z), vm.Vector3(0, 0.0, z * 0.25), 0.014, vm.Vector3(1, 0, 0), _strap);
+    }
+    return m.build();
+  }
+
+  /// A clipboard: the board, its sheet and its clip.
+  static MeshGeometry _boardGeometry() {
+    final m = _Mesh()
+      ..box(0, 0, 0, 0.11, 0.006, 0.15, _masonite)
+      ..box(0, 0.0065, 0.008, 0.098, 0.001, 0.13, _w)
+      ..box(0, 0.011, -0.13, 0.04, 0.006, 0.014, _clip);
+    return m.build();
+  }
+
+  static final _masonite = rgbHex(0x8A6A44), _clip = rgbHex(0xB8C2CE);
+
+  /// A parasol held up from the hand: its stick and canopy.
+  static MeshGeometry _parasolGeometry() {
+    final m = _Mesh()..limb(vm.Vector3(0, -0.04, 0), vm.Vector3(0, 0.86, 0), 0.008, 0.008, _strap, seg: 5);
+    m.loft(
+      const [
+        [0.62, 0.48, 0.48, 0.0],
+        [0.74, 0.32, 0.32, 0.0],
+        [0.84, 0.08, 0.08, 0.0],
+        [0.86, 0.0, 0.0, 0.0],
+      ],
+      seg: 10,
+      color: _w,
+      capStart: false,
+    );
+    m.loft(
+      const [
+        [0.84, 0.08, 0.08, 0.0],
+        [0.74, 0.32, 0.32, 0.0],
+        [0.62, 0.48, 0.48, 0.0],
+      ],
+      seg: 10,
+      color: _w,
+      capStart: false,
+      capEnd: false,
+      inward: true,
+    );
+    return m.build();
+  }
+}
+
+// ── Building the shapes ─────────────────────────────────────────────────────
+
+/// Collects triangles (positions, vertex colours) for one part; normals are
+/// worked out when it's built (smooth across shared vertices).
+class _Mesh {
+  final _p = <double>[], _c = <double>[];
+  final _i = <int>[];
+
+  int get _n => _p.length ~/ 3;
+
+  int _v(double x, double y, double z, vm.Vector4 c) {
+    _p
+      ..add(x)
+      ..add(y)
+      ..add(z);
+    _c
+      ..add(c.x)
+      ..add(c.y)
+      ..add(c.z)
+      ..add(c.w);
+    return _n - 1;
+  }
+
+  /// Triangle (a, b, c), wound to face away from the point (ix, iy, iz).
+  void _tri(int a, int b, int c, double ix, double iy, double iz) {
+    final ax = _p[a * 3], ay = _p[a * 3 + 1], az = _p[a * 3 + 2];
+    final ux = _p[b * 3] - ax, uy = _p[b * 3 + 1] - ay, uz = _p[b * 3 + 2] - az;
+    final wx = _p[c * 3] - ax, wy = _p[c * 3 + 1] - ay, wz = _p[c * 3 + 2] - az;
+    final nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+    final ox = (_p[a * 3] + _p[b * 3] + _p[c * 3]) / 3 - ix;
+    final oy = (_p[a * 3 + 1] + _p[b * 3 + 1] + _p[c * 3 + 1]) / 3 - iy;
+    final oz = (_p[a * 3 + 2] + _p[b * 3 + 2] + _p[c * 3 + 2]) / 3 - iz;
+    if (nx * ox + ny * oy + nz * oz >= 0) {
+      _i
+        ..add(a)
+        ..add(b)
+        ..add(c);
+    } else {
+      _i
+        ..add(a)
+        ..add(c)
+        ..add(b);
+    }
+  }
+
+  /// A flat-shaded triangle facing away from [inside].
+  void tri(vm.Vector3 a, vm.Vector3 b, vm.Vector3 c, vm.Vector4 col, vm.Vector3 inside) {
+    _tri(_v(a.x, a.y, a.z, col), _v(b.x, b.y, b.z, col), _v(c.x, c.y, c.z, col), inside.x, inside.y, inside.z);
+  }
+
+  /// A tube along y through [rings] (y, half width, half depth, z offset),
+  /// [seg] round, a superellipse of exponent [e]; a ring of half width 0
+  /// closes it to a point. [keep] drops the quads it says no to (by angle,
+  /// 0 at +x, π/2 at +z (back); and height). [inward] faces it inwards.
+  void loft(
+    List<List<double>> rings, {
+    int seg = 10,
+    double e = 2,
+    required vm.Vector4 color,
+    bool capStart = true,
+    bool capEnd = true,
+    bool Function(double a, double y)? keep,
+    bool inward = false,
+  }) {
+    final base = <int>[];
+    for (final r in rings) {
+      base.add(_n);
+      if (r[1] == 0 && r[2] == 0) {
+        _v(0, r[0], r[3], color);
+        continue;
+      }
+      for (var j = 0; j < seg; j++) {
+        final a = j / seg * 2 * math.pi;
+        final c = math.cos(a), s = math.sin(a);
+        final x = r[1] * c.sign * math.pow(c.abs(), 2 / e), z = r[2] * s.sign * math.pow(s.abs(), 2 / e);
+        _v(x, r[0], r[3] + z, color);
+      }
+    }
+    int at(int ring, int j) => rings[ring][1] == 0 && rings[ring][2] == 0 ? base[ring] : base[ring] + (j % seg);
+    for (var k = 0; k + 1 < rings.length; k++) {
+      final r0 = rings[k], r1 = rings[k + 1];
+      final iy = (r0[0] + r1[0]) / 2, iz = (r0[3] + r1[3]) / 2;
+      final point0 = r0[1] == 0 && r0[2] == 0, point1 = r1[1] == 0 && r1[2] == 0;
+      if ((point0 && !capStart && k == 0) || (point1 && !capEnd && k + 2 == rings.length)) continue;
+      for (var j = 0; j < seg; j++) {
+        final a = (j + 0.5) / seg * 2 * math.pi;
+        if (keep != null && !keep(a, iy)) continue;
+        // Inside: the axis (or, facing in, a point far out).
+        final ix = inward ? 50 * math.cos(a) : 0.0, izz = inward ? iz + 50 * math.sin(a) : iz;
+        final iyy = inward ? iy : (point0 ? r1[0] : (point1 ? r0[0] : iy));
+        final p00 = at(k, j), p01 = at(k, j + 1), p10 = at(k + 1, j), p11 = at(k + 1, j + 1);
+        if (point0) {
+          _tri(p00, p11, p10, ix, iyy, izz);
+        } else if (point1) {
+          _tri(p00, p01, p11, ix, iyy, izz);
+        } else {
+          _tri(p00, p01, p11, ix, iyy, izz);
+          _tri(p00, p11, p10, ix, iyy, izz);
+        }
+      }
+    }
+  }
+
+  /// A sweep along −z through sections (z, half width, top y, bottom y),
+  /// boxy (superellipse [e]); the lowest vertices take [sole].
+  void sweepZ(List<List<double>> secs, {int seg = 10, double e = 3, required vm.Vector4 top, required vm.Vector4 sole}) {
+    final base = <int>[];
+    for (final s in secs) {
+      base.add(_n);
+      final cy = (s[2] + s[3]) / 2, hy = (s[2] - s[3]) / 2;
+      if (s[1] == 0) {
+        _v(0, cy, s[0], top);
+        continue;
+      }
+      for (var j = 0; j < seg; j++) {
+        final a = j / seg * 2 * math.pi;
+        final c = math.cos(a), n = math.sin(a);
+        final x = s[1] * c.sign * math.pow(c.abs(), 2 / e), y = cy + hy * n.sign * math.pow(n.abs(), 2 / e);
+        _v(x, y, s[0], y < s[3] + 0.012 ? sole : top);
+      }
+    }
+    int at(int k, int j) => secs[k][1] == 0 ? base[k] : base[k] + (j % seg);
+    for (var k = 0; k + 1 < secs.length; k++) {
+      final s0 = secs[k], s1 = secs[k + 1];
+      final iz = (s0[0] + s1[0]) / 2, iy = (s0[2] + s0[3] + s1[2] + s1[3]) / 4;
+      for (var j = 0; j < seg; j++) {
+        final p00 = at(k, j), p01 = at(k, j + 1), p10 = at(k + 1, j), p11 = at(k + 1, j + 1);
+        final ref = s0[1] == 0 ? s1[0] : (s1[1] == 0 ? s0[0] : iz);
+        if (s0[1] == 0) {
+          _tri(p00, p11, p10, 0, iy, ref);
+        } else if (s1[1] == 0) {
+          _tri(p00, p01, p11, 0, iy, ref);
+        } else {
+          _tri(p00, p01, p11, 0, iy, ref);
+          _tri(p00, p11, p10, 0, iy, ref);
+        }
+      }
+    }
+  }
+
+  /// An ellipsoid at (x, y, z).
+  void ellipsoid(double x, double y, double z, double rx, double ry, double rz, vm.Vector4 col, {int seg = 8, int rings = 5}) {
+    final r = <List<double>>[];
+    for (var k = 0; k <= rings; k++) {
+      final t = -math.pi / 2 + k / rings * math.pi;
+      final w = math.cos(t);
+      r.add([y + ry * math.sin(t), k == 0 || k == rings ? 0 : rx * w, k == 0 || k == rings ? 0 : rz * w, z]);
+    }
+    final first = _n;
+    loft(r, seg: seg, color: col);
+    for (var v = first; v < _n; v++) {
+      _p[v * 3] += x;
+    }
+  }
+
+  /// A box (flat faces) at (x, y, z), half sizes (hx, hy, hz), turned [rotZ].
+  void box(double x, double y, double z, double hx, double hy, double hz, vm.Vector4 col, {double rotZ = 0}) {
+    final c = math.cos(rotZ), s = math.sin(rotZ);
+    vm.Vector3 p(double a, double b, double d) => vm.Vector3(x + a * hx * c - b * hy * s, y + a * hx * s + b * hy * c, z + d * hz);
+    final centre = vm.Vector3(x, y, z);
+    final corners = [
+      for (final a in const [-1.0, 1.0])
+        for (final b in const [-1.0, 1.0])
+          for (final d in const [-1.0, 1.0]) p(a, b, d),
+    ];
+    // Faces as corner indices (a*4 + b*2 + d).
+    const faces = [
+      [0, 1, 3, 2], [4, 6, 7, 5], // -x, +x
+      [0, 4, 5, 1], [2, 3, 7, 6], // -y, +y
+      [0, 2, 6, 4], [1, 5, 7, 3], // -z, +z
+    ];
+    for (final f in faces) {
+      final q = [for (final i in f) corners[i]];
+      tri(q[0], q[1], q[2], col, centre);
+      tri(q[0], q[2], q[3], col, centre);
+    }
+  }
+
+  /// A flat band from [a] to [b], [w] wide, facing along [out].
+  void strip(vm.Vector3 a, vm.Vector3 b, double w, vm.Vector3 out, vm.Vector4 col) {
+    final d = (b - a)..normalize();
+    final side = d.cross(out)
+      ..normalize()
+      ..scale(w / 2);
+    final lift = out.normalized()..scale(0.003);
+    final p0 = a - side + lift, p1 = a + side + lift, p2 = b + side + lift, p3 = b - side + lift;
+    final inside = (a + b) * 0.5 - out.normalized() * 0.05;
+    tri(p0, p1, p2, col, inside);
+    tri(p0, p2, p3, col, inside);
+  }
+
+  /// A tapered round rod from [a] (radius [ra]) to [b] (radius [rb]).
+  void limb(vm.Vector3 a, vm.Vector3 b, double ra, double rb, vm.Vector4 col, {int seg = 6}) {
+    final d = b - a;
+    final len = d.length;
+    final first = _n;
+    loft(
+      [
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, ra, ra, 0.0],
+        [len, rb, rb, 0.0],
+        [len + rb * 0.5, 0.0, 0.0, 0.0],
+      ],
+      seg: seg,
+      color: col,
+    );
+    // Turn +y onto the rod's direction, then move it to [a].
+    final y = d / len;
+    final ref = y.y.abs() < 0.9 ? vm.Vector3(0, 1, 0) : vm.Vector3(1, 0, 0);
+    final x = ref.cross(y)..normalize();
+    final z = x.cross(y)..normalize();
+    for (var v = first; v < _n; v++) {
+      final px = _p[v * 3], py = _p[v * 3 + 1], pz = _p[v * 3 + 2];
+      _p[v * 3] = a.x + x.x * px + y.x * py + z.x * pz;
+      _p[v * 3 + 1] = a.y + x.y * px + y.y * py + z.y * pz;
+      _p[v * 3 + 2] = a.z + x.z * px + y.z * py + z.z * pz;
+    }
+  }
+
+  /// Hair over the skull: from where it stops ([edge] by angle) up to the
+  /// crown, [puff] out from the skull, flaring by [flare] at the bottom.
+  void shell(double Function(double a) edge, double puff, {double flare = 0, int seg = 16, int rings = 6}) {
+    final base = _n;
+    for (var k = 0; k <= rings; k++) {
+      final t = k / rings;
+      for (var j = 0; j < seg; j++) {
+        final a = j / seg * 2 * math.pi;
+        final y0 = edge(a), y = lerp(y0, 0.258, math.pow(t, 0.85).toDouble());
+        // (Below the cheekbones it hangs straight down.)
+        final (hx, hz, oz) = Figures._skullAt(math.max(0.13, y));
+        final k1 = 1 + (puff + flare * (1 - t) * (1 - t)) / math.max(0.03, math.min(hx, hz)) * (1 - 0.3 * t);
+        _v(hx * k1 * math.cos(a), y + puff * 0.6 * t, oz + hz * k1 * math.sin(a), FigureLook._white);
+      }
+    }
+    for (var k = 0; k < rings; k++) {
+      for (var j = 0; j < seg; j++) {
+        final p00 = base + k * seg + j, p01 = base + k * seg + (j + 1) % seg;
+        final p10 = p00 + seg, p11 = p01 + seg;
+        final iy = _p[p00 * 3 + 1];
+        _tri(p00, p01, p11, 0, iy - 0.02, 0.0);
+        _tri(p00, p11, p10, 0, iy - 0.02, 0.0);
+      }
+    }
+  }
+
+  /// A flat ring (a brim) at height [y] round the head: inner radius
+  /// [rx]×[rz], [w] wide, [t] thick, wider by [peak] at the front.
+  void brim(double y, double rx, double rz, double w, double t, {double peak = 0, int seg = 16, required vm.Vector4 color}) {
+    final rim = <(double, double, double, double)>[];
+    for (var j = 0; j < seg; j++) {
+      final a = j / seg * 2 * math.pi;
+      final c = math.cos(a), s = math.sin(a);
+      final front = math.max(0.0, -s);
+      final ww = w + peak * front * front;
+      rim.add((rx * c, rz * s, (rx + ww) * c, (rz + ww) * s));
+    }
+    for (final (yy, up) in [(y + t, true), (y, false)]) {
+      final base = _n;
+      for (final (ix, iz, ox, oz) in rim) {
+        _v(ix, yy, iz, color);
+        _v(ox, up ? yy - 0.004 : yy, oz, color);
+      }
+      for (var j = 0; j < seg; j++) {
+        final a0 = base + 2 * j, a1 = base + 2 * ((j + 1) % seg);
+        final ref = up ? yy - 1 : yy + 1;
+        _tri(a0, a0 + 1, a1 + 1, 0, ref, 0);
+        _tri(a0, a1 + 1, a1, 0, ref, 0);
+      }
+    }
+    // The outer edge.
+    final top = _n - 4 * seg;
+    for (var j = 0; j < seg; j++) {
+      final u0 = top + 2 * j + 1, u1 = top + 2 * ((j + 1) % seg) + 1;
+      final d0 = u0 + 2 * seg, d1 = u1 + 2 * seg;
+      _tri(u0, d0, d1, 0, y, 0);
+      _tri(u0, d1, u1, 0, y, 0);
+    }
+  }
+
+  /// A cap's visor: a flat curved peak at the front, at height [y], from
+  /// [z0] out by [len], [hw] half wide.
+  void visor(double y, double z0, double len, double hw, vm.Vector4 col) {
+    for (final (yy, up) in [(y + 0.007, true), (y, false)]) {
+      final base = _n;
+      for (var j = 0; j <= 6; j++) {
+        final u = j / 6 * 2 - 1;
+        final x = hw * u;
+        final back = z0 + 0.02 * u * u;
+        final out = z0 - len * math.sqrt(math.max(0.0, 1 - u * u * 0.75));
+        _v(x, yy, back, col);
+        _v(x, yy - 0.012 * (1 - u * u), out, col);
+      }
+      for (var j = 0; j < 6; j++) {
+        final a0 = base + 2 * j, a1 = a0 + 2;
+        _tri(a0, a0 + 1, a1 + 1, 0, up ? yy - 1 : yy + 1, z0);
+        _tri(a0, a1 + 1, a1, 0, up ? yy - 1 : yy + 1, z0);
+      }
+    }
+  }
+
+  MeshGeometry build() => MeshGeometry.fromMeshData(
+    MeshData.build(positions: Float32List.fromList(_p), colors: Float32List.fromList(_c), indices: _i, texCoords: Float32List(_n * 2)),
+  );
+}

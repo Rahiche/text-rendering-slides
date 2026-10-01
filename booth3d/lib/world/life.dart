@@ -8,12 +8,17 @@ import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'city_plan.dart';
+import 'crew.dart' show FigurePose;
+import 'figure.dart';
 import 'kit.dart';
+import 'site_geo.dart' show NodePlace;
 
-/// Life in Name City: people walking the sidewalks and the park, stopping
-/// to watch the build and cheering when a name is done; workers in hard hats
-/// round the site; cars, taxis and buses that stop at the lights (Japan keeps
-/// left) while people cross; birds by day and a blimp for the talk.
+/// Life in Name City: people walking the sidewalks and the park (in jackets,
+/// coats and skirts, with bags, backpacks and the odd parasol; children
+/// with school caps and randoseru), stopping to watch the build and
+/// cheering when a name is done; workers in hard hats round the site; cars,
+/// taxis and buses that stop at the lights (Japan keeps left) while people
+/// cross; birds by day and a blimp for the talk.
 ///
 /// Everything is instanced (a handful of draws), stepped with the model so
 /// frames, fast-forward and capture agree, and bounded (fixed populations).
@@ -492,11 +497,13 @@ class _Person {
   bool guiding = false; // the corner's worker, guiding the delivery truck
   int job = 0; // workers: 0 by the wall, 1 at the corner, 2 behind the wall
   int index = 0;
+  int slot = 0; // among the figures (figure.dart)
+  bool bag = false, parasol = false;
 }
 
 class _People {
   final _all = <_Person>[];
-  late final InstancedMesh _bodies, _heads, _hair, _legs, _arms;
+  late final Figures _figures;
 
   /// The walk past the plaza's front (its first leg runs along the front
   /// sidewalk, past the site gate).
@@ -507,16 +514,7 @@ class _People {
   late final UnlitMaterial _batonMat;
 
   void build(Scene scene) {
-    final cloth = pbr(rgb(1, 1, 1), roughness: 0.8);
-    final skin = pbr(rgb(1, 1, 1), roughness: 0.6);
-    _bodies = InstancedMesh(geometry: CapsuleGeometry(radius: 0.19, height: 0.42, radialSegments: 12, capRings: 4), material: cloth);
-    _heads = InstancedMesh(geometry: SphereGeometry(radius: 0.125, segments: 12, rings: 8), material: skin);
-    _hair = InstancedMesh(geometry: SphereGeometry(radius: 0.135, segments: 12, rings: 8), material: pbr(rgb(1, 1, 1), roughness: 0.5));
-    _legs = InstancedMesh(geometry: CapsuleGeometry(radius: 0.075, height: 0.62, radialSegments: 8, capRings: 3), material: cloth);
-    _arms = InstancedMesh(geometry: CapsuleGeometry(radius: 0.055, height: 0.48, radialSegments: 8, capRings: 3), material: cloth);
-    for (final m in [_bodies, _heads, _hair, _legs, _arms]) {
-      scene.add(Node(name: 'people')..addComponent(InstancedMeshComponent(m)));
-    }
+    _figures = Figures.of(scene);
     _batonMat = UnlitMaterial()..baseColorFactor = vm.Vector4(4, 0.4, 0.2, 1);
     scene.add(
       _baton
@@ -618,22 +616,101 @@ class _People {
     }
   }
 
-  static const _tops = [0xFF9E7A, 0xFFC66D, 0x6CE5B1, 0xC39BFF, 0xFF8FC8, 0x5FB8FF, 0xF4F1EA, 0x2E6DA8, 0xE8505F, 0x8DB7DA];
-  static const _bottoms = [0x1B2A44, 0x2B3A55, 0x3A4C6E, 0x5B4B3A, 0x1F2937, 0x6B7B8F];
-  static const _skins = [0xF3CDAA, 0xE3B08A, 0xC68A5E, 0x8D5B3F, 0xF7DCC6];
-  static const _hairs = [0x1A1A1F, 0x2E2620, 0x4A3426, 0x8A6A45, 0x1A1A1F, 0xC9C3BA];
+  // Autumn in Tokyo: mostly muted, some colour (sRGB).
+  static const _tops = [
+    0x2B3A55, 0x1F2430, 0x5B6573, 0xC8B79A, 0x6B7B5A, 0xEDEBE6, 0xD9CDB8, 0x8C5A3C, 0x7A2E3A, 0x8DB7DA, //
+    0x3A4C6E, 0x2E2E33, 0xB9BEC6, 0xE8505F, 0x2E6DA8, 0xC9A13E, 0x6CB59A, 0xA88FC9, 0xE58F6E, 0x4F6B4A,
+  ];
+  static const _shirts = [0xF2F0EA, 0xE4E6EA, 0x22262E, 0xB9BEC6, 0xDCE6F0, 0xEFE3CF];
+  static const _bottoms = [0x2E4766, 0x1E2B40, 0x1C1F26, 0x24304A, 0xB5A27E, 0x5E6470, 0x5B4B3A, 0x2E4766, 0x1C1F26, 0x3B4250];
+  static const _skirts = [0x24304A, 0x1C1F26, 0xC8B79A, 0xC9A13E, 0x6B6B45, 0x7A2E3A, 0x8C8F96, 0xD9CDB8];
+  static const _shoes = [0xEDEDEA, 0x1B1C20, 0x5A3A26, 0x1B1C20, 0x7A7E86, 0xEDEDEA, 0x2A3348, 0x1B1C20, 0x8C5A3C, 0xB8343F];
+  static const _skins = [0xF0CBAE, 0xE8BC98, 0xF3D3B8, 0xE2B08A, 0xD7A27E, 0xEFC4A2, 0xC68A5E, 0x8D5B3F, 0xE6B48F, 0xF6DAC4, 0xB57A55, 0x6E4630];
+  static const _hairs = [0x1A1714, 0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x2A211B, 0x5A3F2C, 0x1A1714, 0x8F8B86, 0x7A5638, 0x1A1714, 0xC8C4BE, 0x2A211B, 0xB89462];
+  static const _packs = [0x23262D, 0x2B3A55, 0x6B7280, 0x5B6A48, 0x7A2E3A, 0xC8B79A];
+  static const _bags = [0xA87A4F, 0x1F2229, 0xD8CDB4, 0x2B3A55, 0x8C5A3C, 0xE8E2D4];
+
+  /// What a person wears, from their seed: workers in the crew's hi-vis
+  /// and hard hats; everyone else a top (or an open jacket over a shirt, or
+  /// a long coat), trousers or a skirt, shoes, a hairstyle, maybe a bag, a
+  /// backpack, a cap or a parasol. Children are smaller, with big heads,
+  /// school caps and randoseru.
+  FigureLook _lookOf(_Person p, int seed) {
+    double r(int k) => rnd(seed, 20 + k);
+    vm.Vector4 pick(List<int> from, int k) => rgbHex(from[(r(k) * from.length).floor() % from.length]);
+    final kid = p.scale < 0.8;
+    final l = FigureLook()
+      ..size = p.scale
+      ..girth = kid ? 0.95 : 0.9 + 0.25 * r(0) * r(0)
+      ..slim = r(1) < 0.5
+      ..skin = pick(_skins, 2)
+      ..hairColor = pick(kid ? _hairs.sublist(0, 7) : _hairs, 3)
+      ..shoes = pick(_shoes, 4);
+    if (p.role == _Role.worker) {
+      return l
+        ..slim = false
+        ..girth = 1.0
+        ..hair = Hair.short
+        ..top = rgbHex(0x3E4A5E)
+        ..layer = lin(rnd(seed, 7) < 0.5 ? BP.amber : BP.coral)
+        ..stripes = true
+        ..gloves = rgbHex(0xE9E4D6)
+        ..hardHat = rgbHex(0xFFD23F)
+        ..legs = rgbHex(0x2B3A55)
+        ..shoes = rgbHex(0x24211F);
+    }
+    l.hair = l.slim
+        ? (r(5) < 0.35
+              ? Hair.bob
+              : r(5) < 0.75
+              ? Hair.long
+              : Hair.medium)
+        : (r(5) < 0.65 ? Hair.short : Hair.medium);
+    l.top = pick(_tops, 6);
+    final style = r(7);
+    if (style < 0.28) {
+      // An open jacket over a shirt.
+      l
+        ..sleeves = l.top
+        ..layer = l.top
+        ..top = pick(_shirts, 8);
+    } else if (style < 0.42 && !kid) {
+      // A long coat.
+      l
+        ..skirt = l.top
+        ..skirtLength = 1.2;
+    }
+    l.legs = pick(_bottoms, 9);
+    if (l.slim && l.skirt == null && r(10) < 0.45) {
+      l
+        ..skirt = pick(_skirts, 11)
+        ..skirtLength = r(12) < 0.5 ? 1.0 : 1.3
+        ..shins = r(13) < 0.5 ? l.skin : rgbHex(0x2A2A30);
+      l.legs = l.shins!;
+    }
+    if (kid) {
+      if (r(14) < 0.7) l.backpack = r(15) < 0.5 ? rgbHex(0xB0222D) : rgbHex(0x1F2229);
+      if (r(16) < 0.6) l.cap = rgbHex(0xF5D33C);
+    } else {
+      if (r(14) < 0.24) {
+        l.backpack = pick(_packs, 15);
+      } else if (r(16) < (l.slim ? 0.35 : 0.15)) {
+        l.bag = pick(_bags, 17);
+        p.bag = true;
+      }
+      if (r(18) < 0.07) l.cap = pick(const [0x1F2229, 0x2B3A55, 0xD9CDB8, 0xEDEBE6], 19);
+      if (l.slim && p.role == _Role.walker && l.cap == null && r(20) < 0.08) {
+        l.parasol = pick(const [0xF4F1EA, 0xF2B8C6, 0x2B3A55, 0xD9CDB8], 21);
+        p.parasol = true;
+      }
+    }
+    return l;
+  }
 
   void _add(_Person p, int seed) {
-    final worker = p.role == _Role.worker;
-    final top = worker ? lin(rnd(seed, 7) < 0.5 ? BP.amber : BP.coral) : v4(hex3(_tops[seed % _tops.length]));
-    final bottom = v4(hex3(worker ? 0x2B3A55 : _bottoms[(seed * 7) % _bottoms.length]));
-    p.index = _bodies.addInstance(hidden, color: top);
-    _heads.addInstance(hidden, color: v4(hex3(_skins[(seed * 3) % _skins.length])));
-    _hair.addInstance(hidden, color: worker ? v4(hex3(0xFFD23F)) : v4(hex3(_hairs[(seed * 5) % _hairs.length])));
-    for (var k = 0; k < 2; k++) {
-      _legs.addInstance(hidden, color: bottom);
-      _arms.addInstance(hidden, color: top);
-    }
+    p
+      ..index = _all.length
+      ..slot = _figures.add(_lookOf(p, seed));
     _all.add(p);
   }
 
@@ -783,99 +860,82 @@ class _People {
     return from + d * (1 - math.exp(-dt * 6));
   }
 
+  final _fp = FigurePose();
+
   void pose(double t, vm.Vector3 camera, BoothModel m, double night, StreetWork? work) {
     _baton.visible = false;
     final phase = m.job?.phase;
     final cheering = phase == Phase.celebrate;
     final low = camera.y < 3.2;
-    final pose = _pose;
-    _bodies.updateInstanceTransforms((bodies) {
-      _heads.updateInstanceTransforms((heads) {
-        _hair.updateInstanceTransforms((hair) {
-          _legs.updateInstanceTransforms((legs) {
-            _arms.updateInstanceTransforms((arms) {
-              for (final p in _all) {
-                final cdx = p.x - camera.x, cdz = p.z - camera.z;
-                final hide = low && cdx * cdx + cdz * cdz < 2.6;
-                final s = hide ? 0.0 : p.scale;
-                final walking = p.role == _Role.walker ? (p.pause <= 0 && !p.waiting) : p.moving;
-                final watcher = p.role == _Role.spectator || (p.role == _Role.walker && p.pause > 0);
-                final cheer = cheering && watcher;
-                final jump = cheer ? math.max(0.0, math.sin(t * 7 + p.phase * 3)) * 0.28 : 0.0;
-                final swing = walking ? math.sin(p.stride / 0.62 * math.pi) * 0.55 : 0.0;
-                final bob = walking ? (math.sin(p.stride / 0.62 * math.pi)).abs() * 0.04 : 0.0;
-                final guide = p.guiding && !p.moving;
-                final wave = p.role != _Role.worker
-                    ? 0.0
-                    : (guide
-                          ? 1.9 + 0.75 * math.sin(t * 4.2)
-                          : (p.job == 1 && !p.moving ? 2.2 + 0.5 * math.sin(t * 5 + p.phase) : math.sin(t * 1.3 + p.phase) * 0.15));
-                pose.compute(p.x, p.z, p.heading, s, jump + bob, swing, cheer ? 2.75 + 0.25 * math.sin(t * 9 + p.phase) : null, wave);
-                if (guide && s > 0) _batonIn(p, wave, s, night, t);
-                final i = p.index;
-                setTrsY(bodies[i], pose.torso.x, pose.torso.y, pose.torso.z, p.heading, s);
-                setTrsY(heads[i], pose.head.x, pose.head.y, pose.head.z, p.heading, s);
-                setTrsY(hair[i], pose.hair.x, pose.hair.y, pose.hair.z, p.heading, s * (p.hat ? 1.12 : 1.0));
-                for (var k = 0; k < 2; k++) {
-                  setTrsYZ(legs[i * 2 + k], pose.legs[k].x, pose.legs[k].y, pose.legs[k].z, p.heading, pose.legAngle[k], s);
-                  setTrsYZ(arms[i * 2 + k], pose.arms[k].x, pose.arms[k].y, pose.arms[k].z, p.heading, pose.armAngle[k], s);
-                }
-              }
-            });
-          });
-        });
-      });
-    });
+    final f = _fp;
+    for (final p in _all) {
+      final cdx = p.x - camera.x, cdz = p.z - camera.z;
+      if (low && cdx * cdx + cdz * cdz < 2.6) {
+        _figures.hide(p.slot);
+        continue;
+      }
+      final walking = p.role == _Role.walker ? (p.pause <= 0 && !p.waiting) : p.moving;
+      final watcher = p.role == _Role.spectator || (p.role == _Role.walker && p.pause > 0);
+      final cheer = cheering && watcher;
+      f.rest();
+      f.pos.setValues(p.x, 0, p.z);
+      f.yaw = p.heading - math.pi / 2;
+      if (walking) {
+        // One step per 0.62 m.
+        final ph = p.stride / 0.62 * math.pi;
+        final sw = math.sin(ph) * 0.55;
+        f
+          ..stride = ph
+          ..lean = 0.04;
+        f.legPitch[0] = sw;
+        f.legPitch[1] = -sw;
+        f.armPitch[0] = -sw * (p.bag ? 0.3 : 0.8);
+        f.armPitch[1] = sw * 0.8;
+        f.armRoll[0] = f.armRoll[1] = 0.1;
+      } else {
+        // Standing about: the weight shifting, a look round.
+        f
+          ..headYaw = 0.35 * math.sin(t * 0.31 + p.phase * 1.7)
+          ..twist = 0.05 * math.sin(t * 0.23 + p.phase)
+          ..bob = -0.012 * (1 + math.sin(t * 0.4 + p.phase));
+        f.legPitch[0] = 0.06 * math.sin(t * 0.4 + p.phase);
+        f.armPitch[0] = f.armPitch[1] = 0.06;
+      }
+      if (cheer) {
+        final jump = math.max(0.0, math.sin(t * 7 + p.phase * 3)) * 0.28;
+        f.bob = jump;
+        f.armPitch[0] = f.armPitch[1] = 2.75 + 0.25 * math.sin(t * 9 + p.phase);
+        f.armRoll[0] = f.armRoll[1] = 0.3;
+      }
+      if (p.parasol && !cheer) {
+        f.armPitch[1] = 0.95;
+        f.armRoll[1] = -0.22;
+      }
+      final guide = p.guiding && !p.moving;
+      if (p.role == _Role.worker) {
+        final wave = guide
+            ? 1.9 + 0.75 * math.sin(t * 4.2)
+            : (p.job == 1 && !p.moving ? 2.2 + 0.5 * math.sin(t * 5 + p.phase) : math.sin(t * 1.3 + p.phase) * 0.15);
+        f.armPitch[1] += wave;
+      }
+      _figures.draw(p.slot, f);
+      if (guide) _batonIn(night);
+    }
   }
 
-  final _pose = _Pose();
-
-  /// The flagman's baton, in the hand of his waving arm (arm 1 swings about
-  /// the shoulder at 1.38 m, 0.25 to the side; the hand is ~0.6 out).
-  void _batonIn(_Person p, double angle, double s, double night, double t) {
-    final c = math.cos(p.heading), n = math.sin(p.heading);
-    final f = math.sin(angle) * 0.82, up = -math.cos(angle) * 0.82;
-    const q = 0.25;
-    final x = p.x + (c * f + n * q) * s, z = p.z + (-n * f + c * q) * s;
+  /// The flagman's baton, out from the hand of his waving arm (the last
+  /// figure drawn).
+  void _batonIn(double night) {
+    final rig = _figures.rig;
     _baton
       ..visible = true
-      ..localTransform = trs(vm.Vector3(x, (1.38 + up) * s, z), rotY: p.heading, rotZ: angle);
+      ..place(
+        (m) => m
+          ..setFrom(rig.lower[1])
+          ..translateByDouble(0.0, -(FigureRig.lowerArm + 0.2), 0.0, 1.0),
+      );
     final k = 2.5 + 6 * night;
     _batonMat.baseColorFactor = vm.Vector4(k, k * 0.12, k * 0.05, 1);
-  }
-}
-
-/// Where a figure's parts go (centres), given its place, heading and swing.
-class _Pose {
-  final torso = vm.Vector3.zero(), head = vm.Vector3.zero(), hair = vm.Vector3.zero();
-  final legs = [vm.Vector3.zero(), vm.Vector3.zero()];
-  final arms = [vm.Vector3.zero(), vm.Vector3.zero()];
-  final legAngle = [0.0, 0.0], armAngle = [0.0, 0.0];
-
-  /// [lift] raises the whole figure (a jump), [swing] swings legs and arms,
-  /// [raise] (if set) lifts both arms (a cheer), [wave] sways a worker's arm.
-  void compute(double x, double z, double heading, double s, double lift, double swing, double? raise, double wave) {
-    final c = math.cos(heading), n = math.sin(heading);
-    // Local (forward f along x, side q along z) → world.
-    double wx(double f, double q) => x + (c * f + n * q) * s;
-    double wz(double f, double q) => z + (-n * f + c * q) * s;
-    final y0 = lift;
-    torso.setValues(wx(0, 0), y0 + 1.12 * s, wz(0, 0));
-    head.setValues(wx(0.02, 0), y0 + 1.6 * s, wz(0.02, 0));
-    hair.setValues(wx(-0.025, 0), y0 + 1.64 * s, wz(-0.025, 0));
-    for (var k = 0; k < 2; k++) {
-      final q = k == 0 ? -0.1 : 0.1;
-      final a = (k == 0 ? 1 : -1) * swing;
-      legAngle[k] = a;
-      // Hip pivot at 0.8; the leg's centre hangs 0.385 below it.
-      const h = 0.385;
-      legs[k].setValues(wx(math.sin(a) * h, q), y0 + (0.8 - math.cos(a) * h) * s, wz(math.sin(a) * h, q));
-      final qa = k == 0 ? -0.25 : 0.25;
-      final b = raise ?? (-a * 0.8 + (k == 1 ? wave : 0));
-      armAngle[k] = b;
-      const ha = 0.295;
-      arms[k].setValues(wx(math.sin(b) * ha, qa), y0 + (1.38 - math.cos(b) * ha) * s, wz(math.sin(b) * ha, qa));
-    }
   }
 }
 

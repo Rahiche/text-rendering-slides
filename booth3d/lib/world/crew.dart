@@ -7,6 +7,7 @@ import 'package:text_slides/booth/raster.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import 'figure.dart';
 import 'kit.dart';
 import 'site_geo.dart';
 import 'site_kern.dart';
@@ -30,9 +31,25 @@ class FigurePose {
   /// The hard hat tossed in the air: how high above the head, and its spin.
   double hatUp = 0, hatSpin = 0;
 
+  /// Optional joints, NaN to have them follow from the rest of the pose
+  /// (see [FigureRig]): per side, the elbow's and the knee's bend (0
+  /// straight; [Crew3D.aim] sets the elbow so the hand reaches).
+  final elbow = [double.nan, double.nan], knee = [double.nan, double.nan];
+
+  /// The head turned (to the left +) and nodded (down +), and the shoulders
+  /// turned against the hips.
+  double headYaw = 0, headPitch = 0, twist = 0;
+
+  /// While walking, the stride's phase (radians; leg 0 is forward at π/2):
+  /// the knees, the feet and the hips follow it. NaN standing.
+  double stride = double.nan;
+
   void rest() {
     hatUp = 0;
     hatSpin = 0;
+    elbow[0] = elbow[1] = knee[0] = knee[1] = double.nan;
+    headYaw = headPitch = twist = 0;
+    stride = double.nan;
     lean = 0;
     bob = 0;
     armPitch[0] = armPitch[1] = 0.08;
@@ -48,9 +65,12 @@ class FigurePose {
 /// cab, and the driver who brings the bricks (posed by the delivery, see
 /// delivery.dart); and, posed by their own scenes, the Glyph Works' three
 /// makers (glyph_works.dart), the new manager and his two planners
-/// (verdict.dart). Stylised figures (capsule body, sphere head, hard hat)
-/// drawn instanced, one draw per body part. Also the climbing platform the
-/// builders work on: two lattice masts and a deck that rises with the wall.
+/// (verdict.dart). They're drawn with everyone else in the city (see
+/// figure.dart), each in their work clothes: the builders in hi-vis vests
+/// over work shirts, gloves and hard hats, the foreman in white with his
+/// clipboard, the makers in lab coats and caps, the manager in a suit.
+/// Also the climbing platform the builders work on: two lattice masts and a
+/// deck that rises with the wall.
 ///
 /// The name goes up a letter at a time: its team lays it (a handful of
 /// bricks a swing), then two of them stretch the tape across the gap while
@@ -91,64 +111,17 @@ class Crew3D {
   /// site.
   vm.Vector3? Function(int z, double t)? finishAt;
 
-  late final InstancedMesh _torso, _head, _hat, _brim, _arm, _leg, _hand, _eye, _board;
+  late final Figures _figures;
+  final _slots = <int>[];
   late final InstancedMesh _deck, _bulbs;
   final _masts = <Node>[];
   static const _maxBulbs = 44;
   double _night = 0;
 
   void init() {
-    final cloth = pbr(rgb(1, 1, 1), roughness: 0.75);
-    final skin = pbr(rgb(1, 1, 1), roughness: 0.6);
-    final hard = pbr(rgb(1, 1, 1), roughness: 0.32, metallic: 0.05);
-    InstancedMesh im(Geometry g, Material m, int n, String name) {
-      final mesh = InstancedMesh(geometry: g, material: m);
-      for (var i = 0; i < n; i++) {
-        mesh.addInstance(hidden);
-      }
-      scene.add(Node(name: name)..addComponent(InstancedMeshComponent(mesh)));
-      return mesh;
-    }
-
-    _torso = im(CapsuleGeometry(radius: 0.155, height: 0.27, radialSegments: 14, capRings: 5), cloth, count, 'crew torsos');
-    _head = im(SphereGeometry(radius: 0.14, segments: 14, rings: 10), skin, count, 'crew heads');
-    _hat = im(domeGeometry(radius: 0.168, segments: 16, rings: 5), hard, count, 'crew hats');
-    _brim = im(CylinderGeometry(bottomRadius: 0.205, topRadius: 0.205, height: 0.022, radialSegments: 16), hard, count, 'crew hat brims');
-    _arm = im(CapsuleGeometry(radius: 0.05, height: 0.24, radialSegments: 8, capRings: 3), cloth, count * 2, 'crew arms');
-    _leg = im(CapsuleGeometry(radius: 0.064, height: 0.2, radialSegments: 8, capRings: 3), cloth, count * 2, 'crew legs');
-    _hand = im(SphereGeometry(radius: 0.058, segments: 8, rings: 6), skin, count * 2, 'crew hands');
-    _eye = im(SphereGeometry(radius: 0.021, segments: 6, rings: 4), pbr(rgb(0.02, 0.02, 0.03), roughness: 0.3), count * 2, 'crew eyes');
-    _board = im(CuboidGeometry(vm.Vector3(0.2, 0.27, 0.025)), pbr(lin(const Color(0xFFF4F1EA)), roughness: 0.8), 1, 'clipboard');
-    const skins = [Color(0xFFF1C9A5), Color(0xFFC68E63), Color(0xFF8D5A3B), Color(0xFFE8B98F), Color(0xFFAF7550), Color(0xFFF6D3B5), Color(0xFFD9A47C), Color(0xFF9C6B47)];
+    _figures = Figures.of(scene);
     for (var i = 0; i < count; i++) {
-      // The makers in pale work coats and teal caps; the manager in a navy
-      // suit and a white hat, his planners in light blue shirts.
-      final vest = i < builders
-          ? vests[i]
-          : switch (i) {
-              foreman => const Color(0xFFF4F1EA),
-              driver => const Color(0xFF2B4C7E),
-              operator => const Color(0xFFFF8A3D),
-              manager => const Color(0xFF1C2741),
-              >= planners => const Color(0xFFA9CBEA),
-              _ => const Color(0xFFD7E3EC),
-            };
-      final hat = switch (i) {
-        foreman || manager => const Color(0xFFFFFFFF),
-        driver || >= planners => BP.line,
-        >= makers && < manager => const Color(0xFF2BB3A3),
-        _ => const Color(0xFFFFD43B),
-      };
-      final pants = i == manager ? const Color(0xFF141A28) : const Color(0xFF243650);
-      _torso.setInstanceColor(i, lin(vest));
-      _head.setInstanceColor(i, lin(skins[i % skins.length]));
-      _hat.setInstanceColor(i, lin(hat));
-      _brim.setInstanceColor(i, lin(hat));
-      for (var s = 0; s < 2; s++) {
-        _arm.setInstanceColor(2 * i + s, lin(vest));
-        _leg.setInstanceColor(2 * i + s, lin(pants));
-        _hand.setInstanceColor(2 * i + s, lin(skins[i % skins.length]));
-      }
+      _slots.add(_figures.add(_lookOf(i)));
     }
 
     // The climbing platform: masts (static lattice) and the deck parts.
@@ -179,107 +152,91 @@ class Crew3D {
 
   static const _deckParts = 40;
 
-  // ── Drawing ───────────────────────────────────────────────────────────────
-
-  final _root = vm.Matrix4.identity(), _torsoM = vm.Matrix4.identity(), _m = vm.Matrix4.identity();
-  final _l = vm.Matrix4.identity(), _arm0 = vm.Matrix4.identity();
-  final _rz = vm.Matrix4.identity(), _rx = vm.Matrix4.identity();
-
-  void _draw(int i) {
-    final p = poses[i];
-    if (!p.visible) {
-      for (final im in [_torso, _head, _hat, _brim]) {
-        im.setInstanceTransform(i, hidden);
-      }
-      for (var s = 0; s < 2; s++) {
-        for (final im in [_arm, _leg, _hand, _eye]) {
-          im.setInstanceTransform(2 * i + s, hidden);
-        }
-      }
-      return;
+  /// What figure [i] wears: the builders a hi-vis vest in their zone's
+  /// colour over a work shirt, gloves and a yellow hard hat; the foreman a
+  /// white jacket and hat; the crane operator orange; the driver navy; the
+  /// makers lab coats and teal caps; the manager a navy suit and a white
+  /// hat, his planners light blue shirts.
+  static FigureLook _lookOf(int i) {
+    const skins = [0xEBC4A2, 0xC9946B, 0xE2B28C, 0x9A6644, 0xF0CDB0, 0xD6A47E, 0xB8845E, 0xE8BC98, 0xDDAE88, 0xF2D0B4, 0xC28B62, 0xE6B892, 0xD9A882, 0xEFC7A6, 0xA8714C];
+    const hairs = [0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x1A1714, 0x2A211B, 0x8F8B86, 0x1A1714, 0x2A211B, 0x1A1714, 0x5A3F2C, 0x2A211B, 0x3D2B20, 0x1A1714, 0x2A211B];
+    final l = FigureLook()
+      ..skin = rgbHex(skins[i % skins.length])
+      ..hairColor = rgbHex(hairs[i % hairs.length])
+      ..girth = 0.94 + 0.14 * rnd(i, 3)
+      ..hair = rnd(i, 4) < 0.7 ? Hair.short : Hair.medium
+      ..legs = rgbHex(0x243650)
+      ..shoes = rgbHex(0x24211F);
+    if (i < builders) {
+      return l
+        ..top = rgbHex(0x3E4A5E)
+        ..layer = lin(vests[i])
+        ..stripes = true
+        ..gloves = rgbHex(0xE9E4D6)
+        ..hardHat = lin(const Color(0xFFFFD43B))
+        ..slim = i == 4
+        ..hair = i == 4 ? Hair.bob : l.hair;
     }
-    setTrs(_root, p.pos.x, p.pos.y + p.bob, p.pos.z, yaw: p.yaw);
-    // Legs from the hips.
-    for (var s = 0; s < 2; s++) {
-      final side = s == 0 ? -1.0 : 1.0;
-      _m
-        ..setFrom(_root)
-        ..multiply(setTrs(_l, side * 0.085, 0.36, 0, pitch: p.legPitch[s]))
-        ..multiply(setTrs(_l, 0, -0.165, 0));
-      _leg.setInstanceTransform(2 * i + s, _m);
+    switch (i) {
+      case foreman:
+        l
+          ..top = lin(const Color(0xFFF4F1EA))
+          ..legs = rgbHex(0x3A4252)
+          ..hardHat = rgbHex(0xFFFFFF)
+          ..clipboard = true
+          ..girth = 1.08;
+      case operator:
+        l
+          ..top = lin(const Color(0xFFFF8A3D))
+          ..hardHat = lin(const Color(0xFFFFD43B))
+          ..gloves = rgbHex(0xE9E4D6)
+          ..cab = true;
+      case driver:
+        l
+          ..top = lin(const Color(0xFF2B4C7E))
+          ..hardHat = lin(BP.line);
+      case manager:
+        l
+          ..top = rgbHex(0xF2F0EA)
+          ..sleeves = lin(const Color(0xFF1C2741))
+          ..layer = lin(const Color(0xFF1C2741))
+          ..legs = lin(const Color(0xFF141A28))
+          ..shoes = rgbHex(0x141416)
+          ..hardHat = rgbHex(0xFFFFFF)
+          ..girth = 1.05;
+      case >= planners:
+        l
+          ..top = lin(const Color(0xFFA9CBEA))
+          ..legs = rgbHex(0x4A5466)
+          ..hardHat = lin(BP.line)
+          ..slim = i == planners + 1
+          ..hair = i == planners + 1 ? Hair.bob : l.hair;
+      default:
+        // The makers.
+        final coat = lin(const Color(0xFFD7E3EC));
+        l
+          ..top = coat
+          ..skirt = coat
+          ..skirtLength = 1.05
+          ..legs = rgbHex(0x2B3442)
+          ..cap = lin(const Color(0xFF2BB3A3))
+          ..slim = i == makers + 1
+          ..hair = i == makers + 1 ? Hair.bob : l.hair;
     }
-    // Torso (leans forward = towards local −z).
-    _torsoM
-      ..setFrom(_root)
-      ..multiply(setTrs(_l, 0, 0.36, 0, pitch: -p.lean));
-    _torso.setInstanceTransform(
-      i,
-      _m
-        ..setFrom(_torsoM)
-        ..multiply(setTrs(_l, 0, 0.29, 0)),
-    );
-    _head.setInstanceTransform(
-      i,
-      _m
-        ..setFrom(_torsoM)
-        ..multiply(setTrs(_l, 0, 0.72, 0)),
-    );
-    _hat.setInstanceTransform(
-      i,
-      _m
-        ..setFrom(_torsoM)
-        ..multiply(setTrs(_l, 0, 0.752 + p.hatUp, 0.004, yaw: p.hatSpin, roll: 0.3 * math.sin(p.hatSpin))),
-    );
-    _brim.setInstanceTransform(
-      i,
-      _m
-        ..setFrom(_torsoM)
-        ..multiply(setTrs(_l, 0, 0.755 + p.hatUp, -0.03, yaw: p.hatSpin, pitch: -0.08, roll: 0.3 * math.sin(p.hatSpin))),
-    );
-    for (var s = 0; s < 2; s++) {
-      final side = s == 0 ? -1.0 : 1.0;
-      _eye.setInstanceTransform(
-        2 * i + s,
-        _m
-          ..setFrom(_torsoM)
-          ..multiply(setTrs(_l, side * 0.05, 0.738, -0.126)),
-      );
-      // Arm: shoulder, roll outwards (z), pitch forward (x).
-      _rz.setRotationZ(side * p.armRoll[s]);
-      _rx.setRotationX(p.armPitch[s]);
-      _arm0
-        ..setFrom(_torsoM)
-        ..multiply(setTrs(_l, side * 0.205, 0.5, 0))
-        ..multiply(_rz)
-        ..multiply(_rx);
-      _arm.setInstanceTransform(
-        2 * i + s,
-        _m
-          ..setFrom(_arm0)
-          ..multiply(setTrs(_l, 0, -0.17, 0)),
-      );
-      _hand.setInstanceTransform(
-        2 * i + s,
-        _m
-          ..setFrom(_arm0)
-          ..multiply(setTrs(_l, 0, -0.36, 0)),
-      );
-      if (p.clipboard && s == 0) {
-        _board.setInstanceTransform(
-          0,
-          _m
-            ..setFrom(_arm0)
-            ..multiply(setTrs(_l, 0.02, -0.4, -0.06, pitch: 0.6)),
-        );
-      }
-    }
-    if (i == foreman && !p.clipboard) _board.setInstanceTransform(0, hidden);
+    return l;
   }
 
+  // ── Drawing ───────────────────────────────────────────────────────────────
+
+  final _m = vm.Matrix4.identity();
+
+  void _draw(int i) => _figures.draw(_slots[i], poses[i]);
+
+  final _rig = FigureRig();
   final _sh = vm.Vector3.zero(), _d = vm.Vector3.zero();
 
-  /// Points arm [s] of [p] at [target] (world): the hand gets there when
-  /// it's an arm's length (0.36) from the shoulder.
+  /// Points arm [s] of [p] at [target] (world) and bends its elbow so the
+  /// hand gets there (when it's in reach).
   void aim(FigurePose p, int s, vm.Vector3 target) => _aim(p, s, target);
 
   /// Where builder [z] watches from, beside a wall [w] wide (the front right).
@@ -287,25 +244,22 @@ class Crew3D {
 
   /// Points arm [s] of [p] at [target] (world).
   void _aim(FigurePose p, int s, vm.Vector3 target) {
-    final side = s == 0 ? -1.0 : 1.0;
-    // Shoulder in world space and the torso's rotation (yaw, then lean).
-    final cy = math.cos(p.yaw), sy = math.sin(p.yaw);
-    final cl = math.cos(-p.lean), sl = math.sin(-p.lean);
-    // Local shoulder offset from the hip: (side·0.205, 0.5, 0) under Rx(-lean).
-    final lx = side * 0.205, ly = 0.5 * cl, lz = 0.5 * sl;
-    _sh.setValues(p.pos.x + lx * cy + lz * sy, p.pos.y + p.bob + 0.36 + ly, p.pos.z - lx * sy + lz * cy);
+    // The shoulder as the figure stands, and the chest's turn.
+    _rig.solve(p, arms: false);
+    _rig.shoulder(s, 1, _sh);
     _d
       ..setFrom(target)
       ..sub(_sh);
-    if (_d.length2 < 1e-6) return;
-    _d.normalize();
-    // Into the torso frame: undo yaw, then undo the lean.
-    final x1 = _d.x * cy - _d.z * sy, z1 = _d.x * sy + _d.z * cy, y1 = _d.y;
-    final y2 = y1 * cl + z1 * sl, z2 = -y1 * sl + z1 * cl;
-    final pitch = math.asin((-z2).clamp(-1.0, 1.0));
-    final roll = math.atan2(x1, -y2);
-    p.armPitch[s] = pitch;
-    p.armRoll[s] = side * roll;
+    final r = _d.length;
+    if (r < 1e-6) return;
+    _d.scale(1 / r);
+    // Into the chest's frame (its rotation's transpose).
+    final c = _rig.chest.storage;
+    final x1 = c[0] * _d.x + c[1] * _d.y + c[2] * _d.z, y1 = c[4] * _d.x + c[5] * _d.y + c[6] * _d.z, z1 = c[8] * _d.x + c[9] * _d.y + c[10] * _d.z;
+    final side = s == 0 ? -1.0 : 1.0;
+    p.armPitch[s] = math.asin((-z1).clamp(-1.0, 1.0));
+    p.armRoll[s] = side * math.atan2(x1, -y1);
+    p.elbow[s] = FigureRig.bendFor(r.clamp(FigureRig.minReach, FigureRig.maxReach));
   }
 
   // ── Behaviour ─────────────────────────────────────────────────────────────
@@ -349,6 +303,7 @@ class Crew3D {
   void _gait(FigurePose p, double t, double speed, int seed) {
     final ph = t * speed * 4.2 + seed;
     final sw = math.sin(ph) * 0.55;
+    p.stride = ph;
     p.legPitch[0] = sw;
     p.legPitch[1] = -sw;
     p.armPitch[0] = -sw * 0.8;
@@ -370,6 +325,7 @@ class Crew3D {
     if (j == null) return;
     _night = night;
     _t = t;
+    _figures.night = night;
     final since = j.since(t);
     final cut = j.cutAt != null;
 

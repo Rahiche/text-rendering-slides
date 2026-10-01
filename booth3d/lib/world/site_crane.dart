@@ -5,6 +5,7 @@ import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import '../tuning.dart';
 import 'kit.dart';
 import 'site_geo.dart';
 import 'site_plan.dart';
@@ -55,10 +56,10 @@ class Crane3D {
 
     // Footing and mast (static).
     final foot = MeshBatch()..box(vm.Vector3(0, 0.3, 0), vm.Vector3(2.8, 0.6, 2.8));
-    _root.add(Node(name: 'crane footing', mesh: Mesh(foot.build(), concrete), localTransform: trs(vm.Vector3(mx, 0, mz)))..shadowStatic = true);
+    _root.add(Node(name: 'crane footing', mesh: Mesh(foot.build(), concrete), localTransform: trs(vm.Vector3(mx, 0, mz)))..shadowStatic = Tuning.staticShadows);
     final mast = MeshBatch();
     latticeMast(mast, w: 1.15, y0: 0.6, y1: jibY - 0.5, section: 1.3, post: 0.12, brace: 0.06);
-    _root.add(Node(name: 'crane mast', mesh: Mesh(mast.build(), yellow), localTransform: trs(vm.Vector3(mx, 0, mz)))..shadowStatic = true);
+    _root.add(Node(name: 'crane mast', mesh: Mesh(mast.build(), yellow), localTransform: trs(vm.Vector3(mx, 0, mz)))..shadowStatic = Tuning.staticShadows);
 
     // The slewing part, in its own frame (jib towards −x).
     final steel = MeshBatch();

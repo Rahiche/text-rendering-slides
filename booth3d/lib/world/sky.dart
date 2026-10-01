@@ -49,6 +49,20 @@ class Sky3D {
   final _puffs = <_Puff>[];
   double? _bakedAt;
 
+  /// The image-based light, baked once for each of [_iblHours] as the city
+  /// starts and then followed in steps through the day. Re-baking it live
+  /// every few seconds (a [SkyEnvironment] on an interval) cost a late frame
+  /// or two every time, whatever the bake's size.
+  final _iblKeys = <EnvironmentMap>[];
+  int _iblKey = -1, _frames = 0;
+
+  /// Hours the lighting is baked for: hourly by day, closer together around
+  /// sunrise and sunset, where the sky changes fastest; one for the night.
+  static const _iblHours = <double>[
+    4.6, 5.0, 5.3, 5.6, 5.85, 6.2, 6.6, 7.3, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, //
+    15.0, 15.6, 16.3, 17.0, 17.45, 17.9, 18.2, 18.5, 18.8, 19.1, 19.45, 19.8,
+  ];
+
   void init() {
     _sky = GradientSkySource();
     _ibl = GradientSkySource(sunColor: vm.Vector3.zero());
@@ -121,10 +135,56 @@ class Sky3D {
     scene.skyEnvironment = SkyEnvironment(
       _ibl,
       refresh: Tuning.iblInterval ? SkyEnvironmentRefresh.interval : SkyEnvironmentRefresh.manual,
-      interval: const Duration(milliseconds: 1500),
-      faceResolution: 64,
-      equirectWidth: 256,
+      interval: Duration(milliseconds: (Tuning.iblSeconds * 1000).round()),
+      faceResolution: Tuning.iblFace,
+      equirectWidth: Tuning.iblEquirect,
     );
+  }
+
+  /// The lighting's sky at [look], with the sun towards [sunDir]: a soft
+  /// share of the sun's glow (warm light from its side of the sky), not its
+  /// hot disk.
+  void _iblAt(_Look look, vm.Vector3 sunDir) {
+    _ibl
+      ..zenithColor = look.zenith
+      ..horizonColor = look.horizon
+      ..groundColor = look.ground * 1.6
+      ..sunDirection = sunDir
+      ..sunSharpness = 300
+      ..sunColor = look.disk * 0.18;
+  }
+
+  /// Bakes the next keys (two a frame, once a few frames have been shown: a
+  /// WebGL context bakes them wrong before that), and once they're all
+  /// there, lights the scene with the one for this hour.
+  void _followKeys() {
+    if (_iblKeys.length < _iblHours.length) {
+      if (++_frames < 20) return;
+      final sunDir = vm.Vector3.zero();
+      for (var n = 0; n < 2 && _iblKeys.length < _iblHours.length; n++) {
+        final h = _iblHours[_iblKeys.length];
+        _sunAt(h, sunDir);
+        _iblAt(_Look.at(h), sunDir);
+        _iblKeys.add(EnvironmentMap.fromSky(_ibl, faceResolution: Tuning.iblFace, equirectWidth: Tuning.iblEquirect));
+      }
+      if (_iblKeys.length < _iblHours.length) return;
+      scene.skyEnvironment = null;
+    }
+    // The nearest key, round the clock (the night key covers the night).
+    var best = 0;
+    var bestD = 99.0;
+    for (var k = 0; k < _iblHours.length; k++) {
+      final d = (hour - _iblHours[k]).abs();
+      final dd = math.min(d, 24 - d);
+      if (dd < bestD) {
+        bestD = dd;
+        best = k;
+      }
+    }
+    if (best != _iblKey) {
+      _iblKey = best;
+      scene.environment = _iblKeys[best];
+    }
   }
 
   void _stars() {
@@ -191,12 +251,14 @@ class Sky3D {
   /// frames): the lighting is re-baked at once instead of catching up over
   /// the next frames.
   void update(double t, [double dt = 1 / 60]) {
-    if (dt == 0 && (_bakedAt == null || (t - _bakedAt!).abs() > 0.5)) {
+    final keyed = Tuning.iblKeys && _iblKeys.length == _iblHours.length;
+    if (!keyed && dt == 0 && (_bakedAt == null || (t - _bakedAt!).abs() > 0.5)) {
       _bindEnvironment();
       _bakedAt = t;
     }
 
     hour = (startHour + 24 * t / period) % 24;
+    if (Tuning.iblKeys) _followKeys();
     _sunAt(hour, sun);
     _moonAt(hour, moon);
     final look = _Look.at(hour);
@@ -213,15 +275,7 @@ class Sky3D {
       ..sunDirection = moonUp ? moon : sun
       ..sunSharpness = moonUp ? 4000 : 2600
       ..sunColor = moonUp ? hex3(0xC9D8FF, 0.32 * smooth(0.5, 0.9, night)) : look.disk;
-    // The lighting gets a soft share of the sun's glow (warm light from its
-    // side of the sky), not its hot disk.
-    _ibl
-      ..zenithColor = look.zenith
-      ..horizonColor = look.horizon
-      ..groundColor = look.ground * 1.6
-      ..sunDirection = sun
-      ..sunSharpness = 300
-      ..sunColor = look.disk * 0.18;
+    if (!keyed) _iblAt(look, sun);
 
     // Key light: the sun (kept a little above the horizon at twilight so
     // the last light rakes across the plaza), then the moon.

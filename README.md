@@ -36,6 +36,19 @@ tool/booth_capture.sh --times 10,60,120 --names "田中太郎" [--mode craft] [-
 booth3d/tool/capture.sh --times 10,60,120 --names "田中太郎"
 ```
 
+Name City keeps itself smooth on a fanless laptop running all day: the 3D view
+renders at 1.5× the 1600×900 design canvas (never finer than the screen shows),
+steps down when frames run late on the GPU and back up when there's headroom
+(`booth3d/lib/quality.dart`); the sky's lighting is baked once per key hour
+as the city starts, not live (`booth3d/lib/tuning.dart`). A perf build prints fps,
+frame times, memory, scene size and the render ratio every 5 s, and takes the
+render settings from the environment to compare their cost:
+
+```bash
+cd booth3d && flutter build macos --release --dart-define=BOOTH3D_PERF=true --dart-define=BOOTH_WINDOWED=true
+SLIDES_EXPORT=0 BOOTH3D_SPEED=8 BOOTH3D_RATIO=1.5 build/macos/Build/Products/Release/booth3d.app/Contents/MacOS/booth3d
+```
+
 Other versions and experiments, each told inside one world:
 
 | version | link |

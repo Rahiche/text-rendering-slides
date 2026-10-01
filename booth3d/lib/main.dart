@@ -13,6 +13,7 @@ import 'package:text_slides/deck/theme.dart';
 
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
 import 'perf.dart';
+import 'quality.dart';
 import 'tuning.dart';
 import 'world/world.dart';
 
@@ -43,7 +44,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   Ticker? _ticker;
   Duration _last = Duration.zero;
   double _speed = Tuning.speed;
-  late final _perf = PerfLog.enabled ? PerfLog(world, model) : null;
+  late final _perf = PerfLog.enabled ? PerfLog(world, model, ratio: () => Tuning.ratio ?? _quality.ratio) : null;
+  final _quality = RenderQuality(log: PerfLog.enabled ? PerfLog.line : null);
   final _watch = Stopwatch();
   bool get _capturing => _times.isNotEmpty;
 
@@ -65,6 +67,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         _capture();
       } else {
         _perf?.start();
+        _quality
+          ..attach()
+          ..addListener(() => setState(() {}));
         _ticker = createTicker(_tick)..start();
       }
     });
@@ -95,6 +100,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
     _ticker?.dispose();
+    _quality.dispose();
     model.dispose();
     super.dispose();
   }
@@ -167,11 +173,17 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    // The canvas is scaled to fit the window: render no finer than it shows.
+    final size = MediaQuery.sizeOf(context);
+    _quality.screen(
+      native: MediaQuery.devicePixelRatioOf(context) * math.min(size.width / BP.canvas.width, size.height / BP.canvas.height),
+      refreshRate: View.of(context).display.refreshRate,
+    );
     final view = world.ready
         ? SceneView(
             world.scene,
             cameraBuilder: (_) => world.director.camera,
-            pixelRatio: _capturing ? 1 : Tuning.ratio,
+            pixelRatio: _capturing ? 1 : Tuning.ratio ?? _quality.ratio,
           )
         : const ColoredBox(color: BP.bg);
     final canvas = SizedBox.fromSize(

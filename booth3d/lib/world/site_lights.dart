@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import '../tuning.dart';
 import 'kit.dart';
 import 'site_geo.dart';
 
@@ -28,7 +29,7 @@ class SiteLights {
       mast
         ..box(vm.Vector3(0, 0.15, 0), vm.Vector3(1.1, 0.3, 1.1))
         ..box(vm.Vector3(0, 8.3, 0), vm.Vector3(1.6, 0.12, 0.5));
-      tower.add(Node(mesh: Mesh(mast.build(), steel))..shadowStatic = true);
+      tower.add(Node(mesh: Mesh(mast.build(), steel))..shadowStatic = Tuning.staticShadows);
       // Lamp heads, tilted down towards the wall.
       final lens = pbr(rgb(1, 0.95, 0.85), emissive: rgb(1, 0.92, 0.75), emissiveStrength: 0);
       final heads = MeshBatch();

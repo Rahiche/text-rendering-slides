@@ -11,12 +11,18 @@ import 'world/world.dart';
 /// --dart-define=BOOTH3D_PERF=true: every few seconds, print frame times,
 /// memory and the size of the scene, to find what gets slower in a long run.
 class PerfLog {
-  PerfLog(this.world, this.model, {this.every = const Duration(seconds: 5)});
+  PerfLog(this.world, this.model, {this.ratio, this.every = const Duration(seconds: 5)});
+
+  /// Prints [message] in perf builds.
+  static void line(String message) => perfLine(message);
 
   static const enabled = bool.fromEnvironment('BOOTH3D_PERF');
 
   final World3D world;
   final BoothModel model;
+
+  /// The scene's current render ratio.
+  final double Function()? ratio;
   final Duration every;
   final _clock = Stopwatch();
   final _build = <double>[], _raster = <double>[], _update = <double>[];
@@ -29,9 +35,13 @@ class PerfLog {
     SchedulerBinding.instance.addTimingsCallback(_timings);
     perfLine(
       'config ratio=${Tuning.ratio ?? 'device'} aa=${Tuning.aa.name} cascades=${Tuning.cascades} shadowRes=${Tuning.shadowRes} '
-      'ibl=${Tuning.iblInterval ? 'interval' : 'manual'} floodShadow=${Tuning.floodShadow} speed=${Tuning.speed}',
+      'ibl=${Tuning.iblKeys
+          ? 'keys'
+          : Tuning.iblInterval
+          ? 'interval/${Tuning.iblSeconds}s'
+          : 'manual'} cube=${Tuning.cube} face=${Tuning.iblFace} eq=${Tuning.iblEquirect} floodShadow=${Tuning.floodShadow} staticShadows=${Tuning.staticShadows} speed=${Tuning.speed}',
     );
-    perfLine('perf   up_s  scene_t   fps  build_avg/max  raster_avg/max  update_avg/max  late  rss_mb  nodes  shown  jobs  night  job');
+    perfLine('perf   up_s  scene_t   fps  build_avg/max  raster_avg/max  update_avg/max  late  rss_mb  nodes  shown  jobs  night  ratio  job');
   }
 
   void _timings(List<FrameTiming> ts) {
@@ -77,7 +87,7 @@ class PerfLog {
       'perf ${now.inSeconds.toString().padLeft(6)} ${model.t.toStringAsFixed(0).padLeft(8)} '
       '${(_frames / secs).toStringAsFixed(1).padLeft(5)}  ${am(_build)}    ${am(_raster)}     ${am(_update)}  '
       '${_late.toString().padLeft(4)}  ${currentRssMb().toString().padLeft(6)}  ${nodes.toString().padLeft(5)}  '
-      '${shown.toString().padLeft(5)}  ${_jobs.toString().padLeft(4)}  ${world.sky.night.toStringAsFixed(2)}  '
+      '${shown.toString().padLeft(5)}  ${_jobs.toString().padLeft(4)}  ${world.sky.night.toStringAsFixed(2)}  ${(ratio?.call() ?? 0).toStringAsFixed(2)}  '
       '${j == null ? '-' : '${j.name} · ${j.phase.name}'}',
     );
     _frames = 0;

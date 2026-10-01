@@ -27,6 +27,7 @@ class World3D {
   Future<void> init() async {
     await Scene.initializeStaticResources();
     scene.antiAliasingMode = Tuning.aa;
+    EnvironmentMap.radianceCubeSize = Tuning.cube;
     if (kIsWeb) await _warmUpFonts();
     sky.init();
     site.init();

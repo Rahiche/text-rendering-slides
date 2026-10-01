@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show Color;
 
 import 'package:characters/characters.dart';
@@ -22,6 +23,7 @@ import 'photo_op.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_crane.dart';
+import 'site_finish.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
 import 'site_kern.dart';
@@ -40,13 +42,14 @@ import 'verdict.dart';
 /// stretch a measuring tape across the gap to the letter before, the
 /// foreman checks his clipboard, and they push the letter along its skid
 /// into its kerned place (the camera comes in close, a caption gives the
-/// pair's kerning). Then a glowing scan plane sweeps up and the pixels
-/// dissolve into smooth extruded letters (pixels → outlines), fireworks
-/// burst (some in the shapes of the name's own characters), confetti flies
-/// and the crane lowers a 完成！ sign; a wrecking ball swings through the
-/// wall, and a recycling truck hauls the rubble away. Meanwhile a delivery
-/// truck brings the pallets (delivery.dart), builders the build doesn't
-/// need go for a coffee, a smoke or a chat (crew_breaks.dart,
+/// pair's kerning). Then the crew finish it (site_finish.dart): plasterers
+/// smooth the stair-stepped edges (pixels → outlines) and painters roll each
+/// letter its colour, top-down; fireworks burst (some in the shapes of the
+/// name's own characters), confetti flies and the crane lowers a 完成！
+/// sign; a wrecking ball swings through the wall, knocking down painted
+/// bricks, and a recycling truck hauls the rubble away. Meanwhile a
+/// delivery truck brings the pallets (delivery.dart), builders the build
+/// doesn't need go for a coffee, a smoke or a chat (crew_breaks.dart,
 /// site_props.dart), and the Glyph Works crafts a mini name in gold, letter
 /// by letter with the wall (glyph_works.dart).
 class Site3D {
@@ -72,6 +75,9 @@ class Site3D {
 
   /// Before the wrecking ball: the new manager with the next blueprint.
   late final verdict = Verdict3D(scene, crew, parts);
+
+  /// After the last brick: plaster and paint.
+  late final finish = Finish3D(scene, crew, fx);
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
@@ -117,15 +123,24 @@ class Site3D {
   bool _wallHidden = false;
   double b = 0.25;
 
+  /// The finish's plan; when the reveal started (once seen); each brick's
+  /// size as the finish last set it (−1: not yet); whether the bricks have
+  /// had their paint for the demolition; per plan letter, its smooth
+  /// letter (if it has one).
+  FinishPlan? _finishPlan;
+  double? _revealSeen;
+  Float32List _brickScale = Float32List(0);
+  bool _bricksPainted = false;
+  List<bool> _smooth = [];
+
   /// Bounds of the wall (for the camera).
   double wallWidth = 12, wallHeight = 5;
 
   /// What the camera may want to look at: the hook, the wall's height so
-  /// far, the middle of the letter at work, the reveal's scan plane.
+  /// far, the middle of the letter at work.
   final hookAt = vm.Vector3(4, 10, 0);
   double level = 0;
   double activeX = 0;
-  double scanY = -1;
 
   /// When the ball first hits the wall (scene time), once known.
   double? impactAt;
@@ -163,11 +178,17 @@ class Site3D {
     parts.init();
     works.init();
     verdict.init();
+    finish.init();
     crew
       ..offDuty = breaks.pose
       ..stage = (who, p) {
         photo.pose(who, p);
         verdict.pose(who, p);
+        finish.pose(who, p);
+      }
+      ..finishAt = (z, t) {
+        final j = _job, plan = _plan;
+        return j == null || plan == null || t < plan.t0 + plan.len ? null : finish.whereAt(z, t, _revealAt(j));
       };
     _buildTruck();
     _buildBanner();
@@ -295,6 +316,7 @@ class Site3D {
     _falls = null;
     _landOrder = null;
     _swing = null;
+    _swaps = null;
     _finalized = 0;
     _slid = [];
     _yardDone = false;
@@ -302,7 +324,11 @@ class Site3D {
     _wayOn.fillRange(0, _maxPallets, false);
     impactAt = null;
     _nameShapes = [];
-    _rowPass = [];
+    _finishPlan = null;
+    _revealSeen = null;
+    _brickScale = Float32List(0);
+    _bricksPainted = false;
+    _smooth = [];
     for (final l in _letters) {
       _letterRoot.remove(l.node);
     }
@@ -328,14 +354,27 @@ class Site3D {
     delivery.planFor(plan);
     works.planFor(plan, busyCam: delivery.camWindows);
     breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: [...delivery.camWindows, ...works.camWindows]);
+    final fp = _finishPlan = finish.planFor(
+      plan,
+      len: CityPace.reveal,
+      watch: [for (var z = 0; z < Crew3D.builders; z++) crew.watchSpot(z, wallWidth)],
+      corner: vm.Vector3(wallWidth / 2 + 0.75, 0, -1.55),
+      paint: [for (final l in plan.letters.letters) paintOf(_hues[l.glyph % _hues.length])],
+    );
+    finish.face = -b * 0.85;
+    _smooth = List.filled(plan.letterCount, false);
     // Instances in laying order.
     for (var i = 0; i < plan.total; i++) {
       _bricks.addInstance(hidden, color: _brickColor(r.bricks[plan.src[i]]));
     }
     _slid = List.filled(plan.letterCount, -1.0);
-    // Capture runs log the timeline (when each letter goes up and is kerned).
-    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(plan.describe());
+    // Capture runs log the timeline (when each letter goes up and is kerned,
+    // and finished).
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint('${plan.describe()}${fp.describe()}${finish.describeShots()}');
   }
+
+  /// The letters' colours, in the order of the name's characters.
+  static const _hues = [BP.amber, BP.line, BP.green, BP.pink, BP.violet, BP.coral];
 
   /// Bricks standing (the first n, in laying order): all of them, unless
   /// the build was cut short.
@@ -353,8 +392,6 @@ class Site3D {
 
   vm.Vector3 cell(int i) => vm.Vector3(_plan!.cellX[i], _plan!.cellY[i], 0);
 
-  static final _cream = lin(const Color(0xFFF4F1EA));
-
   final _m = vm.Matrix4.identity();
   final _q = vm.Quaternion.identity();
   static final _axes = [vm.Vector3(0.3, 1, 0.2).normalized(), vm.Vector3(1, 0.2, -0.4).normalized(), vm.Vector3(-0.3, 0.5, 1).normalized()];
@@ -371,7 +408,7 @@ class Site3D {
   }
 
   /// One letter of the smooth name, placed exactly over the raster, and cut
-  /// into one band per brick row for the reveal. Made one per frame.
+  /// into bands of brick rows for the finish. Made one per frame.
   void _makeNextLetter() {
     final r = _r!, g = _glyphs!;
     final tp = TextPainter(
@@ -400,29 +437,48 @@ class Site3D {
       final px = boxes.first.left + ((geo.inkLeft + geo.inkRight) / 2 - rasterPad) * s - r.inkOffset.dx;
       final py = (geo.inkBottom - rasterPad) * s - r.inkOffset.dy;
       final at = vm.Vector3((px - r.cols / 2) * b, (r.rows - py) * b, 0);
-      final hue = [BP.amber, BP.line, BP.green, BP.pink, BP.violet, BP.coral][idx % 6];
-      final mat = pbr(lin(const Color(0xFFF4F1EA)), roughness: 0.3, metallic: 0.05, emissive: lin(hue), emissiveStrength: 0);
+      final paint = paintOf(_hues[idx % _hues.length]);
+      // Painted: the paint's colour, a satin finish.
+      final mat = pbr(paint.clone(), roughness: 0.5, emissive: paint.clone(), emissiveStrength: 0);
       // Bands of brick rows (at most ~12 per letter, to keep the draw
-      // count down): world rows → the mesh's own y.
-      final per = math.max(1, (r.rows / 12).ceil());
+      // count down): world rows → the mesh's own y. The finish plasters and
+      // paints them top-down; the works prints them bottom-up.
+      final fp = _finishPlan!;
+      final per = fp.per;
       final cuts = [for (var rr = per; rr < r.rows; rr += per) rr * b - at.y];
       final bands = sliceGlyph(mesh, cuts);
-      final prims = <MeshPrimitive>[];
+      final geos = <Geometry>[];
       final rows = <int>[];
       for (var k = 0; k < bands.length; k++) {
         final bg = bands[k];
         if (bg == null) continue;
-        prims.add(MeshPrimitive(bg, mat));
+        geos.add(bg);
         rows.add(math.min(r.rows - 1, (k + 1) * per - 1)); // its top row
       }
+      // Its pieces for the finish: the bands (cut into strips too where two
+      // pairs share the letter), each with its own material — plaster, then
+      // paint, wet, then dry.
+      final wall = _wallOf(idx, at.x);
+      final xCuts = wall < 0 ? const <double>[] : [for (final x in fp.stripCuts(wall)) x - at.x];
+      final grid = xCuts.isEmpty ? [bands] : sliceGlyphGrid(mesh, xCuts, cuts);
+      final pieces = <_Piece>[];
+      for (var s = 0; s < grid.length && wall >= 0; s++) {
+        for (var k = 0; k < grid[s].length; k++) {
+          final g = grid[s][k];
+          if (g == null) continue;
+          final m = pbr(_dryPlaster.clone(), roughness: 0.9, emissive: paint.clone(), emissiveStrength: 0);
+          pieces.add(_Piece(MeshPrimitive(g, m), m, fp.unitFor(wall, s), k));
+        }
+      }
+      if (wall >= 0) _smooth[wall] = true;
       final solid = glyphGeometry(mesh);
       final full = Mesh(solid, mat);
-      final banded = prims.isEmpty ? full : Mesh.primitives(primitives: prims);
+      final pieced = pieces.isEmpty ? full : Mesh.primitives(primitives: [for (final p in pieces) p.prim]);
       _shapes.add(
         LetterShape(
           glyph: idx,
           geometry: solid,
-          bands: [for (final p in prims) p.geometry],
+          bands: geos,
           bandTops: [for (final row in rows) (row + 1) * b - at.y],
           at: at,
           width: mesh.width,
@@ -431,12 +487,29 @@ class Site3D {
         ),
       );
       final node = Node(name: 'letter $ch', mesh: full, localTransform: trs(at))..visible = false;
-      _letters.add(_Letter(node, full, banded, rows, mat, lin(hue), at, per));
+      _letters.add(_Letter(node, full, pieced, pieces, mat, paint, at, wall));
       _letterRoot.add(node);
       break;
     }
     tp.dispose();
     if (_lettersMade >= g.length) _lettersReady = true;
+  }
+
+  /// The plan's letter for smooth letter [glyph] at [x]: the one made of
+  /// its ink, else the nearest (−1: the plan has none).
+  int _wallOf(int glyph, double x) {
+    final plan = _plan!, ls = plan.letters.letters;
+    var best = -1;
+    var bestD = double.infinity;
+    for (var k = 0; k < ls.length; k++) {
+      if (ls[k].glyph == glyph) return k;
+      final d = (((ls[k].col0 + ls[k].col1 + 1) / 2 - plan.r.cols / 2) * b - x).abs();
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    return best;
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -462,7 +535,6 @@ class Site3D {
     crane
       ..ballHanging = false
       ..ballRest = null;
-    scanY = -1;
     final plan = _plan;
     level = plan?.level(t) ?? 0;
     activeX = plan?.activeX(t) ?? 0;
@@ -472,7 +544,7 @@ class Site3D {
       case Phase.intake || Phase.build:
         trip = _build(j, t, dt, night);
       case Phase.reveal:
-        _reveal(j, t);
+        _finishing(j, t, night);
         _idleCrane(vm.Vector3(wallWidth / 2 + 3.5, 12.5, 2.5), t, dt, night);
       case Phase.celebrate:
         _hideWall();
@@ -487,18 +559,23 @@ class Site3D {
       ..begin(t, night);
     delivery.update(j, plan, t, night);
     _drawPallets(j, t);
-    kern.update(plan, j, t, fx, scanY: scanY);
+    final fp = _finishPlan;
+    final revealAt = plan == null ? 0.0 : _revealAt(j);
+    kern.update(plan, j, t, fx, skidGone: fp == null ? null : (k) => revealAt + fp.footAt(k));
     photo.update(m, j, plan, t);
     works.update(j, plan, t, night, _shapes);
     verdict.update(m, j, t, w: wallWidth, impact: impactAt, held: photo.whereAt);
+    finish.update(j, plan, t, revealAt);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
+    finish.drawTools();
     breaks.end();
     parts.end();
     props.update(night);
     lights.update(night, t, fx.flashes);
     hookAt.setFrom(crane.hook);
-    // The team photo; now and then the camera follows the delivery, visits
-    // the works, or follows someone on a break.
+    // The finish up close, the team photo; now and then the camera follows
+    // the delivery, visits the works, or follows someone on a break.
+    finish.focus(focus);
     photo.focus(focus, t, w: wallWidth, h: wallHeight);
     verdict.focus(focus, t);
     delivery.focus(focus, t);
@@ -694,86 +771,111 @@ class Site3D {
     _wallHidden = true;
   }
 
-  // ── Reveal: pixels → outlines ─────────────────────────────────────────────
+  // ── The finish: plaster, then paint ───────────────────────────────────────
 
-  /// The scan plane's height [since] seconds into the reveal.
-  double _scanAt(double since) => -0.15 + (wallHeight + 0.5) * _sweep(seg(since, 0.35, 4.7));
+  /// When [j]'s reveal started (as seen), or will (or must have).
+  double _revealAt(Job j) {
+    if (j.phase == Phase.reveal) return _revealSeen = j.phaseStart;
+    if (_revealSeen case final at?) return at;
+    if (j.phase == Phase.celebrate) return j.phaseStart - CityPace.reveal;
+    final plan = _plan!;
+    return plan.t0 + plan.len;
+  }
 
-  /// A gentle ease in and out (gentler than cubic at the ends).
-  static double _sweep(double f) => 0.5 - 0.5 * math.cos(f * math.pi);
+  /// Fresh render (a darker grey while it's wet) and dry.
+  static final _wetPlaster = lin(const Color(0xFF746E67)), _dryPlaster = lin(const Color(0xFFCBC5BA));
 
-  void _reveal(Job j, double t) {
-    final plan = _plan;
-    if (plan == null) return;
-    final since = j.since(t);
-    final y = _scanAt(since);
-    scanY = y;
-    fx.scan(y, wallWidth, b * 2.2, 1 - seg(since, 4.6, 5.3));
-    // Bricks the plane has passed shrink away, each letting go of a pixel
-    // of light that floats up and fades.
-    if (_rowPass.length != plan.r.rows) {
-      _rowPass = [for (var rr = 0; rr < plan.r.rows; rr++) _passTime((rr + 1) * b)];
-    }
-    final n = _standing(j, plan);
-    for (var i = 0; i < plan.total; i++) {
-      final cy = plan.cellY[i];
-      final passT = _rowPass[(cy / b).floor().clamp(0, plan.r.rows - 1)];
-      final tau = since - passT;
-      if (tau < 0) {
-        _bricks.setInstanceTransform(i, i < n ? _brickM(plan.cellX[i], cy, 0, 1) : hidden);
+  /// How long the plaster and the paint take to dry.
+  static const _plasterDries = 3.5, _paintDries = 2.0;
+
+  /// The finish at [t]: the letters' bands plastered and painted as the
+  /// work comes down them, the edge bricks smoothed away.
+  void _finishing(Job j, double t, double night) {
+    final plan = _plan, fp = _finishPlan;
+    if (plan == null || fp == null) return;
+    final u = t - _revealAt(j);
+    _finishLetters(fp, u, night);
+    _finishBricks(j, plan, fp, u);
+  }
+
+  /// The letters [u] seconds into the finish: nothing until the plaster
+  /// reaches them, then band by band (each piece its own material), whole
+  /// again once painted and dry.
+  void _finishLetters(FinishPlan fp, double u, double night) {
+    for (final l in _letters) {
+      if (l.pieces.isEmpty) {
+        // Nothing to piece: whole once its letter is painted.
+        final done = l.wall < 0 || u >= fp.doneAt(l.wall);
+        l.node.visible = done;
+        if (done) _paintFull(l, night, 0);
         continue;
       }
-      final shrink = 1 - c01(tau / 0.32);
-      _bricks.setInstanceTransform(i, _brickM(plan.cellX[i], cy, 0, shrink));
-      if (tau < 1.1) {
-        final f = tau / 1.1;
-        final r1 = rnd(i, 5), r2 = rnd(i, 9);
-        final color = r1 < 0.6 ? fxPalette[5] : (r1 < 0.85 ? fxPalette[6] : fxPalette[0]);
-        fx.pixel(
-          plan.cellX[i] + (r2 - 0.5) * 0.6 * f,
-          cy + 0.15 + 1.2 * eo(f) + 0.3 * r1 * f,
-          -b - 0.35 * f,
-          b * 0.42 * (1 - f) * (0.7 + 0.6 * r2),
-          color,
-          glow: 4 + 4 * (1 - f),
-          spin: tau * (3 + 4 * r2),
-        );
+      var shown = false, settled = true;
+      for (final p in l.pieces) {
+        final pa = fp.plasterAt(p.unit, p.band);
+        final on = u >= pa;
+        p.prim
+          ..visible = on
+          ..castsShadow = on;
+        if (!on) {
+          settled = false;
+          continue;
+        }
+        shown = true;
+        final ca = fp.paintAt(p.unit, p.band), dur = fp.bandTime(p.unit, p.band);
+        if (u < ca + dur + _paintDries) settled = false;
+        _shade(p.mat, u - pa, u - ca, dur, l.paint, night);
       }
-    }
-    _wallHidden = false;
-    // The letters appear band by band below the plane.
-    for (final l in _letters) {
-      if (!identical(l.node.mesh, l.banded)) l.node.mesh = l.banded;
-      l.node.visible = true;
-      final prims = l.banded.primitives;
-      for (var k = 0; k < prims.length; k++) {
-        final on = y >= (l.rows[k] + 1 - l.per * 0.5) * b;
-        prims[k].visible = on;
-        prims[k].castsShadow = on;
-      }
-      // Cream, with a cool glow that settles.
-      l.mat.baseColorFactor = _cream;
-      l.mat.emissiveFactor = fxPalette[5];
-      l.mat.emissiveStrength = 1.4 * (1 - seg(since, 3.5, 6.0)) + 0.1;
+      final mesh = settled ? l.full : l.pieced;
+      if (!identical(l.node.mesh, mesh)) l.node.mesh = mesh;
+      l.node.visible = shown;
+      if (settled) _paintFull(l, night, 0);
     }
   }
 
-  var _rowPass = <double>[];
-
-  /// When (seconds into the reveal) the plane passes height [y].
-  double _passTime(double y) {
-    final f = c01((y + 0.15) / (wallHeight + 0.5));
-    // Invert the ease (bisection; monotonic).
-    var lo = 0.0, hi = 1.0;
-    for (var k = 0; k < 18; k++) {
-      final mid = (lo + hi) / 2;
-      if (_sweep(mid) < f) {
-        lo = mid;
-      } else {
-        hi = mid;
-      }
+  /// A piece [sinceP] seconds after its plaster went on and [sinceC] after
+  /// the paint got to it (negative: not yet), taking [dur] to cross it:
+  /// grey wet plaster drying pale, then the paint, darker and glossy while
+  /// it's wet, drying to satin.
+  void _shade(PhysicallyBasedMaterial m, double sinceP, double sinceC, double dur, vm.Vector4 paint, double night) {
+    final dryP = eo(sinceP / _plasterDries), cover = c01(sinceC / dur), dryC = eo((sinceC - dur) / _paintDries);
+    final wet = 0.8 + 0.2 * dryC;
+    final c = m.baseColorFactor;
+    for (var k = 0; k < 3; k++) {
+      c[k] = lerp(lerp(_wetPlaster[k], _dryPlaster[k], dryP), paint[k] * wet, cover);
     }
-    return 0.35 + (lo + hi) / 2 * (4.7 - 0.35);
+    m
+      ..roughnessFactor = lerp(lerp(0.6, 0.92, dryP), lerp(0.16, 0.5, dryC), cover)
+      ..emissiveStrength = cover * _glow(night);
+  }
+
+  /// [l] whole: painted and dry ([shine]: a festive sheen on top).
+  void _paintFull(_Letter l, double night, double shine) {
+    l.mat.baseColorFactor.setFrom(l.paint);
+    l.mat
+      ..roughnessFactor = 0.5
+      ..emissiveStrength = _glow(night) + shine;
+  }
+
+  /// Painted, not lit: only after dark a faint glow of their own keeps the
+  /// letters readable between the floods.
+  static double _glow(double night) => 0.2 * smooth(0.25, 0.8, night);
+
+  /// The bricks [u] seconds into the finish: the edges, poking out of the
+  /// plaster, shrink away as it passes; the rest stay inside the smooth
+  /// letter. (Written only when they change.)
+  void _finishBricks(Job j, BuildPlan plan, FinishPlan fp, double u) {
+    final n = plan.total;
+    if (_brickScale.length != n) _brickScale = Float32List(n)..fillRange(0, n, -1);
+    final standing = _standing(j, plan);
+    for (var i = 0; i < n; i++) {
+      final h = fp.hideAt[i];
+      final s = i >= standing ? 0.0 : (h.isInfinite || !_smooth[plan.letter[i]] ? 1.0 : 1 - seg(u, h, h + 0.18));
+      if (s == _brickScale[i]) continue;
+      _brickScale[i] = s;
+      _bricks.setInstanceTransform(i, _brickM(plan.cellX[i], plan.cellY[i], 0, s));
+    }
+    _wallHidden = false;
   }
 
   // ── Celebrate ─────────────────────────────────────────────────────────────
@@ -781,8 +883,8 @@ class Site3D {
   void _celebrate(Job j, double t, double dt, double night) {
     final u = j.since(t);
     final len = j.phaseLen;
-    // Smooth letters: one after another they burst into the palette with a
-    // little hop, then glow in a travelling wave.
+    // The painted letters: one after another a little hop, then a festive
+    // sheen travelling along (paint catching the lights, not a glow).
     for (var i = 0; i < _letters.length; i++) {
       final l = _letters[i];
       if (!identical(l.node.mesh, l.full)) l.node.mesh = l.full;
@@ -791,10 +893,7 @@ class Site3D {
       final hop = math.sin(on * math.pi) * (1 - on * 0.3);
       l.node.place((m) => setTrs(m, l.at.x, l.at.y + 0.35 * hop, l.at.z, s: 1 + 0.1 * hop));
       final wave = 0.5 + 0.5 * math.sin(u * 3.2 - i * 0.9);
-      final cream = _cream;
-      l.mat.baseColorFactor = cream + (l.hue * 0.8 - cream) * on;
-      l.mat.emissiveFactor = l.hue;
-      l.mat.emissiveStrength = on * (0.3 + 0.9 * wave) * (1 - 0.5 * seg(u, len - 2.5, len)) + (1 - on) * 0.15;
+      _paintFull(l, night, on * wave * (0.06 + 0.1 * night) * (1 - seg(u, len - 2.5, len)));
     }
     fx.fireworks(u, wallWidth, wallHeight, j.serial, _nameShapes, _scriptShapes);
     fx.confettiShow(u, wallWidth, j.serial);
@@ -832,7 +931,8 @@ class Site3D {
     for (final l in _letters) {
       l.node.visible = false;
     }
-    if (plan == null) {
+    final fp = _finishPlan;
+    if (plan == null || fp == null) {
       _idleCrane(vm.Vector3(wallWidth / 2 + 4, 12, -1), t, dt, night);
       return;
     }
@@ -844,48 +944,50 @@ class Site3D {
       order.sort((a, c) => _falls![a].landAt(b).compareTo(_falls![c].landAt(b)));
       _landOrder = order;
       impactAt = j.phaseStart + pre + sw.firstHit;
+      _swaps = [for (final l in plan.letters.letters) sw.passTime((l.col1 + 1 - plan.r.cols / 2) * b) - 0.03];
     }
-    // Outlines → pixels again: the smooth letters turn back into bricks as
-    // a quick scan runs down the wall (not after a cut: no letters then).
-    final wasRevealed = j.cutAt == null;
-    final back = wasRevealed ? wallHeight + 0.3 - (wallHeight + 0.6) * eio(seg(u, 0.1, 1.3)) : -1.0;
-    if (wasRevealed && u < 1.5) {
-      fx.scan(back, wallWidth, b * 2.2, 1 - seg(u, 1.2, 1.5));
+    // The name stands as the finish left it (painted, unless a sample was
+    // cut short in it) until the ball gets to each letter; then, under a
+    // burst of dust, it's bricks again — painted bricks — and down they go.
+    final done = _finishedBy(j, fp);
+    if (!_bricksPainted) {
+      _bricksPainted = true;
+      if (done >= 0) _paintBricks(plan, fp, done);
+    }
+    final swaps = _swaps!;
+    if (done >= 0) {
+      _finishLetters(fp, done, night);
       for (final l in _letters) {
-        if (!identical(l.node.mesh, l.banded)) l.node.mesh = l.banded;
-        l.node.visible = true;
-        l.mat.emissiveStrength = 0.6;
-        final prims = l.banded.primitives;
-        for (var k = 0; k < prims.length; k++) {
-          final on = back < (l.rows[k] + 0.5) * b;
-          prims[k].visible = !on;
-          prims[k].castsShadow = !on;
-        }
+        if (l.wall < 0 || u >= swaps[l.wall]) l.node.visible = false;
       }
     }
     // The ball: lowered at the right, then swung through the wall.
     final ball = sw.ballAt(u);
     ballAt.setFrom(ball);
     crane.swingBall(sw.pivotAt(u), ball, t, dt, night: night);
-    // Bricks.
+    // Bricks: under their letter until it's hit, then flying.
     final falls = _falls!;
     for (var i = 0; i < falls.length; i++) {
       final f = falls[i];
-      if (!f.ever) {
+      final k = plan.letter[i];
+      if (!f.ever || (u < swaps[k] && _plastered(plan, fp, i, done))) {
         _bricks.setInstanceTransform(i, hidden);
         continue;
-      }
-      if (wasRevealed && u < 1.5) {
-        // Popping back in under the descending scan.
-        final appear = c01((back < f.p0.y + b * 0.5 ? 1.0 : 0.0));
-        if (appear <= 0) {
-          _bricks.setInstanceTransform(i, hidden);
-          continue;
-        }
       }
       _bricks.setInstanceTransform(i, f.at(u, b, _m, _q));
     }
     _wallHidden = false;
+    // The dust each letter turns to bricks under.
+    for (var k = 0; k < swaps.length && done >= 0; k++) {
+      final age = (u - swaps[k]) / 1.3;
+      if (age < 0 || age >= 1 || !_smooth[k]) continue;
+      final l = plan.letters.letters[k];
+      final x0 = (l.col0 - plan.r.cols / 2) * b, x1 = (l.col1 + 1 - plan.r.cols / 2) * b, y0 = l.row0 * b, y1 = (l.row1 + 1) * b;
+      final size = math.max(0.7, math.min(1.5, (y1 - y0) * 0.32));
+      for (var q = 0; q < 4; q++) {
+        fx.puff(lerp(x0, x1, 0.25 + 0.5 * (q % 2)), lerp(y0, y1, q < 2 ? 0.28 : 0.72), -0.35, age, size, seed: k * 5 + q, n: 2);
+      }
+    }
     // Dust where the ball hits and where bricks land.
     if (u >= sw.firstHit && u < sw.firstHit + 1.4) {
       final x = sw.ballAt(u).x;
@@ -902,8 +1004,53 @@ class Site3D {
       fx.puff(p.x, 0.05, p.z, age, 0.55, seed: i, n: 2);
     }
     // Confetti from the celebration still lies about.
-    if (wasRevealed) fx.confettiShow(u + pre + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+    if (j.cutAt == null) fx.confettiShow(u + pre + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
   }
+
+  /// When (seconds into the wrecking) the ball gets to each of the plan's
+  /// letters.
+  List<double>? _swaps;
+
+  /// How far into the finish [j] got (seconds): all of it (and dry), or as
+  /// far as a sample cut short in it had got (−1: cut short before it).
+  double _finishedBy(Job j, FinishPlan fp) {
+    if (j.cutAt == null) return fp.len + 60;
+    final plan = _plan!;
+    final revealAt = _revealSeen ?? plan.t0 + plan.len;
+    return j.phaseStart < revealAt ? -1 : math.min(j.phaseStart - revealAt, fp.len);
+  }
+
+  /// Whether brick [i] was under plaster [done] seconds into the finish.
+  bool _plastered(BuildPlan plan, FinishPlan fp, int i, double done) {
+    if (done < 0 || !_smooth[plan.letter[i]]) return false;
+    return done >= fp.plasterAt(fp.unitOf[i], (plan.r.rows - 1 - plan.r.bricks[plan.src[i]].row) ~/ fp.per);
+  }
+
+  /// The bricks take the finish's colours for the wrecking — painted, or
+  /// plastered where a sample cut short got no further — so painted bricks
+  /// fly and lie in the rubble. Once a job (the next job's bricks start
+  /// afresh).
+  void _paintBricks(BuildPlan plan, FinishPlan fp, double done) {
+    final r = plan.r;
+    for (var i = 0; i < plan.total; i++) {
+      final k = plan.letter[i];
+      if (!_smooth[k]) continue;
+      final u = fp.unitOf[i], g = (r.rows - 1 - r.bricks[plan.src[i]].row) ~/ fp.per;
+      final shade = 0.9 + 0.14 * rnd(i, 17);
+      final vm.Vector4 c;
+      if (done >= fp.paintAt(u, g) + fp.bandTime(u, g)) {
+        c = finish.paint[k];
+      } else if (done >= fp.plasterAt(u, g)) {
+        c = _dryPlaster;
+      } else {
+        continue;
+      }
+      _tint.setValues(c.x * shade, c.y * shade, c.z * shade, 1);
+      _bricks.setInstanceColor(i, _tint);
+    }
+  }
+
+  final _tint = vm.Vector4.zero();
 
   // ── The manager's visit (verdict.dart): the name stands; the ball ──────────
 
@@ -913,22 +1060,17 @@ class Site3D {
   vm.Vector3 get _parked => vm.Vector3(wallWidth / 2 + 3.5, 12.5, 2.0);
   static final _lifted = Verdict3D.ballRest + vm.Vector3(0, 3.9, 0);
 
-  /// [u] seconds into the visit ([pre] long): the smooth letters as they
-  /// were celebrated, glowing softly; the confetti; the crane waiting, then
-  /// fetching the wrecking ball from beside the yard: over it, down to it,
-  /// hooked on, lifted.
+  /// [u] seconds into the visit ([pre] long): the painted letters; the
+  /// confetti; the crane waiting, then fetching the wrecking ball from
+  /// beside the yard: over it, down to it, hooked on, lifted.
   void _verdict(Job j, double t, double dt, double night, double u, double pre) {
     _hideWall();
-    for (var i = 0; i < _letters.length; i++) {
-      final l = _letters[i];
+    for (final l in _letters) {
       if (!identical(l.node.mesh, l.full)) l.node.mesh = l.full;
       l.node
         ..visible = true
         ..place((m) => setTrs(m, l.at.x, l.at.y, l.at.z));
-      l.mat
-        ..baseColorFactor = l.hue * 0.8
-        ..emissiveFactor = l.hue
-        ..emissiveStrength = 0.25 + 0.15 * (0.5 + 0.5 * math.sin(u * 1.6 - i * 0.9));
+      _paintFull(l, night, 0);
     }
     fx.confettiShow(u + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
     final g = Verdict3D.ballRest;
@@ -1080,18 +1222,30 @@ class Site3D {
 }
 
 class _Letter {
-  _Letter(this.node, this.full, this.banded, this.rows, this.mat, this.hue, this.at, this.per);
+  _Letter(this.node, this.full, this.pieced, this.pieces, this.mat, this.paint, this.at, this.wall);
   final Node node;
-
-  /// Brick rows per band.
-  final int per;
   final vm.Vector3 at;
-  final Mesh full, banded;
 
-  /// The brick row (from the bottom) of each of [banded]'s primitives.
-  final List<int> rows;
+  /// Whole, and in pieces for the finish ([pieces]' primitives).
+  final Mesh full, pieced;
+  final List<_Piece> pieces;
+
+  /// The whole letter's material, and its paint (linear).
   final PhysicallyBasedMaterial mat;
-  final vm.Vector4 hue;
+  final vm.Vector4 paint;
+
+  /// The plan's letter it is (−1: none).
+  final int wall;
+}
+
+/// A piece of a smooth letter for the finish: a band of brick rows (global
+/// band [band], [FinishPlan.per] rows each) of the finish's unit [unit],
+/// with its own material.
+class _Piece {
+  _Piece(this.prim, this.mat, this.unit, this.band);
+  final MeshPrimitive prim;
+  final PhysicallyBasedMaterial mat;
+  final int unit, band;
 }
 
 /// The wrecking ball's swing: lowered at the right of the wall, then

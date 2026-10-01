@@ -78,7 +78,7 @@ class PhotoOp {
     final p = _p = _Plan(plan, works, crew);
     if (const String.fromEnvironment('BOOTH3D_TIMES') != '') {
       String f(double v) => v.toStringAsFixed(1);
-      final c = plan.t0 + plan.len + 6;
+      final c = plan.t0 + plan.len + CityPace.reveal;
       // ignore: avoid_print
       print(
         'PLAN photo lift=${f(p.lift)} there=${f(p.out.end)} tripod=${f(p.toSpot.end)} (if the celebration starts at ${f(c)}: ready=${f(p.readyAt(c))} flash=${f(p.readyAt(c) + _flash)} back=${f(p.backAt(c))})',
@@ -536,7 +536,9 @@ class _Track {
 /// the makers' and the photographer's walks there, where everyone stands.
 class _Plan {
   _Plan(BuildPlan plan, GlyphWorks works, Crew3D crew) : serial = plan.job.serial, w = plan.width {
-    final end = plan.t0 + plan.len;
+    // (As the painting finishes: the reveal's last seconds, as long before
+    // the celebration as when it was the booth's.)
+    final end = plan.t0 + plan.len + CityPace.reveal - phaseSeconds[Phase.reveal]!;
     final d = works.trayLen / 2 + 0.17;
     // To their ends of the tray on the stand (once done with their letters).
     for (var i = 0; i < 2; i++) {

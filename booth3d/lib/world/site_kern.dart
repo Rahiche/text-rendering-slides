@@ -70,15 +70,15 @@ class Kern3D {
     _n++;
   }
 
-  /// Poses the props for [j]'s build at [t] ([scanY]: the reveal's scan
-  /// plane, which takes the skids with the bricks), puffs the dust into
-  /// [fx] and fills [caption].
-  void update(BuildPlan? plan, Job j, double t, Fx3D fx, {double scanY = -1}) {
+  /// Poses the props for [j]'s build at [t] ([skidGone]: when, in the
+  /// finish, the plaster covers each letter's foot and its skid goes),
+  /// puffs the dust into [fx] and fills [caption].
+  void update(BuildPlan? plan, Job j, double t, Fx3D fx, {double Function(int letter)? skidGone}) {
     _n = 0;
     caption.show = 0;
     final building = j.phase == Phase.intake || j.phase == Phase.build;
     if (plan != null && (building || (j.phase == Phase.reveal && j.cutAt == null))) {
-      _skids(plan, t, scanY);
+      _skids(plan, t, building ? null : skidGone);
       final st = building ? plan.stepAt(t) : null;
       if (st != null) _tape(plan, st, t, fx);
     }
@@ -90,7 +90,7 @@ class Kern3D {
   }
 
   /// A steel skid under each letter from just before its first brick.
-  void _skids(BuildPlan plan, double t, double scanY) {
+  void _skids(BuildPlan plan, double t, double Function(int letter)? gone) {
     final b = plan.b, half = plan.width / 2;
     for (var k = 0; k < plan.letterCount; k++) {
       final first = plan.layAt(plan.letterStart[k]);
@@ -98,7 +98,7 @@ class Kern3D {
       if (pop <= 0) break;
       final l = plan.letters.letters[k];
       final y = l.row0 * b - 0.03;
-      if (scanY >= 0 && scanY > y + 0.1) continue;
+      if (gone != null && t >= gone(k)) continue;
       final x0 = l.col0 * b - half - 0.12, x1 = (l.col1 + 1) * b - half + 0.12;
       final off = plan.offsetAt(k, t), s = eo(pop);
       final cx = (x0 + x1) / 2 + off, w = (x1 - x0) * s;

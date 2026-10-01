@@ -1,15 +1,14 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter_scene/gpu.dart' as gpu show SamplerAddressMode;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/booth/craft/extrude.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 /// Geometry helpers for the build site: beams and boxes merged into one mesh
 /// (lattice masts, trusses), a hard-hat dome, glyph meshes sliced into
-/// horizontal bands (for the reveal), a gradient texture, and
-/// allocation-free transforms for the per-frame loops.
+/// horizontal bands and strips (for the finish), and allocation-free
+/// transforms for the per-frame loops.
 
 /// Collects flat-shaded quads into one mesh (one draw for a whole truss).
 class MeshBatch {
@@ -186,15 +185,20 @@ MeshGeometry domeGeometry({double radius = 0.5, int segments = 18, int rings = 6
 /// cuts[k-1] ≤ y < cuts[k] (the first band is open below, the last above).
 /// Bands with nothing in them are null. Normals and uvs are interpolated
 /// along the cut edges, so the pieces put back together are the letter.
-List<MeshGeometry?> sliceGlyph(GlyphMesh m, List<double> cuts) {
-  final bands = cuts.length + 1;
-  final pos = List.generate(bands, (_) => <double>[]);
-  final nor = List.generate(bands, (_) => <double>[]);
-  final uvs = List.generate(bands, (_) => <double>[]);
+List<MeshGeometry?> sliceGlyph(GlyphMesh m, List<double> cuts) => sliceGlyphGrid(m, const [], cuts).first;
+
+/// [m] cut into a grid: vertical strips at [xCuts] and, within each, the
+/// horizontal bands of [sliceGlyph] at [yCuts] (both ascending, in the
+/// mesh's units). Piece [s][k] is strip s's band k (null when empty).
+List<List<MeshGeometry?>> sliceGlyphGrid(GlyphMesh m, List<double> xCuts, List<double> yCuts) {
+  final strips = xCuts.length + 1, bands = yCuts.length + 1;
+  final pos = List.generate(strips * bands, (_) => <double>[]);
+  final nor = List.generate(strips * bands, (_) => <double>[]);
+  final uvs = List.generate(strips * bands, (_) => <double>[]);
   final p = m.positions, n = m.normals, uv = m.uvs, idx = m.indices;
-  int bandOf(double y) {
+  int cellOf(List<double> cuts, double v) {
     var k = 0;
-    while (k < cuts.length && y >= cuts[k]) {
+    while (k < cuts.length && v >= cuts[k]) {
       k++;
     }
     return k;
@@ -203,78 +207,88 @@ List<MeshGeometry?> sliceGlyph(GlyphMesh m, List<double> cuts) {
   // A polygon vertex: x y z nx ny nz u v.
   List<double> vert(int i) => [p[3 * i], p[3 * i + 1], p[3 * i + 2], n[3 * i], n[3 * i + 1], n[3 * i + 2], uv[2 * i], uv[2 * i + 1]];
   List<double> mix(List<double> a, List<double> b, double f) => [for (var k = 0; k < 8; k++) a[k] + (b[k] - a[k]) * f];
-  // Keeps the part of [poly] with y ≥ c (above) or y ≤ c (below).
-  List<List<double>> clip(List<List<double>> poly, double c, bool above) {
+  // Keeps the part of [poly] with coordinate [axis] (0 x, 1 y) ≥ c (above)
+  // or ≤ c (below).
+  List<List<double>> clip(List<List<double>> poly, double c, bool above, int axis) {
     final out = <List<double>>[];
     for (var i = 0; i < poly.length; i++) {
       final a = poly[i], b = poly[(i + 1) % poly.length];
-      final ia = above ? a[1] >= c : a[1] <= c;
-      final ib = above ? b[1] >= c : b[1] <= c;
+      final ia = above ? a[axis] >= c : a[axis] <= c;
+      final ib = above ? b[axis] >= c : b[axis] <= c;
       if (ia) out.add(a);
       if (ia != ib) {
-        final f = (c - a[1]) / (b[1] - a[1]);
+        final f = (c - a[axis]) / (b[axis] - a[axis]);
         out.add(mix(a, b, f));
       }
     }
     return out;
   }
 
-  void emit(int k, List<List<double>> poly) {
+  void emit(int cell, List<List<double>> poly) {
     for (var i = 1; i + 1 < poly.length; i++) {
       for (final v in [poly[0], poly[i], poly[i + 1]]) {
         final l = math.sqrt(v[3] * v[3] + v[4] * v[4] + v[5] * v[5]);
-        pos[k].addAll([v[0], v[1], v[2]]);
-        nor[k].addAll(l == 0 ? [0.0, 0.0, 1.0] : [v[3] / l, v[4] / l, v[5] / l]);
-        uvs[k].addAll([v[6], v[7]]);
+        pos[cell].addAll([v[0], v[1], v[2]]);
+        nor[cell].addAll(l == 0 ? [0.0, 0.0, 1.0] : [v[3] / l, v[4] / l, v[5] / l]);
+        uvs[cell].addAll([v[6], v[7]]);
       }
+    }
+  }
+
+  // The span of [poly] along [axis].
+  (double, double) span(List<List<double>> poly, int axis) {
+    var lo = poly[0][axis], hi = lo;
+    for (final v in poly) {
+      lo = math.min(lo, v[axis]);
+      hi = math.max(hi, v[axis]);
+    }
+    return (lo, hi);
+  }
+
+  // [poly] (convex) into the bands of strip [s].
+  void bandsOf(int s, List<List<double>> poly) {
+    final (lo, hi) = span(poly, 1);
+    final k0 = cellOf(yCuts, lo), k1 = cellOf(yCuts, hi);
+    if (k0 == k1) {
+      emit(s * bands + k0, poly);
+      return;
+    }
+    for (var k = k0; k <= k1; k++) {
+      var part = poly;
+      if (k > 0) part = clip(part, yCuts[k - 1], true, 1);
+      if (part.length >= 3 && k < yCuts.length) part = clip(part, yCuts[k], false, 1);
+      if (part.length >= 3) emit(s * bands + k, part);
     }
   }
 
   for (var t = 0; t + 2 < idx.length; t += 3) {
     final tri = [vert(idx[t]), vert(idx[t + 1]), vert(idx[t + 2])];
-    final lo = math.min(tri[0][1], math.min(tri[1][1], tri[2][1]));
-    final hi = math.max(tri[0][1], math.max(tri[1][1], tri[2][1]));
-    final k0 = bandOf(lo), k1 = bandOf(hi);
-    if (k0 == k1) {
-      emit(k0, tri);
+    final (lo, hi) = span(tri, 0);
+    final s0 = cellOf(xCuts, lo), s1 = cellOf(xCuts, hi);
+    if (s0 == s1) {
+      bandsOf(s0, tri);
       continue;
     }
-    for (var k = k0; k <= k1; k++) {
-      var poly = tri;
-      if (k > 0) poly = clip(poly, cuts[k - 1], true);
-      if (poly.length >= 3 && k < cuts.length) poly = clip(poly, cuts[k], false);
-      if (poly.length >= 3) emit(k, poly);
+    for (var s = s0; s <= s1; s++) {
+      var part = tri;
+      if (s > 0) part = clip(part, xCuts[s - 1], true, 0);
+      if (part.length >= 3 && s < xCuts.length) part = clip(part, xCuts[s], false, 0);
+      if (part.length >= 3) bandsOf(s, part);
     }
   }
   return [
-    for (var k = 0; k < bands; k++)
-      pos[k].isEmpty
-          ? null
-          : MeshGeometry.fromArrays(
-              positions: Float32List.fromList(pos[k]),
-              normals: Float32List.fromList(nor[k]),
-              texCoords: Float32List.fromList(uvs[k]),
-            ),
+    for (var s = 0; s < strips; s++)
+      [
+        for (var k = 0; k < bands; k++)
+          pos[s * bands + k].isEmpty
+              ? null
+              : MeshGeometry.fromArrays(
+                  positions: Float32List.fromList(pos[s * bands + k]),
+                  normals: Float32List.fromList(nor[s * bands + k]),
+                  texCoords: Float32List.fromList(uvs[s * bands + k]),
+                ),
+      ],
   ];
-}
-
-/// A gradient along v (opaque at v = 0 → clear at v = 1) in [r] [g] [b],
-/// for glowing sheets.
-Texture2D gradientTexture({int r = 255, int g = 255, int b = 255, double power = 1.6}) {
-  const w = 4, h = 64;
-  final px = Uint8List(w * h * 4);
-  for (var y = 0; y < h; y++) {
-    // Row 0 is v = 0.
-    final a = math.pow(1 - y / (h - 1), power).toDouble();
-    for (var x = 0; x < w; x++) {
-      final i = (y * w + x) * 4;
-      px[i] = r;
-      px[i + 1] = g;
-      px[i + 2] = b;
-      px[i + 3] = (255 * a).round();
-    }
-  }
-  return Texture2D.fromPixels(px, w, h, sampling: const TextureSampling(addressMode: gpu.SamplerAddressMode.clampToEdge));
 }
 
 // ── Allocation-free transforms ──────────────────────────────────────────────

@@ -9,6 +9,7 @@ import 'layer.dart';
 import 'layers/ambient.dart';
 import 'layers/factory.dart';
 import 'layers/site.dart';
+import 'layers/workshop.dart';
 import 'layout.dart';
 import 'model.dart';
 import 'platform.dart';
@@ -31,10 +32,17 @@ class BoothScene extends StatefulWidget {
 }
 
 class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateMixin {
-  // Back to front.
-  final List<BoothLayer> _layers = [AmbientLayer(), FactoryLayer(), SiteLayer()];
-  late final List<CustomPainter> _painters;
-  late final List<CustomPainter> _fronts;
+  // Back to front. The city is always there; the rest depends on how the
+  // current name is being built.
+  final _ambient = AmbientLayer();
+  final Map<BuildMode, List<BoothLayer>> _byMode = {
+    BuildMode.bricks: [FactoryLayer(), SiteLayer()],
+    BuildMode.craft: [WorkshopLayer()],
+  };
+  BuildMode? _active;
+  List<BoothLayer> _layers = const [];
+  List<CustomPainter> _painters = const [];
+  List<CustomPainter> _fronts = const [];
   Ticker? _ticker;
   Duration _last = Duration.zero;
 
@@ -45,11 +53,8 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     final m = widget.model;
-    for (final l in _layers) {
-      if (l.system case final s?) m.systems.add(s);
-    }
-    _painters = [for (final l in _layers) l.painter(m)];
-    _fronts = [for (final l in _layers) ?l.foreground(m)];
+    _activate(m.job?.mode ?? m.mode);
+    m.addListener(_onModel);
     if (widget.live) {
       _ticker = createTicker((elapsed) {
         var dt = (elapsed - _last).inMicroseconds / 1e6;
@@ -66,12 +71,37 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
     HardwareKeyboard.instance.addHandler(_onKey);
   }
 
+  /// Shows the layers for [mode] and steps only their simulations.
+  void _activate(BuildMode mode) {
+    if (_active == mode) return;
+    final m = widget.model;
+    for (final l in _layers) {
+      if (l.system case final s?) m.systems.remove(s);
+    }
+    _active = mode;
+    _layers = [_ambient, ..._byMode[mode]!];
+    for (final l in _layers) {
+      if (l.system case final s?) m.systems.add(s);
+    }
+    _painters = [for (final l in _layers) l.painter(m)];
+    _fronts = [for (final l in _layers) ?l.foreground(m)];
+  }
+
+  void _onModel() {
+    final mode = widget.model.job?.mode;
+    if (mode != null && mode != _active) setState(() => _activate(mode));
+  }
+
   @override
   void dispose() {
+    widget.model.removeListener(_onModel);
     HardwareKeyboard.instance.removeHandler(_onKey);
     _ticker?.dispose();
-    for (final l in _layers) {
-      l.dispose();
+    _ambient.dispose();
+    for (final ls in _byMode.values) {
+      for (final l in ls) {
+        l.dispose();
+      }
     }
     super.dispose();
   }
@@ -87,6 +117,10 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
       widget.model.skip();
     } else if (key == LogicalKeyboardKey.backspace) {
       widget.model.dropLast();
+    } else if (key == LogicalKeyboardKey.keyM) {
+      // Factory ↔ Workshop, from the next name on.
+      final m = widget.model;
+      m.mode = m.mode == BuildMode.bricks ? BuildMode.craft : BuildMode.bricks;
     } else if (key == LogicalKeyboardKey.keyF) {
       BoothPlatform.toggleFullScreen();
     } else if (key == LogicalKeyboardKey.arrowUp) {

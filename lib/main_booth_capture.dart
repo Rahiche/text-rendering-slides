@@ -16,7 +16,7 @@ import 'booth/scene.dart';
 ///   --dart-define=BOOTH_NAMES=Ana,田中太郎   names typed at t=0 (else samples)
 ///   --dart-define=BOOTH_TAG=x               output folder name
 void main() {
-  final model = BoothModel();
+  final model = BoothModel()..mode = initialBuildMode();
   const names = String.fromEnvironment('BOOTH_NAMES');
   final key = GlobalKey();
   runApp(boothMaterialApp(BoothScene(model: model, canvasKey: key, live: false)));

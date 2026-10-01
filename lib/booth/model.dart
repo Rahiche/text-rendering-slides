@@ -2,8 +2,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import 'craft/plan.dart';
 import 'names.dart';
 import 'raster.dart';
+
+/// How names are built.
+enum BuildMode {
+  /// Name Factory: the whole name rasterized into bricks, laid bottom-up.
+  bricks,
+
+  /// Name Workshop: one character at a time, each in a different craft.
+  craft,
+}
 
 /// The stages one name goes through, in order. Then the next name starts.
 enum Phase {
@@ -48,7 +58,33 @@ const phaseSeconds = {
 
 /// One name, from the queue to the rubble.
 class Job {
-  Job(this.name, {required this.serial, required this.submittedAt, this.sample = false});
+  Job(
+    this.name, {
+    required this.serial,
+    required this.submittedAt,
+    this.sample = false,
+    this.mode = BuildMode.bricks,
+  });
+
+  final BuildMode mode;
+
+  /// The workshop's plan ([BuildMode.craft]), ready after intake.
+  CraftPlan? plan;
+
+  /// Build progress when the build was cut short (a sample giving way).
+  double? cutFrac;
+
+  bool get ready => mode == BuildMode.craft ? plan != null : raster != null;
+
+  /// 0..1 through the build (0 during intake, 1 once built).
+  double buildProgress(double t) {
+    if (cutFrac case final f?) return f;
+    return switch (phase) {
+      Phase.intake => 0,
+      Phase.build => progress(t),
+      _ => 1,
+    };
+  }
 
   final String name;
   final int serial;
@@ -151,6 +187,9 @@ class BoothModel extends ChangeNotifier {
   /// Total names ever submitted (for "#12 today").
   int submitted = 0;
 
+  /// How the next names are built (the current one keeps its mode).
+  BuildMode mode = BuildMode.bricks;
+
   final systems = <BoothSystem>[];
 
   /// Called after a real name finishes (to persist history).
@@ -201,6 +240,7 @@ class BoothModel extends ChangeNotifier {
         j.sample &&
         (j.phase == Phase.intake || j.phase == Phase.build || j.phase == Phase.reveal)) {
       j.cutAt = j.laid(t);
+      j.cutFrac = j.buildProgress(t);
       _enter(j, Phase.demolish);
     } else if (j != null && j.sample && j.phase == Phase.celebrate) {
       _enter(j, Phase.demolish);
@@ -214,6 +254,7 @@ class BoothModel extends ChangeNotifier {
     final j = job;
     if (j == null || j.phase == Phase.demolish || j.phase == Phase.cleanup) return;
     j.cutAt = j.laid(t);
+    j.cutFrac = j.buildProgress(t);
     _enter(j, Phase.demolish);
     notifyListeners();
   }
@@ -234,7 +275,7 @@ class BoothModel extends ChangeNotifier {
   }
 
   Job _startNext() {
-    final next = queue.isNotEmpty
+    var next = queue.isNotEmpty
         ? queue.removeAt(0)
         : Job(
             sampleNames[_sample++ % sampleNames.length],
@@ -242,9 +283,31 @@ class BoothModel extends ChangeNotifier {
             submittedAt: t,
             sample: true,
           );
-    job = next;
-    next.startedAt = t;
-    _enter(next, Phase.intake);
+    if (next.mode != mode) {
+      next = Job(
+        next.name,
+        serial: next.serial,
+        submittedAt: next.submittedAt,
+        sample: next.sample,
+        mode: mode,
+      );
+    }
+    final job = next;
+    this.job = job;
+    job.startedAt = t;
+    _enter(job, Phase.intake);
+    if (job.mode == BuildMode.craft) {
+      final rush = 1 + 0.22 * math.min(queue.length, 6);
+      _pending = CraftPlan.of(job.name).then((p) {
+        job.plan = p;
+        job.buildLen = p.nominal / rush * (job.sample ? 0.7 : 1);
+        if (job.phase == Phase.intake) {
+          job.buildStart = math.max(t, job.phaseStart + job.phaseLen);
+        }
+        _pending = null;
+      });
+      return job;
+    }
     _pending = NameRaster.of(next.name).then((r) {
       next.raster = r;
       next.buildLen = _buildLenFor(r.bricks.length, queue.length) * (next.sample ? 0.7 : 1);
@@ -260,7 +323,7 @@ class BoothModel extends ChangeNotifier {
     if (j.since(t) < j.phaseLen) return;
     switch (j.phase) {
       case Phase.intake:
-        if (j.raster == null) return; // still rasterizing
+        if (!j.ready) return; // still rasterizing / planning
         _enter(j, Phase.build);
       case Phase.build:
         _enter(j, Phase.reveal);

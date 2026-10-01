@@ -15,7 +15,7 @@ class BoothApp extends StatefulWidget {
 }
 
 class _BoothAppState extends State<BoothApp> {
-  final _model = BoothModel();
+  final _model = BoothModel()..mode = initialBuildMode();
   final _store = createStore();
   final _history = <BuiltName>[];
 
@@ -63,3 +63,15 @@ Widget boothMaterialApp(Widget home) => MaterialApp(
     ),
   ),
 );
+
+/// `--dart-define=BOOTH_MODE=craft`, `?mode=craft` or a `/workshop/` URL
+/// start in the Name Workshop; otherwise the Name Factory.
+BuildMode initialBuildMode() {
+  const define = String.fromEnvironment('BOOTH_MODE');
+  final uri = Uri.base;
+  final craft =
+      define == 'craft' ||
+      uri.queryParameters['mode'] == 'craft' ||
+      uri.pathSegments.contains('workshop');
+  return craft ? BuildMode.craft : BuildMode.bricks;
+}

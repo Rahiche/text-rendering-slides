@@ -18,7 +18,8 @@ void main() {
     return;
   }
   // The conference-stall loop: /booth/ or ?booth.
-  if (Uri.base.pathSegments.contains('booth') || Uri.base.queryParameters.containsKey('booth')) {
+  if (Uri.base.pathSegments.any((s) => s == 'booth' || s == 'workshop') ||
+      Uri.base.queryParameters.containsKey('booth')) {
     runApp(const BoothApp());
     return;
   }

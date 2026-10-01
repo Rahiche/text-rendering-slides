@@ -246,9 +246,9 @@ class Director {
     final fitR = fit(w, h, 40);
     switch (kind) {
       case 1:
-        // The builders up close, three-quarters, on the active stretch.
+        // The builders up close, three-quarters, on the letter going up.
         final side = (n + j.serial).isEven ? -1.0 : 1.0;
-        final x = side * w * lerp(0.2, 0.08, k);
+        final x = site.activeX + side * lerp(0.9, 0.3, k);
         final tg = vm.Vector3(x, level * 0.7 + 0.4, 0.4);
         return Shot(orbit(tg, side * 0.32, fitR * 0.72, 2.8), tg, fov: 40, settle: 2.6);
       case 2:

@@ -90,20 +90,22 @@ class CitySigns {
     fontVariations: const [FontVariation('wght', 700)],
   );
 
+  /// The words the signs draw, per script: the web fetches their fonts
+  /// before the city is built (the world's warm-up, all at once).
+  static List<(String, TextStyle)> get fontRuns => [
+    for (final locale in [null, 'ja', 'zh', 'ko'])
+      if ([
+            for (final (w, _, l) in _words)
+              if (l == locale) w,
+            if (locale == 'ja') ...[for (final (w, _) in _blades) w, '工事中', '安全第一'],
+          ]
+          case final words when words.isNotEmpty)
+        (words.join(' '), TextStyle(fontFamily: BP.display, fontSize: 40, locale: locale == null ? null : Locale(locale))),
+  ];
+
   Future<void> init(List<({vm.Vector3 at, double rotY, double width})> roofs) async {
-    // Web: wait for the fallback fonts these words need (signs are drawn once).
-    for (final locale in [null, 'ja', 'zh', 'ko']) {
-      final words = [
-        for (final (w, _, l) in _words)
-          if (l == locale) w,
-        if (locale == 'ja') ...[for (final (w, _) in _blades) w, '工事中', '安全第一'],
-      ];
-      if (words.isEmpty) continue;
-      await awaitFallbackFonts(
-        words.join(' '),
-        style: TextStyle(fontFamily: BP.display, fontSize: 40, locale: locale == null ? null : Locale(locale)),
-      );
-    }
+    // Web: the fallback fonts these words need (signs are drawn once).
+    await awaitFallbackFontsAll(fontRuns);
     _swatches = swatchTexture([for (final c in _palette) lin3(c)]);
     for (var h = 0; h < 4; h++) {
       _habits.add(_glowing(0.35));

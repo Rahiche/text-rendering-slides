@@ -12,7 +12,9 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:text_slides/deck/theme.dart';
 
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
+import 'event_badge.dart';
 import 'kern_chip.dart';
+import 'loading.dart';
 import 'perf.dart';
 import 'photo_chip.dart';
 import 'quality.dart';
@@ -203,6 +205,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
           KernChip(model: model, caption: world.site.kern.caption),
           WorksChip(model: model, caption: world.site.works.caption),
           PhotoChip(model: model, cue: world.site.photo.cue),
+          if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
+          const EventBadge(),
         ],
       ),
     );

@@ -9,6 +9,7 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 
 import '../tuning.dart';
 import 'city.dart';
+import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'life.dart';
 import 'site.dart';
@@ -27,37 +28,46 @@ class World3D {
   bool ready = false;
   bool _skipped = false;
 
+  /// What's being got ready, for the loading screen: 'fonts' (the web),
+  /// 'city', 'people'; [ready] once done.
+  final stage = ValueNotifier<String>('');
+
   Future<void> init() async {
     await Scene.initializeStaticResources();
     scene.antiAliasingMode = Tuning.aa;
     EnvironmentMap.radianceCubeSize = Tuning.cube;
-    if (kIsWeb) await _warmUpFonts();
+    if (kIsWeb) {
+      stage.value = 'fonts';
+      await _warmUpFonts();
+    }
+    stage.value = 'city';
     sky.init();
     site.init();
     typing.init();
     await city.init();
+    stage.value = 'people';
     await life.init();
     ready = true;
   }
 
   /// The web has no system CJK/Arabic/… fonts: Flutter downloads Noto
-  /// fallbacks on first use. The city's glyph towers and signs are built once,
-  /// so fetch every script they use before building (a cold page load can
-  /// take a few seconds); names typed later wait for their own glyphs.
+  /// fallbacks on first use. What's drawn once (the glyph towers, the signs,
+  /// the props' and the factory's lettering, the blueprint) needs every
+  /// script it uses first, so fetch them all at once, in one wait (a cold
+  /// page load takes a few seconds); names typed later wait for their own.
   Future<void> _warmUpFonts() async {
     const ja = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
         'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンー'
-        '日目月高自門凸本字語書店活字印刷喫茶文具工事中安全第一完成名前街田中山川';
+        '日目月高自門凸本字語書店活字印刷喫茶文具工事中安全第一完成名前街田中山川'
+        '喫煙所 あきかん 文字工場 鋳造 切削 書体見本 文字列 画面 次の建物 記念写真 はい、チーズ！ 字間';
     const world = 'ب ع ا مرحبا ש שלום क ह नमस्ते ก สวัสดี 한 Ж Я Привет Ω λ Γεια σου ¶ Ⅲ ß ñ ♻ ♥';
-    for (final (text, locale) in [(ja, 'ja'), (world, null), ('你好', 'zh'), ('안녕', 'ko')]) {
-      await awaitFallbackFonts(
-        text,
-        style: TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale)),
-        firstWait: const Duration(seconds: 4),
-        quiet: const Duration(milliseconds: 700),
-        max: const Duration(seconds: 15),
-      );
-    }
+    TextStyle style(String? locale) => TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale));
+    await awaitFallbackFontsAll(
+      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...CitySigns.fontRuns],
+      firstWait: const Duration(seconds: 4),
+      quiet: const Duration(milliseconds: 700),
+      max: const Duration(seconds: 15),
+    );
   }
 
   /// Call once per frame after stepping the model.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'booth/booth_app.dart';
 import 'deck/deck.dart';
 import 'deck/theme.dart';
 import 'probe/slug_probe.dart';
@@ -14,6 +15,11 @@ void main() {
   // compare/index.html embeds `?probe=slug` to show Text vs SlugText alone.
   if (Uri.base.queryParameters['probe'] == 'slug') {
     runApp(const SlugProbeApp());
+    return;
+  }
+  // The conference-stall loop: /booth/ or ?booth.
+  if (Uri.base.pathSegments.contains('booth') || Uri.base.queryParameters.containsKey('booth')) {
+    runApp(const BoothApp());
     return;
   }
   runApp(const SlidesApp());

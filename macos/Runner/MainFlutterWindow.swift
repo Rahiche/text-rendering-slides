@@ -2,6 +2,8 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  static var awake: NSObjectProtocol?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
@@ -33,6 +35,26 @@ class MainFlutterWindow: NSWindow {
     }
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+
+    // The booth app (lib/booth/platform.dart): keep the display awake, and
+    // toggle full screen from an operator shortcut.
+    let booth = FlutterMethodChannel(
+      name: "booth", binaryMessenger: flutterViewController.engine.binaryMessenger)
+    booth.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "keepAwake":
+        if MainFlutterWindow.awake == nil {
+          MainFlutterWindow.awake = ProcessInfo.processInfo.beginActivity(
+            options: [.idleDisplaySleepDisabled, .userInitiated], reason: "Booth display")
+        }
+        result(nil)
+      case "toggleFullScreen":
+        self?.toggleFullScreen(nil)
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
 
     super.awakeFromNib()
   }

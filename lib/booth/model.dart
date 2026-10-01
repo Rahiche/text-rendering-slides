@@ -1,0 +1,297 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+
+import 'names.dart';
+import 'raster.dart';
+
+/// The stages one name goes through, in order. Then the next name starts.
+enum Phase {
+  /// The factory reads the name: itemize → fonts → shape → raster → bricks.
+  intake,
+
+  /// Bricks ride the belt, the crane lifts them, builders lay them.
+  build,
+
+  /// A scan line develops the pixel wall into crisp text.
+  reveal,
+
+  /// Done: fireworks, cheering, the name on the sign.
+  celebrate,
+
+  /// Wrecking ball; bricks fall.
+  demolish,
+
+  /// Bulldozer and trucks haul the rubble back to the factory.
+  cleanup,
+}
+
+/// Bricks travel in pallets of this many.
+const palletSize = 24;
+
+/// A pallet waits at [BL.pickup] this many seconds before its first brick is
+/// laid (the crane's trip up to the wall).
+const craneLead = 6.0;
+
+/// A pallet leaves the factory's last machine this many seconds before it
+/// reaches [BL.pickup] (the belt ride).
+const beltLead = 5.0;
+
+/// Fixed phase lengths in seconds ([Phase.build] varies per name).
+const phaseSeconds = {
+  Phase.intake: 9.0,
+  Phase.reveal: 6.0,
+  Phase.celebrate: 14.0,
+  Phase.demolish: 12.0,
+  Phase.cleanup: 10.0,
+};
+
+/// One name, from the queue to the rubble.
+class Job {
+  Job(this.name, {required this.serial, required this.submittedAt, this.sample = false});
+
+  final String name;
+  final int serial;
+  final double submittedAt;
+
+  /// Built while nobody was waiting (gives way to a real name).
+  final bool sample;
+
+  NameRaster? raster;
+  Phase phase = Phase.intake;
+  double phaseStart = 0;
+  double phaseLen = phaseSeconds[Phase.intake]!;
+
+  /// Seconds the build takes (set as soon as the raster is ready, i.e.
+  /// usually during [Phase.intake]).
+  double buildLen = 0;
+
+  /// When the build starts (known once the raster is ready: the end of
+  /// intake), or null before that.
+  double? buildStart;
+
+  /// Bricks standing when the build was cut short (a sample giving way).
+  int? cutAt;
+
+  double startedAt = 0;
+
+  /// 0..1 through the current phase.
+  double progress(double t) => phaseLen <= 0 ? 1 : ((t - phaseStart) / phaseLen).clamp(0.0, 1.0);
+
+  /// Seconds since the current phase started.
+  double since(double t) => t - phaseStart;
+
+  int get total => raster?.bricks.length ?? 0;
+
+  /// How many bricks are in the wall at [t] (in [NameRaster.bricks] order).
+  int laid(double t) {
+    if (cutAt case final c?) return c;
+    switch (phase) {
+      case Phase.intake:
+        return 0;
+      case Phase.build:
+        return (total * progress(t)).floor();
+      case Phase.reveal || Phase.celebrate || Phase.demolish || Phase.cleanup:
+        return total;
+    }
+  }
+
+  /// Seconds since the job started (for the "built in m:ss" stat).
+  double age(double t) => t - startedAt;
+
+  // ── The brick schedule (shared by the factory and the site) ──────────────
+
+  /// When brick [n] (in [NameRaster.bricks] order) is set in the wall.
+  /// Null until the raster and the build timing are known.
+  double? brickTime(int n) {
+    final s = buildStart;
+    if (s == null || total == 0) return null;
+    return s + buildLen * n / total;
+  }
+
+  int get pallets => (total + palletSize - 1) ~/ palletSize;
+
+  /// When pallet [i] (bricks i·[palletSize]…) sits at [BL.pickup].
+  double? palletAtPickup(int i) {
+    final b = brickTime(i * palletSize);
+    return b == null ? null : b - craneLead;
+  }
+
+  /// When pallet [i] leaves the factory onto the belt.
+  double? palletLeavesFactory(int i) {
+    final p = palletAtPickup(i);
+    return p == null ? null : p - beltLead;
+  }
+}
+
+/// A simulation that lives next to the model (e.g. falling bricks, the
+/// crane), stepped with it so frames, fast-forward and capture agree.
+abstract class BoothSystem {
+  void update(BoothModel m, double dt);
+
+  /// Called when [job] enters [phase] (at time `m.t`).
+  void onPhase(BoothModel m, Job job, Phase phase) {}
+}
+
+/// Everything the booth scene shows. Advanced by [update]; layers read it
+/// and repaint when it notifies.
+class BoothModel extends ChangeNotifier {
+  /// Scene time in seconds.
+  double t = 0;
+
+  /// Names waiting (not including [job]).
+  final queue = <Job>[];
+
+  /// The name being built now.
+  Job? job;
+
+  /// Names built so far (oldest first), samples excluded.
+  final built = <String>[];
+
+  /// Total names ever submitted (for "#12 today").
+  int submitted = 0;
+
+  final systems = <BoothSystem>[];
+
+  /// Called after a real name finishes (to persist history).
+  void Function(BoothModel m)? onBuilt;
+
+  int _serial = 0;
+  int _sample = 0;
+  Future<void>? _pending;
+
+  /// A raster being prepared (capture waits on it).
+  Future<void>? get pending => _pending;
+
+  /// Rough wait in seconds for a name submitted now.
+  double get estimatedWait {
+    final j = job;
+    final now = j == null || j.sample ? 0.0 : _remaining(j);
+    return now + queue.length * (_overhead + _buildLenFor(700, queue.length));
+  }
+
+  static final _overhead = phaseSeconds.values.fold<double>(0, (a, b) => a + b);
+
+  double _remaining(Job j) {
+    var s = j.phaseLen - j.since(t);
+    var after = false;
+    for (final p in Phase.values) {
+      if (after) s += p == Phase.build ? j.buildLen : phaseSeconds[p]!;
+      if (p == j.phase) after = true;
+    }
+    return math.max(0, s);
+  }
+
+  /// Build time: longer names take longer; a queue speeds the crew up.
+  static double _buildLenFor(int bricks, int waiting) {
+    final base = (35 + 0.075 * bricks).clamp(50.0, 140.0);
+    return base / (1 + 0.22 * math.min(waiting, 6));
+  }
+
+  /// Submits a typed name. Returns the check result (and its queue position
+  /// via [queue] when accepted).
+  NameCheck submit(String raw) {
+    final check = checkName(raw);
+    if (check is! NameOk) return check;
+    submitted++;
+    queue.add(Job(check.name, serial: ++_serial, submittedAt: t));
+    // A sample gives way: knock it down now.
+    final j = job;
+    if (j != null &&
+        j.sample &&
+        (j.phase == Phase.intake || j.phase == Phase.build || j.phase == Phase.reveal)) {
+      j.cutAt = j.laid(t);
+      _enter(j, Phase.demolish);
+    } else if (j != null && j.sample && j.phase == Phase.celebrate) {
+      _enter(j, Phase.demolish);
+    }
+    notifyListeners();
+    return check;
+  }
+
+  /// Operator: drop the current name and go straight to demolition.
+  void skip() {
+    final j = job;
+    if (j == null || j.phase == Phase.demolish || j.phase == Phase.cleanup) return;
+    j.cutAt = j.laid(t);
+    _enter(j, Phase.demolish);
+    notifyListeners();
+  }
+
+  /// Operator: remove the most recently queued name.
+  void dropLast() {
+    if (queue.isNotEmpty) queue.removeLast();
+    notifyListeners();
+  }
+
+  void update(double dt) {
+    t += dt;
+    _advance(job ?? _startNext());
+    for (final s in systems) {
+      s.update(this, dt);
+    }
+    notifyListeners();
+  }
+
+  Job _startNext() {
+    final next = queue.isNotEmpty
+        ? queue.removeAt(0)
+        : Job(
+            sampleNames[_sample++ % sampleNames.length],
+            serial: ++_serial,
+            submittedAt: t,
+            sample: true,
+          );
+    job = next;
+    next.startedAt = t;
+    _enter(next, Phase.intake);
+    _pending = NameRaster.of(next.name).then((r) {
+      next.raster = r;
+      next.buildLen = _buildLenFor(r.bricks.length, queue.length) * (next.sample ? 0.7 : 1);
+      if (next.phase == Phase.intake) {
+        next.buildStart = math.max(t, next.phaseStart + next.phaseLen);
+      }
+      _pending = null;
+    });
+    return next;
+  }
+
+  void _advance(Job j) {
+    if (j.since(t) < j.phaseLen) return;
+    switch (j.phase) {
+      case Phase.intake:
+        if (j.raster == null) return; // still rasterizing
+        _enter(j, Phase.build);
+      case Phase.build:
+        _enter(j, Phase.reveal);
+      case Phase.reveal:
+        _enter(j, Phase.celebrate);
+      case Phase.celebrate:
+        if (!j.sample) {
+          built.add(j.name);
+          onBuilt?.call(this);
+        }
+        _enter(j, Phase.demolish);
+      case Phase.demolish:
+        _enter(j, Phase.cleanup);
+      case Phase.cleanup:
+        job = null;
+        _startNext();
+        return;
+    }
+  }
+
+  void _enter(Job j, Phase p) {
+    j.phase = p;
+    j.phaseStart = t;
+    j.phaseLen = p == Phase.build ? j.buildLen : phaseSeconds[p]!;
+    if (p == Phase.build) j.buildStart = t;
+    // A sample cut short makes way quickly.
+    if (j.cutAt case final c? when p == Phase.demolish || p == Phase.cleanup) {
+      j.phaseLen = c == 0 ? 0 : (p == Phase.demolish ? 6 : 5);
+    }
+    for (final s in systems) {
+      s.onPhase(this, j, p);
+    }
+  }
+}

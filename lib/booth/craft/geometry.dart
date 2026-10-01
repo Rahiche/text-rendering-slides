@@ -184,7 +184,8 @@ List<Contour> traceContours(int w, int h, Uint8List alpha) {
   final next = Int32List(edges)..fillRange(0, edges, -1);
   int hId(int i, int j) => (j * cw + i) * 2; // corner (i,j) → (i+1,j)
   int vId(int i, int j) => (j * cw + i) * 2 + 1; // corner (i,j) → (i,j+1)
-  // Corner (i, j) is the centre of raster pixel (i-1, j-1): (i-0.5, j-0.5).
+  // Corner (i, j) is the centre of raster pixel (i-1, j-1), i.e. raster
+  // coordinates (i-0.5, j-0.5): the padding is already accounted for.
   void ptH(int i, int j) {
     final id = hId(i, j);
     final fa = v[j * cw + i], fb = v[j * cw + i + 1];
@@ -268,8 +269,8 @@ List<Contour> traceContours(int w, int h, Uint8List alpha) {
     while (cur >= 0 && seen[cur] == 0) {
       seen[cur] = 1;
       pts
-        ..add(ex[cur] - 1) // back to raster coordinates (padding)
-        ..add(ey[cur] - 1);
+        ..add(ex[cur])
+        ..add(ey[cur]);
       cur = next[cur];
     }
     if (pts.length < 6) continue;

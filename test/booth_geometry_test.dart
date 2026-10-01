@@ -39,6 +39,13 @@ void main() {
     expect(s.maxRadius, closeTo(3, 1));
     expect(g.inkLeft, 5);
     expect(g.inkRight, 55);
+    // The outline runs along the pixel edges (x 5..55, y 7..13).
+    final xs = [for (var i = 0; i < g.contours.single.count; i++) g.contours.single.pts[2 * i]];
+    final ys = [for (var i = 0; i < g.contours.single.count; i++) g.contours.single.pts[2 * i + 1]];
+    expect(xs.reduce((a, b) => a < b ? a : b), closeTo(5, 0.6));
+    expect(xs.reduce((a, b) => a > b ? a : b), closeTo(55, 0.6));
+    expect(ys.reduce((a, b) => a < b ? a : b), closeTo(7, 0.6));
+    expect(ys.reduce((a, b) => a > b ? a : b), closeTo(13, 0.6));
     expect(g.spans.length, 6);
   });
 

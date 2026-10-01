@@ -40,29 +40,45 @@ class Life3D {
 
   /// Steps the life by [dt] (sub-stepped when fast-forwarding) and poses it
   /// for [camera] (anything right at the camera steps out of its way).
-  void update(BoothModel m, double dt, {required vm.Vector3 camera, required double wallWidth, required double night}) {
+  /// Traffic and people make way for [work] (the site's delivery truck).
+  void update(BoothModel m, double dt, {required vm.Vector3 camera, required double wallWidth, required double night, StreetWork? work}) {
     var left = dt;
     while (left > 1e-6) {
       final h = math.min(left, 0.1);
       _t = m.t - left + h;
-      _traffic.step(_t, h, m.job?.phase);
-      _people.step(_t, h, m, wallWidth);
+      _traffic.step(_t, h, m.job?.phase, work);
+      _people.step(_t, h, m, wallWidth, work);
       left -= h;
     }
     _t = m.t;
     _traffic.pose(camera, night);
-    _people.pose(_t, camera, m);
+    _people.pose(_t, camera, m, night, work);
     _signals.pose(_t, night);
     _birds.pose(_t, night);
     _blimp.pose(_t, night);
   }
 }
 
+/// Something on the city's streets that traffic and people make way for
+/// (the site's delivery truck): asked at every step of the simulation.
+abstract interface class StreetWork {
+  /// The stretch of the eastbound (else westbound) avenue lane blocked at
+  /// [t], as x from..to, or null. Cars coming up to it stop short and
+  /// follow it; cars already level with it carry on.
+  (double, double)? laneBlock(bool eastbound, double t);
+
+  /// The site gate on the front sidewalk at [t]: x from..to while the truck
+  /// is about to go or is going through it (people wait either side), or
+  /// null.
+  (double, double)? gateBusy(double t);
+}
+
 // ── Signals ─────────────────────────────────────────────────────────────────
 
 /// One 34 s cycle for both intersections: the avenue, then the side streets.
 /// People cross the avenue while it is red, the side streets while they are.
-abstract final class _Light {
+/// (The site's delivery truck times its trips by it too.)
+abstract final class TrafficLights {
   static const cycle = 34.0;
   static double _p(double t) => t % cycle;
   static bool aveGo(double t) => _p(t) < 18;
@@ -130,8 +146,8 @@ class _Signals {
     final k = 1.8 + 3.5 * night;
     _lampMat.baseColorFactor = vm.Vector4(k, k, k, 1);
     for (final h in _heads) {
-      final go = h.avenue ? _Light.aveGo(t) : _Light.sideGo(t);
-      final amber = h.avenue ? _Light.aveAmber(t) : _Light.sideAmber(t);
+      final go = h.avenue ? TrafficLights.aveGo(t) : TrafficLights.sideGo(t);
+      final amber = h.avenue ? TrafficLights.aveAmber(t) : TrafficLights.sideAmber(t);
       final which = go ? 0 : (amber ? 1 : 2);
       _lamps.setInstanceColor(h.index, which == h.kind ? _colors[h.kind] : _off);
     }
@@ -250,20 +266,29 @@ class _Traffic {
 
   /// Cars follow the one ahead and stop at red (or amber, when they can).
   /// During the site's cleanup the side streets are held so the truck can
-  /// cross them.
-  void step(double t, double dt, Phase? phase) {
+  /// cross them; the delivery truck's stretch of an avenue lane ([work]) is
+  /// kept clear.
+  void step(double t, double dt, Phase? phase, StreetWork? work) {
     final holdSides = phase == Phase.cleanup;
     for (final lane in _lanes) {
       final cars = lane.cars;
       cars.sort((a, b) => a.s.compareTo(b.s));
-      final go = lane.avenue ? _Light.aveGo(t) : (_Light.sideGo(t) && !holdSides);
-      final amber = lane.avenue ? _Light.aveAmber(t) : _Light.sideAmber(t);
+      final go = lane.avenue ? TrafficLights.aveGo(t) : (TrafficLights.sideGo(t) && !holdSides);
+      final amber = lane.avenue ? TrafficLights.aveAmber(t) : TrafficLights.sideAmber(t);
+      // Where the blocked stretch begins, along the lane (cars come from below).
+      var blockAt = double.infinity;
+      if (lane.avenue) {
+        if (work?.laneBlock(lane.dx > 0, t) case (final x0, final x1)) {
+          blockAt = lane.dx > 0 ? x0 - lane.x0 : lane.x0 - x1;
+        }
+      }
       for (var i = cars.length - 1; i >= 0; i--) {
         final c = cars[i];
         // The car ahead (the first wraps round to the last, a lap ahead).
         final ahead = i == cars.length - 1 ? cars.first : cars[i + 1];
         final aheadS = i == cars.length - 1 ? ahead.s + lane.length : ahead.s;
         var limit = aheadS - ahead.length / 2 - c.length / 2 - 2.2;
+        if (c.s + c.length / 2 < blockAt - 0.3) limit = math.min(limit, blockAt - 1.6 - c.length / 2);
         if (!go) {
           for (final stop in lane.stops) {
             final front = c.s + c.length / 2;
@@ -464,6 +489,7 @@ class _Person {
   bool hat = false;
   bool moving = false;
   bool placed = false;
+  bool guiding = false; // the corner's worker, guiding the delivery truck
   int job = 0; // workers: 0 by the wall, 1 at the corner, 2 behind the wall
   int index = 0;
 }
@@ -471,6 +497,14 @@ class _Person {
 class _People {
   final _all = <_Person>[];
   late final InstancedMesh _bodies, _heads, _hair, _legs, _arms;
+
+  /// The walk past the plaza's front (its first leg runs along the front
+  /// sidewalk, past the site gate).
+  late final _Route _front;
+
+  /// The flagman's light baton (誘導灯), lit while he guides the truck.
+  final _baton = Node(name: 'light baton');
+  late final UnlitMaterial _batonMat;
 
   void build(Scene scene) {
     final cloth = pbr(rgb(1, 1, 1), roughness: 0.8);
@@ -483,6 +517,13 @@ class _People {
     for (final m in [_bodies, _heads, _hair, _legs, _arms]) {
       scene.add(Node(name: 'people')..addComponent(InstancedMeshComponent(m)));
     }
+    _batonMat = UnlitMaterial()..baseColorFactor = vm.Vector4(4, 0.4, 0.2, 1);
+    scene.add(
+      _baton
+        ..mesh = Mesh(CylinderGeometry(bottomRadius: 0.028, topRadius: 0.028, height: 0.5, radialSegments: 8), _batonMat)
+        ..castsShadows = false
+        ..visible = false,
+    );
 
     const fx = Plan.peopleFlank, fz = Plan.peopleFront;
     final far0 = Plan.peopleFar[0], far1 = Plan.peopleFar[1];
@@ -490,7 +531,7 @@ class _People {
     const ex = Plan.streetX + Plan.streetHalf + 0.4, ix = Plan.streetX - Plan.streetHalf - 0.4;
     final routes = [
       // Round the plaza block and through the park.
-      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 31, 41, 50, 117, 125]),
+      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 26, 41, 50, 117, 125]),
       // Over the avenue at the plaza's corners and back along the far side.
       _Route([
         (ix, far1),
@@ -521,6 +562,7 @@ class _People {
       // The park's long path.
       _Route([(-0.9, Plan.parkZ0 + 1), (-0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ0 + 1)]),
     ];
+    _front = routes[0];
     const counts = [24, 14, 5, 5, 8, 8, 8];
     var seed = 0;
     for (var r = 0; r < routes.length; r++) {
@@ -548,11 +590,15 @@ class _People {
       // Leaning on the front fence, or at the plaza's edge on its flanks
       // (out of the walkers' way).
       if (front) {
-        p.homeX = s * (11.2 + 5.6 * rnd(seed, 1));
+        // (Not in front of the site gate, right of the 安全第一 banner.)
+        final r = rnd(seed, 1);
+        p.homeX = s > 0 ? (r < 0.6 ? 8.4 + 4.0 * r : 16.1 + 2.0 * (r - 0.6)) : -(11.2 + 5.6 * r);
         p.homeZ = Plan.plazaZ0 - 0.62 + 0.15 * rnd(seed, 2);
       } else {
+        // (Not in front of the vending machines on the right, nor the bench
+        // on the left.)
         p.homeX = s * (Plan.plazaX + 0.12 + 0.3 * rnd(seed, 1));
-        p.homeZ = -7.5 + 9 * rnd(seed, 2);
+        p.homeZ = s > 0 ? -4.3 + 6 * rnd(seed, 2) : -7.5 + 6 * rnd(seed, 2);
       }
       _add(p, seed);
     }
@@ -591,22 +637,23 @@ class _People {
     _all.add(p);
   }
 
-  void step(double t, double dt, BoothModel m, double wallWidth) {
+  void step(double t, double dt, BoothModel m, double wallWidth, StreetWork? work) {
+    final gate = work?.gateBusy(t);
     for (final p in _all) {
       switch (p.role) {
         case _Role.walker:
-          _walk(p, t, dt, m);
+          _walk(p, t, dt, m, gate);
         case _Role.spectator:
           p.x = p.homeX;
           p.z = p.homeZ;
           p.heading = _turn(p.heading, headingTo(-p.x, 2 - p.z), dt);
         case _Role.worker:
-          _work(p, t, dt, wallWidth, m.job?.phase);
+          _work(p, t, dt, wallWidth, m.job?.phase, gate);
       }
     }
   }
 
-  void _walk(_Person p, double t, double dt, BoothModel m) {
+  void _walk(_Person p, double t, double dt, BoothModel m, (double, double)? gate) {
     final r = p.route!;
     if (p.pause > 0) {
       p.pause -= dt;
@@ -620,8 +667,16 @@ class _People {
     for (final MapEntry(key: seg, value: avenue) in r.crossing.entries) {
       final entry = p.dir > 0 ? r.cum[seg] : r.cum[seg + 1];
       final crossesIn = p.dir > 0 ? (p.d < entry && next >= entry) : (p.d > entry && next <= entry);
-      if (crossesIn && !(avenue ? _Light.walkAve(t) : _Light.walkSide(t))) {
+      if (crossesIn && !(avenue ? TrafficLights.walkAve(t) : TrafficLights.walkSide(t))) {
         next = entry - p.dir * 0.02;
+        p.waiting = true;
+      }
+    }
+    // The site gate: wait either side while the delivery truck goes through.
+    if (gate != null && identical(r, _front) && p.d <= r.cum[1]) {
+      final a = gate.$1 - r.pts[0].$1, b = gate.$2 - r.pts[0].$1;
+      if (p.dir > 0 ? (p.d < a && next >= a) : (p.d > b && next <= b)) {
+        next = p.dir > 0 ? a - 0.02 : b + 0.02;
         p.waiting = true;
       }
     }
@@ -659,8 +714,9 @@ class _People {
     if (!p.waiting) p.heading = _turn(p.heading, headingTo(dx * p.dir, dz * p.dir), dt);
   }
 
-  /// Workers pace between two spots, stopping to look up at the work.
-  void _work(_Person p, double t, double dt, double wallWidth, Phase? phase) {
+  /// Workers pace between two spots, stopping to look up at the work. The
+  /// one at the corner guides the delivery truck through the gate.
+  void _work(_Person p, double t, double dt, double wallWidth, Phase? phase, (double, double)? gate) {
     final end = p.homeX * (wallWidth / 2 + 1.2);
     final cycle = 16 + 6 * (p.phase % 1);
     final u = ((t + p.phase * 7) % cycle) / cycle;
@@ -675,11 +731,13 @@ class _People {
       ax = hx - p.homeX * 1.2;
       az = hz + 0.9;
     } else if (p.job == 1) {
-      // By the safety banner, keeping an eye on the street.
-      hx = 14.6;
-      hz = Plan.plazaZ0 + 1.7;
-      ax = 12.4;
-      az = Plan.plazaZ0 + 2.0;
+      // By the safety banner, keeping an eye on the street (left of the
+      // gate); while the truck comes or goes, at the gate post, guiding it.
+      p.guiding = gate != null;
+      hx = gate == null ? 11.4 : gate.$1 - 0.45;
+      hz = gate == null ? Plan.plazaZ0 + 1.7 : Plan.plazaZ0 + 0.55;
+      ax = gate == null ? 9.6 : hx;
+      az = gate == null ? Plan.plazaZ0 + 2.0 : hz;
     } else if (p.job == 2) {
       // Along the back of the site.
       hx = -6;
@@ -703,7 +761,7 @@ class _People {
       p.stride += moved;
       p.heading = _turn(p.heading, headingTo(nx - p.x, nz - p.z), dt);
     } else if (p.job == 1) {
-      p.heading = _turn(p.heading, headingTo(0.2, -1), dt); // faces the street
+      p.heading = _turn(p.heading, p.guiding ? headingTo(0.8, -0.6) : headingTo(0.2, -1), dt); // faces the street
     } else {
       p.heading = _turn(p.heading, headingTo(-nx, -0.4 - nz), dt); // faces the wall
     }
@@ -718,7 +776,8 @@ class _People {
     return from + d * (1 - math.exp(-dt * 6));
   }
 
-  void pose(double t, vm.Vector3 camera, BoothModel m) {
+  void pose(double t, vm.Vector3 camera, BoothModel m, double night, StreetWork? work) {
+    _baton.visible = false;
     final phase = m.job?.phase;
     final cheering = phase == Phase.celebrate;
     final low = camera.y < 3.2;
@@ -738,7 +797,14 @@ class _People {
                 final jump = cheer ? math.max(0.0, math.sin(t * 7 + p.phase * 3)) * 0.28 : 0.0;
                 final swing = walking ? math.sin(p.stride / 0.62 * math.pi) * 0.55 : 0.0;
                 final bob = walking ? (math.sin(p.stride / 0.62 * math.pi)).abs() * 0.04 : 0.0;
-                pose.compute(p.x, p.z, p.heading, s, jump + bob, swing, cheer ? 2.75 + 0.25 * math.sin(t * 9 + p.phase) : null, p.role != _Role.worker ? 0 : (p.job == 1 && !p.moving ? 2.2 + 0.5 * math.sin(t * 5 + p.phase) : math.sin(t * 1.3 + p.phase) * 0.15));
+                final guide = p.guiding && !p.moving;
+                final wave = p.role != _Role.worker
+                    ? 0.0
+                    : (guide
+                          ? 1.9 + 0.75 * math.sin(t * 4.2)
+                          : (p.job == 1 && !p.moving ? 2.2 + 0.5 * math.sin(t * 5 + p.phase) : math.sin(t * 1.3 + p.phase) * 0.15));
+                pose.compute(p.x, p.z, p.heading, s, jump + bob, swing, cheer ? 2.75 + 0.25 * math.sin(t * 9 + p.phase) : null, wave);
+                if (guide && s > 0) _batonIn(p, wave, s, night, t);
                 final i = p.index;
                 setTrsY(bodies[i], pose.torso.x, pose.torso.y, pose.torso.z, p.heading, s);
                 setTrsY(heads[i], pose.head.x, pose.head.y, pose.head.z, p.heading, s);
@@ -756,6 +822,20 @@ class _People {
   }
 
   final _pose = _Pose();
+
+  /// The flagman's baton, in the hand of his waving arm (arm 1 swings about
+  /// the shoulder at 1.38 m, 0.25 to the side; the hand is ~0.6 out).
+  void _batonIn(_Person p, double angle, double s, double night, double t) {
+    final c = math.cos(p.heading), n = math.sin(p.heading);
+    final f = math.sin(angle) * 0.82, up = -math.cos(angle) * 0.82;
+    const q = 0.25;
+    final x = p.x + (c * f + n * q) * s, z = p.z + (-n * f + c * q) * s;
+    _baton
+      ..visible = true
+      ..localTransform = trs(vm.Vector3(x, (1.38 + up) * s, z), rotY: p.heading, rotZ: angle);
+    final k = 2.5 + 6 * night;
+    _batonMat.baseColorFactor = vm.Vector4(k, k * 0.12, k * 0.05, 1);
+  }
 }
 
 /// Where a figure's parts go (centres), given its place, heading and swing.

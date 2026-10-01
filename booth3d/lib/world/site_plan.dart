@@ -237,14 +237,27 @@ class BuildPlan {
   /// Layers of bricks on pallet [k] (4 × 4 per layer).
   int layers(int k) => (tripCount(k) + 15) ~/ 16;
 
-  /// Where pallet [k]'s base is at [t]: in the yard, or under the hook.
+  /// Where pallet [k]'s base is at [t]: in the yard, under the hook, or
+  /// still on its way there ([palletOnTheWay]).
   vm.Vector3 palletBase(int k, double t) {
     final at = tripAt(t);
     if (at != null && at.$1 == k && at.$2 >= 0.1 && at.$2 < 0.94) {
       return hookPath(t) - vm.Vector3(0, hookAbove(k), 0);
     }
+    if (palletOnTheWay?.call(k, t, _way) ?? false) return _way.base.clone();
     return SiteLayout.yard(k);
   }
+
+  // ── Deliveries ────────────────────────────────────────────────────────────
+
+  /// Where pallet [k] is at [t] while it's still on its way to the yard (on
+  /// the delivery truck, or swinging off it): set by the site (see
+  /// delivery.dart). It fills [out] and returns true, or returns false once
+  /// the pallet stands in its [SiteLayout.yard] slot — as it must by its
+  /// trip's pickup. The pallet's waiting bricks ride on it ([brickAt]).
+  /// Unset, every pallet starts in the yard.
+  bool Function(int k, double t, PalletPose out)? palletOnTheWay;
+  final _way = PalletPose();
 
   /// x offset of a trip's pile (two piles per zone, alternating trips).
   double pileDx(int k) => (k.isEven ? -1 : 1) * (1.6 * b + 0.07);
@@ -314,6 +327,7 @@ class BuildPlan {
       ..landing = -1
       ..scale = 1
       ..spin = 0
+      ..yaw = 0
       ..spinAxis = (i * 7) % 3;
     if (t >= lay) {
       // In the wall, with a small bounce just after landing.
@@ -367,6 +381,15 @@ class BuildPlan {
     final pickup = a + (e - a) * 0.1;
     if (t >= pickup) {
       onPallet(i, hookPath(t), out.pos);
+      return out;
+    }
+    // Still on its way to the yard (on the delivery truck): on its pallet.
+    if (palletOnTheWay?.call(k, t, _way) ?? false) {
+      palletSlotPos(_way.base, palletSlot[i], tripCount(k), out.pos);
+      _way.turn(out.pos);
+      out
+        ..yaw = _way.yaw
+        ..scale = _way.shown ? 1 : 0;
       return out;
     }
     // Waiting on its pallet in the yard, popping in as the raster arrives.
@@ -430,8 +453,30 @@ class BrickPose {
   double spin = 0;
   int spinAxis = 0;
 
+  /// Turned about y with its pallet (on the delivery truck; a quarter turn
+  /// looks the same).
+  double yaw = 0;
+
   /// 0..1 through a landing bounce, or -1.
   double landing = -1;
+}
+
+/// Where a pallet is on its way to the yard: its base centre, how it's
+/// turned (radians about y, as `setTrs`' yaw) and whether it's in view.
+class PalletPose {
+  final base = vm.Vector3.zero();
+  double yaw = 0;
+  bool shown = true;
+
+  /// Turns [p] (placed round [base] as if unturned) with the pallet.
+  void turn(vm.Vector3 p) {
+    if (yaw == 0) return;
+    final c = math.cos(yaw), s = math.sin(yaw);
+    final dx = p.x - base.x, dz = p.z - base.z;
+    p
+      ..x = base.x + dx * c + dz * s
+      ..z = base.z - dx * s + dz * c;
+  }
 }
 
 /// Interpolates two hook positions the way a tower crane moves between

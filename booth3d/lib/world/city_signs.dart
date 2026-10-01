@@ -263,7 +263,7 @@ class CitySigns {
       Node(
         name: '安全第一',
         mesh: Mesh(boardGeometry(3.6, 0.9), anzenMat),
-        localTransform: trs(vm.Vector3(11.5, 0.75, Plan.plazaZ0 - 0.39)),
+        localTransform: trs(vm.Vector3(7.6, 0.75, Plan.plazaZ0 - 0.39)), // (left of the site gate)
       ),
     );
   }

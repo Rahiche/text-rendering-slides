@@ -40,6 +40,12 @@ class City3D {
   final _floods = <SpotLight>[];
   late final PhysicallyBasedMaterial _plazaMat, _groundMat;
 
+  // The site gate in the front barriers: two leaves (a barrier, and a
+  // barrier with its post) that slide aside for the delivery truck.
+  late final InstancedMesh _posts;
+  final _gateLeaves = <(InstancedMesh, int, double)>[]; // which, index, x
+  double _gateOpen = 0;
+
   Future<void> init() async {
     _ground();
     _streets();
@@ -262,11 +268,14 @@ class City3D {
     // Safety barriers along the plaza's front: amber and navy, like a site
     // fence.
     final barrier = InstancedMesh(geometry: CuboidGeometry(vm.Vector3(1.8, 0.55, 0.14)), material: pbr(rgb(1, 1, 1), roughness: 0.5));
-    final posts = InstancedMesh(geometry: CuboidGeometry(vm.Vector3(0.1, 0.95, 0.5)), material: pbr(lin(const Color(0xFF2C3B52)), roughness: 0.6));
+    final posts = _posts = InstancedMesh(geometry: CuboidGeometry(vm.Vector3(0.1, 0.95, 0.5)), material: pbr(lin(const Color(0xFF2C3B52)), roughness: 0.6));
     for (var x = -Plan.plazaX + 1; x <= Plan.plazaX - 0.9; x += 2.0) {
       final k = (x / 2).round();
-      barrier.addInstance(trs(vm.Vector3(x, 0.62, Plan.plazaZ0 - 0.3)), color: k.isEven ? lin(BP.amber) : lin(const Color(0xFF1B2A44)));
-      posts.addInstance(trs(vm.Vector3(x - 0.95, 0.475, Plan.plazaZ0 - 0.3)));
+      final b = barrier.addInstance(trs(vm.Vector3(x, 0.62, Plan.plazaZ0 - 0.3)), color: k.isEven ? lin(BP.amber) : lin(const Color(0xFF1B2A44)));
+      final p = posts.addInstance(trs(vm.Vector3(x - 0.95, 0.475, Plan.plazaZ0 - 0.3)));
+      // The gate: the barriers at x = 12 and 14, and the post between them.
+      if ((x - 12).abs() < 0.1) _gateLeaves.add((barrier, b, x));
+      if ((x - 14).abs() < 0.1) _gateLeaves.addAll([(barrier, b, x), (posts, p, x - 0.95)]);
     }
     scene.add(Node(name: 'barriers')..addComponent(InstancedMeshComponent(barrier)));
     scene.add(Node(name: 'barrier posts')..addComponent(InstancedMeshComponent(posts)));
@@ -365,6 +374,20 @@ class City3D {
       );
       _floods.add(l);
       _lightNodes.add(Node(name: 'flood', localTransform: vm.Matrix4.translation(at))..addComponent(SpotLightComponent(l)));
+    }
+  }
+
+  /// Opens the site gate (0 shut … 1 open): its leaves step in behind the
+  /// fence and slide aside, the left one west, the right one east.
+  set gate(double open) {
+    if (open == _gateOpen) return;
+    _gateOpen = open;
+    final f = eio(open);
+    final inward = 0.24 * c01(f * 3);
+    for (final (mesh, i, x) in _gateLeaves) {
+      final dx = x < 12.5 ? -1.95 * c01((f - 0.2) / 0.8) : 1.9 * c01((f - 0.2) / 0.8);
+      final y = identical(mesh, _posts) ? 0.475 : 0.62;
+      mesh.setInstanceTransform(i, trs(vm.Vector3(x + dx, y, Plan.plazaZ0 - 0.3 + inward)));
     }
   }
 

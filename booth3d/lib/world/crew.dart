@@ -43,8 +43,9 @@ class FigurePose {
 }
 
 /// The site crew: six builders (one per stretch of wall, zone colours on
-/// their vests), the foreman with his clipboard, and the crane operator in
-/// the cab. Stylised figures (capsule body, sphere head, hard hat) drawn
+/// their vests), the foreman with his clipboard, the crane operator in the
+/// cab, and the driver who brings the bricks (posed by the delivery, see
+/// delivery.dart). Stylised figures (capsule body, sphere head, hard hat) drawn
 /// instanced, one draw per body part. Also the climbing platform the
 /// builders work on: two lattice masts and a deck that rises with the wall.
 class Crew3D {
@@ -52,12 +53,22 @@ class Crew3D {
 
   final Scene scene;
 
-  static const builders = NameRaster.zones, foreman = builders, operator = builders + 1, count = builders + 2;
+  static const builders = NameRaster.zones, foreman = builders, operator = builders + 1, driver = builders + 2, count = builders + 3;
 
   /// One vest colour per zone, as on the 2D booth's hard hats.
   static const vests = [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line];
 
-  final poses = List.generate(count, (_) => FigurePose()..rest());
+  final poses = List.generate(
+    count,
+    (i) => FigurePose()
+      ..rest()
+      ..visible = i != driver,
+  );
+
+  /// Builders the build doesn't need right now go on a break (see
+  /// crew_breaks.dart): called once builder [z] is posed for the job, it may
+  /// pose them for their break instead. Set by the site.
+  void Function(FigurePose p, int z, BuildPlan plan, double t, double floor)? offDuty;
 
   late final InstancedMesh _torso, _head, _hat, _brim, _arm, _leg, _hand, _eye, _board;
   late final InstancedMesh _deck, _bulbs;
@@ -90,8 +101,8 @@ class Crew3D {
     const skins = [Color(0xFFF1C9A5), Color(0xFFC68E63), Color(0xFF8D5A3B), Color(0xFFE8B98F), Color(0xFFAF7550), Color(0xFFF6D3B5), Color(0xFFD9A47C), Color(0xFF9C6B47)];
     const pants = Color(0xFF243650);
     for (var i = 0; i < count; i++) {
-      final vest = i < builders ? vests[i] : (i == foreman ? const Color(0xFFF4F1EA) : const Color(0xFFFF8A3D));
-      final hat = i == foreman ? const Color(0xFFFFFFFF) : const Color(0xFFFFD43B);
+      final vest = i < builders ? vests[i] : (i == foreman ? const Color(0xFFF4F1EA) : (i == driver ? const Color(0xFF2B4C7E) : const Color(0xFFFF8A3D)));
+      final hat = i == foreman ? const Color(0xFFFFFFFF) : (i == driver ? BP.line : const Color(0xFFFFD43B));
       _torso.setInstanceColor(i, lin(vest));
       _head.setInstanceColor(i, lin(skins[i % skins.length]));
       _hat.setInstanceColor(i, lin(hat));
@@ -374,12 +385,14 @@ class Crew3D {
             _watch(p, z, j, t, impact, seed, w);
           }
       }
+      if (plan != null) offDuty?.call(p, z, plan, t, floor);
       _draw(z);
     }
     _foremanPose(j, t, w, impact, trip);
     _draw(foreman);
     _operatorPose(j, t, seat, seatYaw);
     _draw(operator);
+    _draw(driver);
   }
 
   bool _onDeck(vm.Vector3 p, double w) => p.z > SiteLayout.deckZ0 && p.z < SiteLayout.deckZ1 && p.x.abs() < w / 2 + 1.0;

@@ -23,6 +23,7 @@ class World3D {
   late final life = Life3D(scene);
   final director = Director();
   bool ready = false;
+  bool _skipped = false; // TEMP debug
 
   Future<void> init() async {
     await Scene.initializeStaticResources();
@@ -60,10 +61,17 @@ class World3D {
   /// Call once per frame after stepping the model.
   void update(BoothModel m, double dt) {
     if (!ready) return;
+    const skipAt = String.fromEnvironment('BOOTH3D_SKIP_AT'); // TEMP debug
+    if (skipAt.isNotEmpty && !_skipped && m.t >= double.parse(skipAt)) {
+      _skipped = true;
+      m.skip();
+    }
     sky.update(m.t, dt);
     city.update(sky, m.t);
     site.fx.begin();
+    site.camera.setFrom(director.camera.position);
     site.update(m, dt, night: sky.night);
+    city.gate = site.delivery.gateOpen(m.t);
     typing
       ..attach(BoothUi.of(m))
       ..update(m, dt, site.fx);
@@ -72,6 +80,6 @@ class World3D {
       ..typingWeight = typing.weight
       ..night = sky.night
       ..update(m, dt, site);
-    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night);
+    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.delivery);
   }
 }

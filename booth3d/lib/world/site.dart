@@ -13,6 +13,8 @@ import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'crew.dart';
+import 'crew_breaks.dart';
+import 'delivery.dart';
 import 'kit.dart';
 import 'shot.dart';
 import 'site_crane.dart';
@@ -20,6 +22,7 @@ import 'site_fx.dart';
 import 'site_geo.dart';
 import 'site_lights.dart';
 import 'site_plan.dart';
+import 'site_props.dart';
 
 /// The name being built in the plaza.
 ///
@@ -30,7 +33,9 @@ import 'site_plan.dart';
 /// into smooth extruded letters (pixels → outlines), fireworks burst (some
 /// in the shapes of the name's own characters), confetti flies and the
 /// crane lowers a 完成！ sign; a wrecking ball swings through the wall, and
-/// a recycling truck hauls the rubble away.
+/// a recycling truck hauls the rubble away. Meanwhile a delivery truck
+/// brings the pallets (delivery.dart), and builders the build doesn't need
+/// go for a coffee, a smoke or a chat (crew_breaks.dart, site_props.dart).
 class Site3D {
   Site3D(this.scene);
 
@@ -40,6 +45,12 @@ class Site3D {
   late final crew = Crew3D(scene);
   late final fx = Fx3D(scene);
   late final lights = SiteLights(scene);
+  late final props = SiteProps(scene);
+  late final breaks = CrewBreaks(scene, fx);
+  late final delivery = Delivery3D(scene, crew, breaks);
+
+  /// Where the camera was last frame (set by the world).
+  final camera = vm.Vector3(0, 8, -30);
 
   // Every brick of the name, wherever it is (yard, crane, pile, wall…).
   late final InstancedMesh _bricks;
@@ -104,6 +115,10 @@ class Site3D {
     crew.init();
     fx.init();
     lights.init();
+    props.init();
+    breaks.init();
+    delivery.init();
+    crew.offDuty = breaks.pose;
     _buildTruck();
     _buildBanner();
     vectorizeText('Aあ字ЖΩب한कก♥').then((gs) {
@@ -233,6 +248,7 @@ class Site3D {
     _finalized = 0;
     _yardDone = false;
     _wallHidden = false;
+    _wayOn.fillRange(0, _maxPallets, false);
     impactAt = null;
     _nameShapes = [];
     _rowPass = [];
@@ -256,7 +272,9 @@ class Site3D {
     b = math.min(0.32, math.min(19.0 / r.cols, 7.6 / r.rows));
     wallWidth = r.cols * b;
     wallHeight = r.rows * b;
-    _plan = BuildPlan(j, r, b);
+    final plan = _plan = BuildPlan(j, r, b)..palletOnTheWay = delivery.palletAt;
+    delivery.planFor(plan);
+    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: delivery.camWindows);
     for (var i = 0; i < r.bricks.length; i++) {
       _bricks.addInstance(hidden, color: _brickColor(r.bricks[i]));
     }
@@ -379,10 +397,26 @@ class Site3D {
       case Phase.cleanup:
         _cleanup(j, t, dt, night);
     }
+    breaks
+      ..camera.setFrom(camera)
+      ..begin(t, night);
+    delivery.update(j, plan, t, night);
     _drawPallets(j, t);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
+    breaks.end();
+    props.update(night);
     lights.update(night, t, fx.flashes);
     hookAt.setFrom(crane.hook);
+    // Now and then the camera follows the delivery, or someone on a break.
+    delivery.focus(focus, t);
+    breaks.focus(focus, t);
+    const look = String.fromEnvironment('BOOTH3D_LOOK');
+    if (look.isNotEmpty) {
+      final v = look.split(',').map(double.parse).toList();
+      focus.add(
+        Focus('look', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9, cut: true),
+      );
+    }
   }
 
   // ── Intake & build ────────────────────────────────────────────────────────
@@ -467,12 +501,40 @@ class Site3D {
 
   final _tmp = vm.Vector3.zero();
 
+  /// The pallets: in the yard, on the tower crane's hook, or still on the
+  /// delivery truck (and its crane) with their bricks riding on them.
   void _drawPallets(Job j, double t) {
     final plan = _plan;
-    final show = plan != null && j.phase.index <= Phase.celebrate.index;
+    final late = j.phase.index > Phase.celebrate.index;
     var slung = false;
     for (var k = 0; k < _maxPallets; k++) {
-      if (!show || k >= plan.trips) {
+      if (plan == null || k >= plan.trips) {
+        _pallets.setInstanceTransform(k, hidden);
+        continue;
+      }
+      if (delivery.palletAt(k, t, _way)) {
+        final s = 4 * b + 0.12, w = _way;
+        _q.setAxisAngle(_yAxis, w.yaw);
+        _pallets.setInstanceTransform(k, w.shown ? setTqs(_m, w.base.x, w.base.y + 0.07, w.base.z, _q, s, 0.14, s) : hidden);
+        // Its bricks, when it moves (and every frame after a cut, when the
+        // site's own phases hide whatever isn't in the wall).
+        final moved = !_wayOn[k] || w.shown != _wayShown[k] || w.yaw != _wayYaw[k] || w.base.distanceToSquared(_wayBase[k]) > 1e-8;
+        if (moved || late) _rideBricks(plan, k, w);
+        _wayOn[k] = true;
+        _wayShown[k] = w.shown;
+        _wayYaw[k] = w.yaw;
+        _wayBase[k].setFrom(w.base);
+        continue;
+      }
+      if (_wayOn[k]) {
+        // Just set down in the yard: its bricks there, once.
+        _wayOn[k] = false;
+        for (var i = plan.tripStart[k]; i < plan.tripStart[k + 1] && !late; i++) {
+          final p = plan.brickAt(i, t, _pose);
+          _bricks.setInstanceTransform(i, _brickM(p.pos.x, p.pos.y, p.pos.z, p.scale, p.spin, p.spinAxis));
+        }
+      }
+      if (late) {
         _pallets.setInstanceTransform(k, hidden);
         continue;
       }
@@ -490,6 +552,22 @@ class Site3D {
   }
 
   static final _qi = vm.Quaternion.identity();
+  static final _yAxis = vm.Vector3(0, 1, 0);
+  final _way = PalletPose();
+  final _wayOn = List.filled(_maxPallets, false), _wayShown = List.filled(_maxPallets, false);
+  final _wayYaw = List.filled(_maxPallets, 0.0);
+  final _wayBase = List.generate(_maxPallets, (_) => vm.Vector3.zero());
+
+  /// Pallet [k]'s bricks where it is now ([w]: on the delivery truck).
+  void _rideBricks(BuildPlan plan, int k, PalletPose w) {
+    final count = plan.tripCount(k), size = w.shown ? b * 0.96 : 0.0;
+    _q.setAxisAngle(_yAxis, w.yaw);
+    for (var i = plan.tripStart[k]; i < plan.tripStart[k + 1]; i++) {
+      plan.palletSlotPos(w.base, plan.palletSlot[i], count, _tmp);
+      w.turn(_tmp);
+      _bricks.setInstanceTransform(i, size == 0 ? hidden : setTqs(_m, _tmp.x, _tmp.y, _tmp.z, _q, size, size, size));
+    }
+  }
 
   /// No bricks (while the smooth letters stand), set once.
   void _hideWall() {

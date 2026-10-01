@@ -175,8 +175,8 @@ class CityProps {
         (s * 15.2, Plan.plazaZ0 + 0.9),
         // (On the right, the vending machines stand there: by the yard.)
         s < 0 ? (s * 16.3, Plan.plazaZ0 + 1.9) : (16.45, -2.75),
-        (s * 16.1, Plan.plazaZ1 - 0.8),
-        (s * 15.0, Plan.plazaZ1 - 0.7),
+        // (On the left, the Glyph Works stands in the back corner.)
+        if (s > 0) ...[(s * 16.1, Plan.plazaZ1 - 0.8), (s * 15.0, Plan.plazaZ1 - 0.7)],
       ],
       (-12.5, Plan.plazaZ0 + 0.55),
       (-15.1, Plan.plazaZ0 + 0.5),

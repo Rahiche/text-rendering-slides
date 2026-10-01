@@ -46,8 +46,10 @@ class FigurePose {
 /// The site crew: six builders (one per stretch of wall, zone colours on
 /// their vests), the foreman with his clipboard, the crane operator in the
 /// cab, and the driver who brings the bricks (posed by the delivery, see
-/// delivery.dart). Stylised figures (capsule body, sphere head, hard hat) drawn
-/// instanced, one draw per body part. Also the climbing platform the
+/// delivery.dart); and, posed by their own scenes, the Glyph Works' three
+/// makers (glyph_works.dart), the new manager and his two planners
+/// (verdict.dart). Stylised figures (capsule body, sphere head, hard hat)
+/// drawn instanced, one draw per body part. Also the climbing platform the
 /// builders work on: two lattice masts and a deck that rises with the wall.
 ///
 /// The name goes up a letter at a time: its team lays it (a handful of
@@ -59,7 +61,10 @@ class Crew3D {
 
   final Scene scene;
 
-  static const builders = NameRaster.zones, foreman = builders, operator = builders + 1, driver = builders + 2, count = builders + 3;
+  static const builders = NameRaster.zones, foreman = builders, operator = builders + 1, driver = builders + 2;
+
+  /// The Glyph Works' makers (three), the manager and his planners (two).
+  static const makers = builders + 3, manager = builders + 6, planners = builders + 7, count = builders + 9;
 
   /// One vest colour per zone, as on the 2D booth's hard hats.
   static const vests = [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line];
@@ -68,13 +73,18 @@ class Crew3D {
     count,
     (i) => FigurePose()
       ..rest()
-      ..visible = i != driver,
+      ..visible = i <= operator,
   );
 
   /// Builders the build doesn't need right now go on a break (see
   /// crew_breaks.dart): called once builder [z] is posed for the job, it may
   /// pose them for their break instead. Set by the site.
   void Function(FigurePose p, int z, BuildPlan plan, double t, double floor)? offDuty;
+
+  /// The scenes that need the whole crew (the team photo, the manager's
+  /// visit): called for every figure [who] just before it's drawn, it may
+  /// pose them instead. Set by the site.
+  void Function(int who, FigurePose p)? stage;
 
   late final InstancedMesh _torso, _head, _hat, _brim, _arm, _leg, _hand, _eye, _board;
   late final InstancedMesh _deck, _bulbs;
@@ -105,10 +115,26 @@ class Crew3D {
     _eye = im(SphereGeometry(radius: 0.021, segments: 6, rings: 4), pbr(rgb(0.02, 0.02, 0.03), roughness: 0.3), count * 2, 'crew eyes');
     _board = im(CuboidGeometry(vm.Vector3(0.2, 0.27, 0.025)), pbr(lin(const Color(0xFFF4F1EA)), roughness: 0.8), 1, 'clipboard');
     const skins = [Color(0xFFF1C9A5), Color(0xFFC68E63), Color(0xFF8D5A3B), Color(0xFFE8B98F), Color(0xFFAF7550), Color(0xFFF6D3B5), Color(0xFFD9A47C), Color(0xFF9C6B47)];
-    const pants = Color(0xFF243650);
     for (var i = 0; i < count; i++) {
-      final vest = i < builders ? vests[i] : (i == foreman ? const Color(0xFFF4F1EA) : (i == driver ? const Color(0xFF2B4C7E) : const Color(0xFFFF8A3D)));
-      final hat = i == foreman ? const Color(0xFFFFFFFF) : (i == driver ? BP.line : const Color(0xFFFFD43B));
+      // The makers in pale work coats and teal caps; the manager in a navy
+      // suit and a white hat, his planners in light blue shirts.
+      final vest = i < builders
+          ? vests[i]
+          : switch (i) {
+              foreman => const Color(0xFFF4F1EA),
+              driver => const Color(0xFF2B4C7E),
+              operator => const Color(0xFFFF8A3D),
+              manager => const Color(0xFF1C2741),
+              >= planners => const Color(0xFFA9CBEA),
+              _ => const Color(0xFFD7E3EC),
+            };
+      final hat = switch (i) {
+        foreman || manager => const Color(0xFFFFFFFF),
+        driver || >= planners => BP.line,
+        >= makers && < manager => const Color(0xFF2BB3A3),
+        _ => const Color(0xFFFFD43B),
+      };
+      final pants = i == manager ? const Color(0xFF141A28) : const Color(0xFF243650);
       _torso.setInstanceColor(i, lin(vest));
       _head.setInstanceColor(i, lin(skins[i % skins.length]));
       _hat.setInstanceColor(i, lin(hat));
@@ -246,6 +272,13 @@ class Crew3D {
   }
 
   final _sh = vm.Vector3.zero(), _d = vm.Vector3.zero();
+
+  /// Points arm [s] of [p] at [target] (world): the hand gets there when
+  /// it's an arm's length (0.36) from the shoulder.
+  void aim(FigurePose p, int s, vm.Vector3 target) => _aim(p, s, target);
+
+  /// Where builder [z] watches from, beside a wall [w] wide (the front right).
+  vm.Vector3 watchSpot(int z, double w) => _watchSpot(z, w);
 
   /// Points arm [s] of [p] at [target] (world).
   void _aim(FigurePose p, int s, vm.Vector3 target) {
@@ -395,13 +428,17 @@ class Crew3D {
           }
       }
       if (plan != null) offDuty?.call(p, z, plan, t, floor);
+      stage?.call(z, p);
       _draw(z);
     }
     _foremanPose(j, t, w, impact, trip, plan);
-    _draw(foreman);
     _operatorPose(j, t, seat, seatYaw);
-    _draw(operator);
-    _draw(driver);
+    // The others are posed by their own scenes (the driver by the delivery,
+    // the makers by the works, the manager's party by the verdict).
+    for (var i = foreman; i < count; i++) {
+      stage?.call(i, poses[i]);
+      _draw(i);
+    }
   }
 
   bool _onDeck(vm.Vector3 p, double w) => p.z > SiteLayout.deckZ0 && p.z < SiteLayout.deckZ1 && p.x.abs() < w / 2 + 1.0;

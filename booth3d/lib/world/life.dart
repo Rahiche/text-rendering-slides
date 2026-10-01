@@ -725,11 +725,13 @@ class _People {
     var hx = end, hz = p.homeZ;
     var ax = end + p.homeX * p.awayX, az = p.awayZ;
     if (phase == Phase.demolish || phase == Phase.cleanup) {
-      // Stand well clear while the ball swings and the rubble goes.
-      hx = p.homeX * (14.2 + p.job);
-      hz = 5.2 + 0.8 * p.job;
-      ax = hx - p.homeX * 1.2;
-      az = hz + 0.9;
+      // Stand well clear while the ball swings and the rubble goes: behind
+      // the crane on the right; on the left (the Glyph Works has the back
+      // corner) by the plaza's edge.
+      hx = p.homeX > 0 ? 14.2 + p.job : -16.2;
+      hz = p.homeX > 0 ? 5.2 + 0.8 * p.job : 1.6 - 0.9 * p.job;
+      ax = hx - p.homeX * (p.homeX > 0 ? 1.2 : 1.0);
+      az = hz + (p.homeX > 0 ? 0.9 : -0.35);
     } else if (p.job == 1) {
       // By the safety banner, keeping an eye on the street (left of the
       // gate); while the truck comes or goes, at the gate post, guiding it.

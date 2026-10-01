@@ -16,7 +16,9 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'crew.dart';
 import 'crew_breaks.dart';
 import 'delivery.dart';
+import 'glyph_works.dart';
 import 'kit.dart';
+import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_crane.dart';
 import 'site_fx.dart';
@@ -41,9 +43,10 @@ import 'site_props.dart';
 /// burst (some in the shapes of the name's own characters), confetti flies
 /// and the crane lowers a 完成！ sign; a wrecking ball swings through the
 /// wall, and a recycling truck hauls the rubble away. Meanwhile a delivery
-/// truck brings the pallets (delivery.dart), and builders the build doesn't
+/// truck brings the pallets (delivery.dart), builders the build doesn't
 /// need go for a coffee, a smoke or a chat (crew_breaks.dart,
-/// site_props.dart).
+/// site_props.dart), and the Glyph Works crafts a mini name in gold, letter
+/// by letter with the wall (glyph_works.dart).
 class Site3D {
   Site3D(this.scene);
 
@@ -57,6 +60,11 @@ class Site3D {
   late final breaks = CrewBreaks(scene, fx);
   late final delivery = Delivery3D(scene, crew, breaks);
 
+  /// Small moving props of the works and the scenes round the finished
+  /// name (one pool: three draws).
+  late final parts = PropPool(scene, 'site parts', home: vm.Vector3(WorksLayout.cx, 0.5, WorksLayout.z1 - 1));
+  late final works = GlyphWorks(scene, crew, fx, parts);
+
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
 
@@ -68,9 +76,10 @@ class Site3D {
   late final InstancedMesh _pallets;
   static const _maxPallets = 12;
 
-  // Smooth letters.
+  // Smooth letters (and their shapes, for the works' mini name).
   final _letterRoot = Node(name: 'letters');
   final _letters = <_Letter>[];
+  final _shapes = <LetterShape>[];
 
   // 完成！ sign and the recycling truck.
   final _banner = Node(name: 'banner 完成');
@@ -139,6 +148,8 @@ class Site3D {
     props.init();
     breaks.init();
     delivery.init();
+    parts.init();
+    works.init();
     crew.offDuty = breaks.pose;
     _buildTruck();
     _buildBanner();
@@ -278,6 +289,7 @@ class Site3D {
       _letterRoot.remove(l.node);
     }
     _letters.clear();
+    _shapes.clear();
     _bricks.clearInstances();
     vectorizeText(j.name, style: (size, color) => NameRaster.nameStyle(size, color: color)).then((g) {
       if (!identical(_job, j)) return;
@@ -296,7 +308,8 @@ class Site3D {
     wallHeight = r.rows * b;
     final plan = _plan = BuildPlan(j, r, b)..palletOnTheWay = delivery.palletAt;
     delivery.planFor(plan);
-    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: delivery.camWindows);
+    works.planFor(plan, busyCam: delivery.camWindows);
+    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: [...delivery.camWindows, ...works.camWindows]);
     // Instances in laying order.
     for (var i = 0; i < plan.total; i++) {
       _bricks.addInstance(hidden, color: _brickColor(r.bricks[plan.src[i]]));
@@ -384,8 +397,21 @@ class Site3D {
         prims.add(MeshPrimitive(bg, mat));
         rows.add(math.min(r.rows - 1, (k + 1) * per - 1)); // its top row
       }
-      final full = Mesh(glyphGeometry(mesh), mat);
+      final solid = glyphGeometry(mesh);
+      final full = Mesh(solid, mat);
       final banded = prims.isEmpty ? full : Mesh.primitives(primitives: prims);
+      _shapes.add(
+        LetterShape(
+          glyph: idx,
+          geometry: solid,
+          bands: [for (final p in prims) p.geometry],
+          bandTops: [for (final row in rows) (row + 1) * b - at.y],
+          at: at,
+          width: mesh.width,
+          height: mesh.height,
+          depth: b * 1.7,
+        ),
+      );
       final node = Node(name: 'letter $ch', mesh: full, localTransform: trs(at))..visible = false;
       _letters.add(_Letter(node, full, banded, rows, mat, lin(hue), at, per));
       _letterRoot.add(node);
@@ -402,7 +428,11 @@ class Site3D {
     final t = m.t;
     focus.clear();
     _pace = m.pace;
-    if (j == null) return;
+    parts.begin();
+    if (j == null) {
+      parts.end();
+      return;
+    }
     if (!identical(j, _job)) _startJob(j);
     final r = j.raster;
     if (r != null && _r == null && j.buildStart != null) _setupRaster(j, r);
@@ -438,13 +468,17 @@ class Site3D {
     delivery.update(j, plan, t, night);
     _drawPallets(j, t);
     kern.update(plan, j, t, fx, scanY: scanY);
+    works.update(j, plan, t, night, _shapes);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
     breaks.end();
+    parts.end();
     props.update(night);
     lights.update(night, t, fx.flashes);
     hookAt.setFrom(crane.hook);
-    // Now and then the camera follows the delivery, or someone on a break.
+    // Now and then the camera follows the delivery, visits the works, or
+    // follows someone on a break.
     delivery.focus(focus, t);
+    works.focus(focus, t);
     breaks.focus(focus, t);
     // Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
     // the camera (with capture mode, to check a spot from a fixed eye).

@@ -66,6 +66,11 @@ class _PhotoPainter extends CustomPainter {
         canvas.save();
         canvas.translate(_at.dx, _at.dy);
         canvas.scale(0.6 + 0.4 * pop);
+        // On a dark plate, so it reads over white overalls or a bright sky.
+        final w = math.max(ja.width, en.width) + 56;
+        final plate = RRect.fromLTRBR(-w / 2, -ja.height / 2 - 24, w / 2, ja.height / 2 + en.height + 6, const Radius.circular(18));
+        canvas.drawRRect(plate, k.fl(BP.panel.withValues(alpha: 0.78)));
+        canvas.drawRRect(plate, k.st(BP.lineDim, 2));
         ja.paint(canvas, Offset(-ja.width / 2, -ja.height / 2 - 12));
         en.paint(canvas, Offset(-en.width / 2, ja.height / 2 - 6));
         canvas.restore();
@@ -86,7 +91,10 @@ class _PhotoPainter extends CustomPainter {
       n.paint(canvas, Offset(-n.width / 2, -n.height / 2));
       canvas.restore();
       final tag = k.tp('記念写真 · TEAM PHOTO', UT.mono(15, color: BP.amber, weight: 600, ls: 1.0));
-      tag.paint(canvas, Offset(_at.dx - tag.width / 2, _at.dy + _r + 14));
+      final at = Offset(_at.dx - tag.width / 2, _at.dy + _r + 14);
+      final pill = RRect.fromLTRBR(at.dx - 12, at.dy - 5, at.dx + tag.width + 12, at.dy + tag.height + 5, Radius.circular(tag.height / 2 + 5));
+      canvas.drawRRect(pill, k.fl(BP.panel.withValues(alpha: 0.78)));
+      tag.paint(canvas, at);
     });
   }
 

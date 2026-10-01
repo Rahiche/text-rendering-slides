@@ -156,6 +156,12 @@ class Delivery3D implements StreetWork {
     final n = math.min(plan.trips, 12);
     final s = 4 * plan.b + 0.12;
     final cap = _bedSlots(s).length;
+    // The camera follows each load in; not across a kerning close-up.
+    final kerns = [
+      for (final st in plan.steps)
+        if (st != null) (st.a - 2.0, st.e + 2.0),
+    ];
+    bool clashes(double a) => kerns.any((r) => a + 9 > r.$1 && a - 12 < r.$2);
     var earliest = j.startedAt + 11;
     var k = 0;
     while (k < n && cap > 0) {
@@ -163,15 +169,18 @@ class Delivery3D implements StreetWork {
       // east of the plaza well after they turned green (the cars that
       // waited there are long gone), and starts across the eastbound lane
       // before it turns amber (its stretch then holds that lane's cars).
-      final arrive = _next(earliest, 21.0, 4.3);
+      var arrive = _next(earliest, 21.0, 4.3);
+      final first = _firstLoad(plan, arrive, k, n, s);
+      if (first >= n) break;
+      // A little later, if that keeps it clear of the kerning (and the
+      // first pallet still makes it).
+      for (var a = arrive; clashes(arrive) && a < arrive + TrafficLights.cycle; a = _next(a + 0.5, 21.0, 4.3)) {
+        if (!clashes(a) && _firstLoad(plan, a, first, n, s) == first) arrive = a;
+      }
       final run = _Run(arrive, s);
       var u = arrive + 2.6;
       while (k < n && run.pallets.length < cap) {
-        // The yard part of an unload keeps clear of the tower crane's hook.
-        var start = u;
-        while (_towerOverYard(plan, start + 2.0, start + _unload)) {
-          start += 0.2;
-        }
+        final start = _unloadFrom(plan, run, run.pallets.length, k, u);
         if (start + _unload > _need(plan, k) - 0.4) {
           if (run.pallets.isEmpty) {
             _stock.add(k++); // too soon for this load: it's in the yard already
@@ -193,20 +202,66 @@ class Delivery3D implements StreetWork {
       run.depart = _next(run.stowEnd + 16, 9.2, 3.6);
       final breakFrom = run.stowEnd + 0.4, breakTo = run.depart - 3.4;
       if (breakTo - breakFrom > 6) driverBreaks.add(DriverBreak(breakFrom, breakTo, _toWorld(_controls, vm.Vector3.zero(), parked: true)));
+      run.filmed = !clashes(run.arrive);
       _runs.add(run);
-      camWindows.add((run.arrive - 12, run.arrive + 9));
+      if (run.filmed) camWindows.add((run.arrive - 12, run.arrive + 9));
       earliest = run.depart + 48; // to the depot and back
     }
     while (k < n) {
       _stock.add(k++);
     }
+    // The plan, in capture mode's log.
+    if (const String.fromEnvironment('BOOTH3D_TIMES') == '') return;
     // ignore: avoid_print
     print(
       'PLAN delivery ${j.name} start=${j.startedAt.toStringAsFixed(1)} t0=${plan.t0.toStringAsFixed(1)} len=${plan.len.toStringAsFixed(1)} trips=${plan.trips} b=${plan.b.toStringAsFixed(3)} stock=$_stock '
       'need=${[for (var q = 0; q < n; q++) _need(plan, q).toStringAsFixed(1)]} '
-      'runs=${[for (final r in _runs) 'A=${r.arrive.toStringAsFixed(1)} p=${r.pallets} u=${r.unload.map((u) => u.toStringAsFixed(1)).toList()} stow=${r.stowEnd.toStringAsFixed(1)} D=${r.depart.toStringAsFixed(1)}']}',
+      'runs=${[for (final r in _runs) 'A=${r.arrive.toStringAsFixed(1)} p=${r.pallets} u=${r.unload.map((u) => u.toStringAsFixed(1)).toList()} stow=${r.stowEnd.toStringAsFixed(1)} D=${r.depart.toStringAsFixed(1)} filmed=${r.filmed}']}',
     );
   }
+
+  /// The first of pallets [k]…[n] a load parking at [arrive] could bring
+  /// in time ([n] if none).
+  int _firstLoad(BuildPlan plan, double arrive, int k, int n, double s) {
+    final probe = _Run(arrive, s);
+    for (; k < n; k++) {
+      if (_unloadFrom(plan, probe, 0, k, arrive + 2.6) + _unload <= _need(plan, k) - 0.4) return k;
+    }
+    return n;
+  }
+
+  /// When to start swinging pallet [k] (the [i]th on [run]'s bed) off, at
+  /// or after [u]: when its swing over to the yard keeps clear of the tower
+  /// crane, whose hook works low over the yard picking pallets up and waits
+  /// there between trips.
+  double _unloadFrom(BuildPlan p, _Run run, int i, int k, double u) {
+    final deadline = _need(p, k);
+    var start = u;
+    while (start + _unload < deadline && _inTheWay(p, run, i, k, start)) {
+      start += 0.2;
+    }
+    return start;
+  }
+
+  /// Whether the swing of pallet [k] (bed slot [i]) from [start] comes
+  /// within reach of the tower crane's hook (and what hangs from it).
+  bool _inTheWay(BuildPlan p, _Run run, int i, int k, double start) {
+    final bed = _toWorld(run.slots[i], _ca, parked: true);
+    final yard = SiteLayout.yard(k);
+    for (var u = 1.45; u <= _unload + 0.4; u += 0.15) {
+      final tower = p.hookPath(start + u);
+      if (u < 2.55) {
+        _swing(bed.x, bed.z, yard.x, yard.z, 0, eio((u - 1.45) / 1.1), _cb);
+      } else {
+        _cb.setValues(yard.x, 0, yard.z);
+      }
+      final dx = tower.x - _cb.x, dz = tower.z - _cb.z;
+      if (dx * dx + dz * dz < 1.7 * 1.7) return true;
+    }
+    return false;
+  }
+
+  final _ca = vm.Vector3.zero(), _cb = vm.Vector3.zero();
 
   /// Seconds to swing one pallet off the bed onto its slot.
   static const _unload = 3.6;
@@ -227,18 +282,6 @@ class Delivery3D implements StreetWork {
     if (k == 0) return p.job.startedAt;
     final a = p.t0 + p.tripA(k - 1), e = p.t0 + p.tripB(k - 1);
     return math.min(a + 0.8 * (e - a), p.t0 + p.tripA(k)) - 0.5;
-  }
-
-  /// Whether the tower crane's hook is down over the yard any time in
-  /// [a]–[b] (picking a pallet up, or bringing the empty one back).
-  static bool _towerOverYard(BuildPlan p, double a, double b) {
-    if (a < p.t0 + p.tripA(0) + 1) return true;
-    for (var k = 0; k < p.trips; k++) {
-      final ka = p.t0 + p.tripA(k), ke = p.t0 + p.tripB(k), len = ke - ka;
-      if (b > ka - 0.6 && a < ka + 0.24 * len) return true;
-      if (b > ka + 0.84 * len && a < ke + 0.2) return true;
-    }
-    return false;
   }
 
   /// Places on the bed for pallets [s] across (truck-local, in unloading
@@ -741,7 +784,7 @@ class Delivery3D implements StreetWork {
     for (var n = 0; n < _runs.length; n++) {
       final r = _runs[n];
       final a = r.arrive;
-      if (t < a - 11 || t >= a + 8.5) continue;
+      if (!r.filmed || t < a - 11 || t >= a + 8.5) continue;
       _at(t);
       final px = _pPos.x, pz = _pPos.z;
       if (t < a - 5) {
@@ -775,4 +818,7 @@ class _Run {
   final pallets = <int>[];
   final unload = <double>[];
   double stowEnd = 0, depart = 0;
+
+  /// Whether the camera follows it in (not across a kerning close-up).
+  bool filmed = true;
 }

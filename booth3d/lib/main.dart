@@ -12,9 +12,11 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:text_slides/deck/theme.dart';
 
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
+import 'kern_chip.dart';
 import 'perf.dart';
 import 'quality.dart';
 import 'tuning.dart';
+import 'world/site_plan.dart' show CityPace;
 import 'world/world.dart';
 
 /// 名前の街 · Name City — the conference booth's name builder in 3D.
@@ -53,6 +55,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   void initState() {
     super.initState();
     BoothUi.of(model).title = (ja: '名前の街', en: 'Name City'); // history, toasts, operator state
+    model.pace = const CityPace(); // one letter at a time, with kerning
     HardwareKeyboard.instance.addHandler(_onKey);
     if (!_capturing) {
       BoothPlatform.keepAwake();
@@ -190,7 +193,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       size: BP.canvas,
       child: Stack(
         fit: StackFit.expand,
-        children: [view, BoothOverlay(model: model)],
+        children: [view, BoothOverlay(model: model), KernChip(model: model, caption: world.site.kern.caption)],
       ),
     );
     return MaterialApp(

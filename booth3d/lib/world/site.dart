@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:characters/characters.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart' show TextPainter, TextSpan, TextDirection, TextSelection;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/booth/craft/extrude.dart';
@@ -20,6 +21,7 @@ import 'shot.dart';
 import 'site_crane.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
+import 'site_kern.dart';
 import 'site_lights.dart';
 import 'site_plan.dart';
 import 'site_props.dart';
@@ -27,15 +29,21 @@ import 'site_props.dart';
 /// The name being built in the plaza.
 ///
 /// A tower crane brings the name's bricks (its real raster pixels) from the
-/// yard on pallets and drops them, a batch at a time, onto the piles of six
-/// builders on a climbing platform behind the wall; the builders lay them
-/// row by row. Then a glowing scan plane sweeps up and the pixels dissolve
-/// into smooth extruded letters (pixels → outlines), fireworks burst (some
-/// in the shapes of the name's own characters), confetti flies and the
-/// crane lowers a 完成！ sign; a wrecking ball swings through the wall, and
-/// a recycling truck hauls the rubble away. Meanwhile a delivery truck
-/// brings the pallets (delivery.dart), and builders the build doesn't need
-/// go for a coffee, a smoke or a chat (crew_breaks.dart, site_props.dart).
+/// yard on pallets, a letter's worth a trip, and drops them onto the piles
+/// of the builders on a climbing platform behind the wall. The name goes up
+/// one letter at a time, left to right: the builders whose stretch of wall
+/// it covers lay it bottom-up, a little too far right; then two of them
+/// stretch a measuring tape across the gap to the letter before, the
+/// foreman checks his clipboard, and they push the letter along its skid
+/// into its kerned place (the camera comes in close, a caption gives the
+/// pair's kerning). Then a glowing scan plane sweeps up and the pixels
+/// dissolve into smooth extruded letters (pixels → outlines), fireworks
+/// burst (some in the shapes of the name's own characters), confetti flies
+/// and the crane lowers a 完成！ sign; a wrecking ball swings through the
+/// wall, and a recycling truck hauls the rubble away. Meanwhile a delivery
+/// truck brings the pallets (delivery.dart), and builders the build doesn't
+/// need go for a coffee, a smoke or a chat (crew_breaks.dart,
+/// site_props.dart).
 class Site3D {
   Site3D(this.scene);
 
@@ -51,6 +59,9 @@ class Site3D {
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
+
+  /// The kerning step's props, and its caption (for the 2D overlay).
+  late final kern = Kern3D(scene);
 
   // Every brick of the name, wherever it is (yard, crane, pile, wall…).
   late final InstancedMesh _bricks;
@@ -81,6 +92,10 @@ class Site3D {
   List<int>? _landOrder;
   _Swing? _swing;
   int _finalized = 0;
+
+  /// Per letter: how far right of its place its settled bricks were last
+  /// written (−1: not yet).
+  List<double> _slid = [];
   bool _yardDone = false;
   bool _wallHidden = false;
   double b = 0.25;
@@ -88,9 +103,11 @@ class Site3D {
   /// Bounds of the wall (for the camera).
   double wallWidth = 12, wallHeight = 5;
 
-  /// What the camera may want to look at.
+  /// What the camera may want to look at: the hook, the wall's height so
+  /// far, the middle of the letter at work, the reveal's scan plane.
   final hookAt = vm.Vector3(4, 10, 0);
   double level = 0;
+  double activeX = 0;
   double scanY = -1;
 
   /// When the ball first hits the wall (scene time), once known.
@@ -115,6 +132,7 @@ class Site3D {
     crew.init();
     fx.init();
     lights.init();
+    kern.init();
     props.init();
     breaks.init();
     delivery.init();
@@ -246,6 +264,7 @@ class Site3D {
     _landOrder = null;
     _swing = null;
     _finalized = 0;
+    _slid = [];
     _yardDone = false;
     _wallHidden = false;
     _wayOn.fillRange(0, _maxPallets, false);
@@ -269,16 +288,27 @@ class Site3D {
 
   void _setupRaster(Job j, NameRaster r) {
     _r = r;
-    b = math.min(0.32, math.min(19.0 / r.cols, 7.6 / r.rows));
+    b = SiteLayout.brick(r);
     wallWidth = r.cols * b;
     wallHeight = r.rows * b;
     final plan = _plan = BuildPlan(j, r, b)..palletOnTheWay = delivery.palletAt;
     delivery.planFor(plan);
     breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: delivery.camWindows);
-    for (var i = 0; i < r.bricks.length; i++) {
-      _bricks.addInstance(hidden, color: _brickColor(r.bricks[i]));
+    // Instances in laying order.
+    for (var i = 0; i < plan.total; i++) {
+      _bricks.addInstance(hidden, color: _brickColor(r.bricks[plan.src[i]]));
     }
+    _slid = List.filled(plan.letterCount, -1.0);
+    // Capture runs log the timeline (when each letter goes up and is kerned).
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(plan.describe());
   }
+
+  /// Bricks standing (the first n, in laying order): all of them, unless
+  /// the build was cut short.
+  int _standing(Job j, BuildPlan plan) => j.cutAt == null ? plan.total : plan.laidBy(_cutT(j, plan));
+
+  /// When the build was cut short (a letter caught mid-slide stays there).
+  double _cutT(Job j, BuildPlan plan) => plan.t0 + (j.cutFrac ?? 1) * plan.len;
 
   vm.Vector4 _brickColor(Brick k) {
     final full = rgb(0.86, 0.83, 0.76);
@@ -381,6 +411,7 @@ class Site3D {
     scanY = -1;
     final plan = _plan;
     level = plan?.level(t) ?? 0;
+    activeX = plan?.activeX(t) ?? 0;
     double trip = -1;
 
     switch (j.phase) {
@@ -402,6 +433,7 @@ class Site3D {
       ..begin(t, night);
     delivery.update(j, plan, t, night);
     _drawPallets(j, t);
+    kern.update(plan, j, t, fx, scanY: scanY);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
     breaks.end();
     props.update(night);
@@ -410,6 +442,8 @@ class Site3D {
     // Now and then the camera follows the delivery, or someone on a break.
     delivery.focus(focus, t);
     breaks.focus(focus, t);
+    // Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
+    // the camera (with capture mode, to check a spot from a fixed eye).
     const look = String.fromEnvironment('BOOTH3D_LOOK');
     if (look.isNotEmpty) {
       final v = look.split(',').map(double.parse).toList();
@@ -444,24 +478,35 @@ class Site3D {
       _idleCrane(vm.Vector3(SiteLayout.mastX - 5, 9, SiteLayout.mastZ - 4), t, dt, night);
       return -1;
     }
-    // The crane: on a trip, or waiting by the yard / after the last trip.
+    // The crane: on a trip, waiting over the next pallet between trips, or
+    // by the wall after the last.
     final at = plan.tripAt(t);
     if (at != null) {
       _cmd.setFrom(plan.hookPath(t));
       _cmdInit = true;
       crane.update(_cmd, t, dt, night: night);
-    } else if (t < plan.t0) {
-      _idleCrane(plan.yardHook(0), t, dt, night, settle: 0.6);
+    } else if (t < plan.t0 + plan.tripB(plan.trips - 1)) {
+      _idleCrane(plan.hookPath(t), t, dt, night, settle: 0.6);
     } else {
       _idleCrane(vm.Vector3(wallWidth / 2 + 3, math.max(9.0, level + 5), 3.2), t, dt, night);
     }
     final sway = crane.sway;
-    // Bricks: the wall's settled ones once, the moving ones every frame.
+    // Bricks: the wall's settled ones once (and again while their letter
+    // slides into place), the moving ones every frame.
     final settled = plan.settledBy(t);
     for (; _finalized < settled; _finalized++) {
-      _bricks.setInstanceTransform(_finalized, _brickM(plan.cellX[_finalized], plan.cellY[_finalized], 0, 1));
+      final i = _finalized;
+      _bricks.setInstanceTransform(i, _brickM(plan.cellX[i] + plan.offsetAt(plan.letter[i], t), plan.cellY[i], 0, 1));
     }
-    final kNow = at?.$1 ?? (t < plan.t0 ? 0 : plan.trips - 1);
+    for (var k = 1; k < plan.letterCount; k++) {
+      final o = plan.offsetAt(k, t);
+      if (o == _slid[k]) continue;
+      _slid[k] = o;
+      for (var i = plan.letterStart[k]; i < math.min(plan.letterStart[k + 1], _finalized); i++) {
+        _bricks.setInstanceTransform(i, _brickM(plan.cellX[i] + o, plan.cellY[i], 0, 1));
+      }
+    }
+    final kNow = plan.tripNow(t);
     final dynEnd = plan.tripStart[math.min(kNow + 1, plan.trips)];
     for (var i = _finalized; i < dynEnd; i++) {
       final p = plan.brickAt(i, t, _pose);
@@ -480,21 +525,29 @@ class Site3D {
       }
       if (t > j.startedAt + 4.6) _yardDone = true;
     }
-    // Dust: bricks landing in the wall, batches landing on the piles.
-    final laidNow = plan.laidF(t).floor();
-    for (var i = math.max(0, plan.laidF(t - 0.5).floor() - 1); i <= laidNow && i < plan.total; i++) {
+    // Dust: bricks landing in the wall (a puff a handful), batches landing
+    // on the piles.
+    for (var i = plan.laidBy(t - 0.5), e = plan.laidBy(t); i < e; i++) {
       final age = (t - plan.layAt(i)) / 0.5;
-      if (age < 0) continue;
-      fx.puff(plan.cellX[i], plan.cellY[i] - b * 0.4, -b * 0.6, age, b * 1.3, seed: i, n: 2);
+      if (i % 2 != 0) continue;
+      fx.puff(plan.cellX[i] + plan.offsetAt(plan.letter[i], t), plan.cellY[i] - b * 0.4, -b * 0.6, age, b * 1.3, seed: i, n: 2);
     }
     for (final k in [kNow - 1, kNow]) {
       if (k < 0) continue;
       for (var i = plan.tripStart[k]; i < plan.tripStart[k + 1]; i++) {
         final age = (t - plan.pileLandAt(i)) / 0.45;
         if (age < 0 || age >= 1 || plan.pile[i] % 3 != 0) continue;
-        plan.pileSlot(plan.zone[i], k, plan.pile[i], plan.deckY(t), _tmp);
+        plan.pileSlot(plan.pileOf[i], plan.pile[i], plan.deckY(t), _tmp);
         fx.puff(_tmp.x, _tmp.y - b * 0.3, _tmp.z, age, b * 1.6, seed: i, n: 2);
       }
+    }
+    // The kerning close-ups.
+    for (final st in plan.steps) {
+      if (st == null || t < st.a - 1.2 || t > st.e + 0.7) continue;
+      final (eye, target, fov, w) = Kern3D.shot(st, t);
+      if (w <= 0) continue;
+      final shot = Shot(eye, target, fov: fov, settle: st.full ? 1.2 : 1.7, drift: 0.5);
+      focus.add(Focus('kern ${st.letter}', shot, priority: 3, weight: w));
     }
     return at == null ? -1 : at.$2;
   }
@@ -599,7 +652,7 @@ class Site3D {
     if (_rowPass.length != plan.r.rows) {
       _rowPass = [for (var rr = 0; rr < plan.r.rows; rr++) _passTime((rr + 1) * b)];
     }
-    final n = j.cutAt ?? plan.total;
+    final n = _standing(j, plan);
     for (var i = 0; i < plan.total; i++) {
       final cy = plan.cellY[i];
       final passT = _rowPass[(cy / b).floor().clamp(0, plan.r.rows - 1)];
@@ -784,14 +837,14 @@ class Site3D {
 
   List<_Fall> _planFalls(Job j, _Swing sw) {
     final plan = _plan!;
-    final n = j.cutAt ?? plan.total;
+    final n = _standing(j, plan), cut = _cutT(j, plan);
     final out = <_Fall>[];
     for (var i = 0; i < plan.total; i++) {
       if (i >= n) {
         out.add(_Fall.never());
         continue;
       }
-      final p = vm.Vector3(plan.cellX[i], plan.cellY[i], 0);
+      final p = vm.Vector3(plan.cellX[i] + plan.offsetAt(plan.letter[i], cut), plan.cellY[i], 0);
       final pass = sw.passTime(p.x);
       final ballY = sw.yAtX(p.x);
       final dy = p.y - ballY, dz = 0 - sw.z;

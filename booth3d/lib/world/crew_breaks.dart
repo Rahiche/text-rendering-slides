@@ -101,11 +101,12 @@ class CrewBreaks {
   final _taken = <int, List<(double, double)>>{}; // spot → reserved intervals
   final _machines = [<(double, double)>[], <(double, double)>[]];
   final _follows = <_Follow>[];
+  final _down = <(double, double)>[]; // when the deck is down (on the ground)
   double _w = 12;
 
   /// Plans the build's breaks (once per build, when its plan is ready), the
   /// driver's [driverBreaks] among them. The camera keeps clear of [busyCam]
-  /// (the delivery's own follow shots).
+  /// (the delivery's own follow shots) and of the kerning close-ups.
   void planFor(BuildPlan plan, {List<DriverBreak> driverBreaks = const [], List<(double, double)> busyCam = const []}) {
     _plan = plan;
     _cutAt = null;
@@ -115,37 +116,75 @@ class CrewBreaks {
     for (final m in _machines) {
       m.clear();
     }
+    _findDown(plan);
     final t0 = plan.t0, end = t0 + plan.len;
     final serial = plan.job.serial;
-    final free = <_Break>[];
+    // Each builder's free windows, in time order across the crew (so the
+    // places at the machines and the ashtray go first come, first served).
+    final free = <(int, double, double)>[];
     for (var z = 0; z < Crew3D.builders; z++) {
-      if (plan.zoneBricks[z].isEmpty) continue;
       var from = t0;
-      var k = 0;
       for (final (a, e) in [..._busy(plan, z), (end, end + 1)]) {
         final fa = math.max(from, t0), fb = math.min(a, end);
-        if (fb - fa > 2.5) free.add(_Break(z, fa, fb, z * 31 + k++ * 7 + serial * 13));
+        if (fb - fa > 2.5) free.add((z, fa, fb));
         from = math.max(from, e);
       }
     }
-    for (final d in driverBreaks) {
-      if (d.to - d.from > 6) free.add(_Break(driver, d.from, d.to, 97 + serial * 13)..door = d.door);
+    free.sort((a, b) => a.$2.compareTo(b.$2));
+    var n = 0;
+    for (final (z, fa, fb) in free) {
+      _fill(plan, z, fa, fb, z * 31 + n++ * 7 + serial * 13);
     }
-    free.sort((a, b) => a.from.compareTo(b.from));
-    for (final b in free) {
-      _choose(b, plan);
+    for (final d in driverBreaks) {
+      if (d.to - d.from <= 6) continue;
+      final b = _Break(driver, d.from, d.to, 97 + serial * 13)..door = d.door;
+      _choose(b, plan, d.from, d.to);
       _breaks.add(b);
     }
+    _breaks.sort((a, b) => a.from.compareTo(b.from));
     _planFollows(plan, busyCam);
+    // The plan, in capture mode's log.
+    if (const String.fromEnvironment('BOOTH3D_TIMES') == '') return;
     for (final b in _breaks) {
       // ignore: avoid_print
       print(
-        'PLAN break who=${b.who} ${b.kind.name} ${b.from.toStringAsFixed(1)}-${b.to.toStringAsFixed(1)} leave=${b.leave.toStringAsFixed(1)} arrive=${b.arrive.toStringAsFixed(1)} depart=${b.depart.toStringAsFixed(1)} home=${b.home.toStringAsFixed(1)} spot=${b.spotIndex} m=${b.machine}',
+        'PLAN break who=${b.who} ${b.kind.name} ${b.from.toStringAsFixed(1)}-${b.to.toStringAsFixed(1)} leave=${b.leave.toStringAsFixed(1)} arrive=${b.arrive.toStringAsFixed(1)} depart=${b.depart.toStringAsFixed(1)} on=${b.stepOn.toStringAsFixed(1)} spot=${b.spotIndex} m=${b.machine}',
       );
     }
     for (final f in _follows) {
       // ignore: avoid_print
       print('PLAN follow who=${f.b.who} ${f.b.kind.name} ${f.from.toStringAsFixed(1)}-${f.to.toStringAsFixed(1)}');
+    }
+  }
+
+  /// Builder [z]'s free window [fa, fb): trips off the platform (a coffee,
+  /// a smoke, a chat), each from one time the deck is down to a later one,
+  /// with spells back at their rest spot between; whatever is too short to
+  /// go anywhere is a break on the platform.
+  void _fill(BuildPlan plan, int z, double fa, double fb, int seed) {
+    var t = fa;
+    for (var k = 0; fb - t > 2.5; k++) {
+      final s = seed + k * 101;
+      final leave = _nextDown(t + 0.05, _step + 0.15);
+      _Break? trip;
+      if (leave != null && fb - leave > 16) {
+        // Out for half a minute or so (or the rest of the window, if what
+        // would be left is too short to bother).
+        final want = 20 + 24 * rnd(s, 5);
+        final latest = fb - leave < want + 30 ? fb : leave + want;
+        trip = _Break(z, leave - 0.05, fb, s);
+        if (!_choose(trip, plan, leave, latest, window: fb)) trip = null;
+      }
+      if (trip == null) {
+        // Not going anywhere: a stretch and a word on the platform.
+        _breaks.add(_Break(z, t, fb, s));
+        return;
+      }
+      if (trip.from - t > 6) _breaks.add(_Break(z, t, trip.from, s + 1));
+      _breaks.add(trip);
+      // Back at their rest spot for a while before going again.
+      t = math.min(fb, trip.to + 10 + 12 * rnd(s, 6));
+      if (t - trip.to > 6) _breaks.add(_Break(z, trip.to, t, s + 2));
     }
   }
 
@@ -165,119 +204,155 @@ class CrewBreaks {
     return out;
   }
 
-  /// Whether a builder can step on or off the platform over [a]–[b]: only
-  /// with the deck down (there's no ladder).
-  bool _ground(BuildPlan plan, double a, double b) {
-    if (fakeBreaks) return true;
-    for (var t = a; t <= b + 1e-6; t += 0.25) {
-      if (plan.deckY(t) > 0.02) return false;
+  /// When the platform is down during the build: builders step on and off
+  /// only then (there's no ladder).
+  void _findDown(BuildPlan plan) {
+    _down.clear();
+    final a = plan.t0 - 1.5, e = plan.t0 + plan.len + 1;
+    if (fakeBreaks) {
+      _down.add((a, e));
+      return;
     }
-    return plan.deckY(b) <= 0.02;
+    double? from;
+    for (var t = a; t <= e; t += 0.1) {
+      final down = plan.deckY(t) <= 0.02;
+      if (down && from == null) from = t;
+      if (!down && from != null) {
+        _down.add((from, t - 0.1));
+        from = null;
+      }
+    }
+    if (from != null) _down.add((from, e));
   }
 
-  static const _vOut = 1.9, _vHome = 2.2, _deckLane = 1.72;
+  /// The first time ≥ [t] the deck is down for the next [d] seconds.
+  double? _nextDown(double t, double d) {
+    for (final (a, e) in _down) {
+      final s = math.max(a, t);
+      if (s + d <= e) return s;
+    }
+    return null;
+  }
 
-  /// Decides what [b] does and where, reserving a spot (and a machine).
-  void _choose(_Break b, BuildPlan plan) {
-    final options = _prefs(b);
-    for (final kind in options) {
+  /// The last time ≤ [t] (and ≥ [floor]) the deck is down from a moment
+  /// before until [d] seconds after.
+  double? _lastDown(double t, double d, double floor) {
+    for (final (a, e) in _down.reversed) {
+      final s = math.min(e - d, t);
+      if (s >= a + 0.1 && s >= floor) return s;
+      if (e < floor) return null;
+    }
+    return null;
+  }
+
+  /// Seconds to step off (or on) the platform at the rest spot, and the
+  /// walking speeds.
+  static const _step = 0.7, _vOut = 1.9, _vHome = 2.2;
+
+  /// Decides what [b] does and where, stepping off at [leave] and back on
+  /// by [latest] (or the end of the [window]), reserving a spot (and a
+  /// machine). False if nothing fits.
+  bool _choose(_Break b, BuildPlan plan, double leave, double latest, {double? window}) {
+    for (final kind in _prefs(b)) {
       if (kind == BreakKind.stretch) break;
-      if (_tryAway(b, plan, kind)) return;
+      if (_tryAway(b, plan, kind, leave, latest)) return true;
+      if (window != null && latest < window && _tryAway(b, plan, kind, leave, window)) return true;
     }
     b.kind = BreakKind.stretch;
+    return false;
   }
 
-  /// What [b]'s person would rather do, in order (stretching is the fallback).
+  /// What [b]'s person would rather do, best first: coffee, a smoke (the
+  /// smokers) or a chat on the bench, the nearer the better, something the
+  /// others haven't gone for yet (all three show up in a build), a chat
+  /// rather where there's someone to chat with.
   List<BreakKind> _prefs(_Break b) {
     if (b.who == driver) return const [BreakKind.coffee, BreakKind.stretch];
-    final s = _plan!.job.serial;
-    final r = rnd(b.seed, s, 3);
+    final plan = _plan!;
+    final s = plan.job.serial;
+    final right = plan.restX(b.who) > 0;
     final smoker = (b.who == 1 || b.who == 4) != (s % 5 == 0);
-    final List<BreakKind> order = smoker
-        ? (r < 0.6 ? [BreakKind.smoke, BreakKind.coffee, BreakKind.chat] : [BreakKind.coffee, BreakKind.smoke, BreakKind.chat])
-        : (r < 0.5 ? [BreakKind.coffee, BreakKind.chat] : [BreakKind.chat, BreakKind.coffee]);
-    // Join whoever is already over there, now and then.
-    for (final o in _breaks.reversed) {
-      if (o.spot == null || o.depart < b.from + 8 || o.arrive > b.to - 8) continue;
-      if (order.contains(o.kind) && rnd(b.seed, 77) < 0.6) {
-        order
-          ..remove(o.kind)
-          ..insert(0, o.kind);
+    double score(BreakKind k) {
+      var v = switch (k) {
+        BreakKind.coffee => 1.0 + (right ? 0.6 : 0),
+        BreakKind.smoke => smoker ? 1.2 + (right ? 0 : 0.6) : -9,
+        _ => 0.8 + (right ? 0 : 0.6),
+      };
+      for (final o in _breaks) {
+        if (o.kind != k || o.spot == null) continue;
+        v -= 0.7;
+        if (k == BreakKind.chat && o.depart > b.from + 10 && o.arrive < b.from + 25) v += 0.5;
       }
-      break;
+      return v + rnd(b.seed, k.index, s) * 0.9;
     }
-    return [...order, BreakKind.stretch];
+
+    final order = [BreakKind.coffee, BreakKind.smoke, BreakKind.chat]..sort((x, y) => score(y).compareTo(score(x)));
+    return [...order.where((k) => score(k) > 0), BreakKind.stretch];
   }
 
-  /// Plans a trip off the platform for [b] to do [kind], if it fits.
-  bool _tryAway(_Break b, BuildPlan plan, BreakKind kind) {
+  /// Plans a trip off the platform for [b] to do [kind], stepping off at
+  /// [leave] and back on by [latest], if it fits.
+  bool _tryAway(_Break b, BuildPlan plan, BreakKind kind, double leave, double latest) {
     final group = switch (kind) {
       BreakKind.coffee => 0,
       BreakKind.smoke => 1,
       _ => 2,
     };
-    // Where they start and end: their place on the platform, or the truck.
+    // Builders step off the back of the platform at their rest spot (the
+    // driver starts by the truck).
     final isDriver = b.who == driver;
-    final w = _w;
-    final side = isDriver ? 1.0 : (plan.zoneX[b.who] < 0 ? -1.0 : 1.0);
-    final start = isDriver ? b.door : vm.Vector3(plan.zoneX[b.who], 0, SiteLayout.crewZ);
-    // The deck part of the walk (to the platform's end).
-    final exit = vm.Vector3(side * (w / 2 + 1.3), 0, _deckLane);
-    final deck = isDriver ? <vm.Vector3>[start] : [start, vm.Vector3(start.x, 0, _deckLane), exit];
-    final deckLen = _length(deck);
-    // Off the deck as soon as it's down, back on in time when it's down
-    // again (the driver just steps out of the cab).
-    var leave = b.from + 0.4;
-    final deckOut = deckLen / _vOut + 0.3, deckIn = deckLen / _vHome + 0.3;
-    while (!isDriver && leave < b.to && !_ground(plan, leave, leave + deckOut)) {
-      leave += 0.25;
-    }
-    var homeEnd = b.to - 0.8;
-    while (!isDriver && homeEnd > leave && !_ground(plan, homeEnd - deckIn, homeEnd)) {
-      homeEnd -= 0.25;
-    }
+    final start = isDriver ? b.door : vm.Vector3(plan.restX(b.who), 0, SiteLayout.crewZ);
+    final behind = isDriver ? start : vm.Vector3(start.x, 0, 2.4);
+    final step = isDriver ? 0.0 : _step;
+    final minStay = switch (kind) {
+      BreakKind.coffee => 9.0,
+      BreakKind.smoke => 10.0,
+      _ => 7.0,
+    };
     for (final spotIndex in _spotsOf(group)) {
       final spot = _spots[spotIndex];
-      final ground = _groundRoute(isDriver ? start : exit, side, group, spot, isDriver: isDriver);
-      final out = [...deck, ...ground.skip(1)];
+      final out = _groundRoute(behind, group, spot, isDriver: isDriver);
       final home = [spot.at, if (kind == BreakKind.coffee) _binStop, ...out.reversed.skip(1)];
       final dOut = _length(out) / _vOut, dHome = _length(home) / _vHome;
-      final arrive = leave + dOut;
-      final depart = homeEnd - dHome;
-      final minStay = switch (kind) {
-        BreakKind.coffee => 9.0,
-        BreakKind.smoke => 10.0,
-        _ => 7.0,
-      };
-      if (depart - arrive < minStay) return false; // no nearer spot to try
+      final arrive = leave + step + dOut;
+      // Back on the deck as late as it allows (when it's down), after a
+      // moment waiting behind it.
+      final stepOn = isDriver ? latest - 0.3 : _lastDown(latest - step - 0.3, step + 0.1, arrive + minStay + dHome + 0.3);
+      if (stepOn == null) return false;
+      final behindAt = isDriver ? stepOn : stepOn - 0.3;
+      final depart = behindAt - dHome;
+      if (depart - arrive < minStay) return false; // the other spots are no nearer
       // Coffee: a machine free for the purchase on arrival.
       var machine = -1;
-      var buyAt = arrive;
       if (kind == BreakKind.coffee) {
         for (var m = 0; m < 2 && machine < 0; m++) {
           if (_free(_machines[m], arrive, arrive + _buyTime)) machine = m;
         }
         if (machine < 0) continue;
       }
-      final stayFrom = kind == BreakKind.coffee ? buyAt + _buyTime + 0.8 : arrive;
-      if (!_free(_taken[spotIndex] ?? const [], stayFrom - 0.5, depart + 0.5)) continue;
+      final stay = kind == BreakKind.coffee ? arrive + _buyTime + 0.8 : arrive;
+      if (!_free(_taken[spotIndex] ?? const [], stay - 0.5, depart + 0.5)) continue;
       // Taken.
-      (_taken[spotIndex] ??= []).add((stayFrom - 0.5, depart + 0.5));
-      if (machine >= 0) _machines[machine].add((buyAt, buyAt + _buyTime));
+      (_taken[spotIndex] ??= []).add((stay - 0.5, depart + 0.5));
+      if (machine >= 0) _machines[machine].add((arrive, arrive + _buyTime));
       b
         ..kind = kind
         ..spot = spot
         ..spotIndex = spotIndex
         ..machine = machine
-        ..buyAt = buyAt
+        ..start = start
+        ..behind = behind
         ..leave = leave
         ..arrive = arrive
-        ..stay = stayFrom
+        ..buyAt = arrive
+        ..stay = stay
         ..depart = depart
-        ..home = homeEnd
+        ..behindAt = behindAt
+        ..stepOn = stepOn
+        ..home = stepOn + step
+        ..to = isDriver ? b.to : stepOn + step + 0.4
         ..out.addAll(machine >= 0 ? [...out.take(out.length - 1), BreakSpots.buyAt(machine)] : out)
         ..back.addAll(home);
-      // The route there ends at the machine, then a step to the spot.
       return true;
     }
     return false;
@@ -297,25 +372,19 @@ class CrewBreaks {
 
   static final _binStop = vm.Vector3(15.75, 0, -5.05);
 
-  /// From the platform's end [from] (on [side]) to [spot] of [group]: round
-  /// the wall's end, behind the wall when it's on the other side.
-  List<vm.Vector3> _groundRoute(vm.Vector3 from, double side, int group, _Spot spot, {required bool isDriver}) {
+  /// From behind the platform ([from]) to [spot] of [group]: along the back
+  /// of the platform, round the wall's end on the right for the machines.
+  List<vm.Vector3> _groundRoute(vm.Vector3 from, int group, _Spot spot, {required bool isDriver}) {
     final w = _w;
     final e = w / 2 + 1.3;
     final pts = <vm.Vector3>[from];
-    final right = group == 0;
-    if (isDriver) {
-      pts.add(vm.Vector3(15.55, 0, -4.0));
-    } else if ((side > 0) != right) {
-      // Across, behind the platform.
-      pts
-        ..add(vm.Vector3(side * e, 0, 2.5))
-        ..add(vm.Vector3(-side * e, 0, 2.5));
-    }
     switch (group) {
       case 0:
-        if (!isDriver) {
+        if (isDriver) {
+          pts.add(vm.Vector3(15.55, 0, -4.0));
+        } else {
           pts
+            ..add(vm.Vector3(e, 0, from.z))
             ..add(vm.Vector3(w / 2 + 1.35, 0, -0.6))
             ..add(vm.Vector3(w / 2 + 1.7, 0, -2.62))
             ..add(vm.Vector3(15.55, 0, -2.62));
@@ -324,7 +393,9 @@ class CrewBreaks {
       case 1:
         pts.add(vm.Vector3(-(w / 2 + 1.6), 0, 2.45));
       default:
-        pts.add(vm.Vector3(-17.0, 0, spot.at.z * 0.5));
+        pts
+          ..add(vm.Vector3(-e, 0, from.z))
+          ..add(vm.Vector3(-17.0, 0, spot.at.z * 0.5));
     }
     pts.add(spot.at);
     return pts;
@@ -510,12 +581,28 @@ class CrewBreaks {
   /// Where [b]'s person is at [t] along their trip (on the ground, before
   /// the deck height is applied); returns whether walking, and the heading.
   (bool, double) _place(_Break b, double t, FigurePose out) {
-    if (t < b.leave) {
-      out.pos.setFrom(b.out.first);
+    if (t < b.leave || t >= b.home) {
+      out.pos.setFrom(b.start);
       return (false, 0);
     }
-    if (t < b.arrive) return _along(b.out, b.leave, b.arrive, t, out.pos);
-    if (t >= b.depart) return _along(b.back, b.depart, b.home, t, out.pos);
+    final off = b.leave + (b.who == driver ? 0 : _step);
+    if (t < off) {
+      // Stepping off the back of the platform.
+      _lerp(b.start, b.behind, eio((t - b.leave) / _step), out.pos);
+      return (true, math.pi);
+    }
+    if (t < b.arrive) return _along(b.out, off, b.arrive, t, out.pos);
+    if (t >= b.stepOn) {
+      // Stepping back on.
+      _lerp(b.behind, b.start, eio((t - b.stepOn) / _step), out.pos);
+      return (true, 0);
+    }
+    if (t >= b.behindAt) {
+      // Waiting behind it for the deck to come down.
+      out.pos.setFrom(b.behind);
+      return (false, 0);
+    }
+    if (t >= b.depart) return _along(b.back, b.depart, b.behindAt, t, out.pos);
     // Coffee: from the machine to the spot after buying.
     if (b.machine >= 0 && t < b.stay) {
       if (t < b.buyAt + _buyTime) {
@@ -527,6 +614,8 @@ class CrewBreaks {
     out.pos.setFrom(b.spot!.at);
     return (false, 0);
   }
+
+  static void _lerp(vm.Vector3 a, vm.Vector3 b, double f, vm.Vector3 out) => out.setValues(lerp(a.x, b.x, f), lerp(a.y, b.y, f), lerp(a.z, b.z, f));
 
   /// Position along a polyline walked from [t0] to [t1] (evenly); returns
   /// whether still walking, and the heading.
@@ -549,23 +638,18 @@ class CrewBreaks {
 
   bool _onDeck(vm.Vector3 p) => p.z > SiteLayout.deckZ0 && p.z < SiteLayout.deckZ1 && p.x.abs() < _w / 2 + 1.05;
 
-  /// A trip off the platform: walk there, the activity, walk back.
+  /// A trip off the platform: step off, walk there, the activity, walk
+  /// back, wait for the deck to come down, step on.
   void _awayBreak(FigurePose me, FigurePose work, _Break b, double t, double floor) {
     final spot = b.spot!;
-    // The first and last steps are from and to wherever work has them.
-    if (b.who != driver) {
-      b.out.first.setValues(work.pos.x, 0, work.pos.z);
-      b.back.last.setValues(work.pos.x, 0, work.pos.z);
-    }
     final (walking, heading) = _place(b, t, me);
     me.pos.y = b.who != driver && _onDeck(me.pos) ? floor : 0;
     if (walking) {
-      final speed = t < b.arrive ? _vOut : _vHome;
-      OffDuty.walk(me, t, speed, b.seed);
+      OffDuty.walk(me, t, t < b.arrive ? _vOut : _vHome, b.seed);
       me.yaw = heading;
-      if (b.kind == BreakKind.coffee && t >= b.arrive) {
+      if (b.kind == BreakKind.coffee && t >= b.arrive && t < b.stepOn) {
         // With the can; it goes in the bin on the way past.
-        final toss = b.depart + (b.home - b.depart) * _binStop.distanceTo(spot.at) / _length(b.back);
+        final toss = b.depart + (b.behindAt - b.depart) * _binStop.distanceTo(spot.at) / _length(b.back);
         if (t < b.depart) {
           OffDuty.hold(me, 1, 1);
           _can(me, b, t);
@@ -576,10 +660,17 @@ class CrewBreaks {
       return;
     }
     if (t < b.leave || t >= b.home) {
-      // Waiting on the platform for the deck, or back and ready to work.
+      // On the platform at their rest spot, about to go or just back.
       OffDuty.stand(me, t, b.seed);
-      me.pos.y = floor;
-      me.yaw = t < b.leave ? 0.4 * math.sin(t * 0.6 + b.seed) : 0.1 * math.sin(t * 0.5 + b.seed);
+      me.yaw = 0.15 * math.sin(t * 0.5 + b.seed);
+      return;
+    }
+    if (t >= b.behindAt) {
+      // Behind the platform, waiting for it to come down.
+      OffDuty.stand(me, t, b.seed);
+      me
+        ..yaw = 0.2 * math.sin(t * 0.7 + b.seed)
+        ..lean = -0.12;
       return;
     }
     switch (b.kind) {
@@ -802,26 +893,44 @@ class CrewBreaks {
     final s = plan.job.serial;
     final end = plan.t0 + plan.len;
     final candidates = <_Follow>[];
+    // Not near a kerning close-up (its camera wins).
+    final kerns = [
+      for (final st in plan.steps)
+        if (st != null) (st.a - 2.0, st.e + 1.5),
+    ];
+    // When the camera is taken (the delivery's shots, with a margin, and
+    // the kerning steps), in order.
+    final taken = [for (final r in busyCam) (r.$1 - 2, r.$2 + 2), ...kerns]..sort((a, b) => a.$1.compareTo(b.$1));
     for (final b in _breaks) {
       if (b.spot == null) continue;
       final len = 9.0 + 2.5 * rnd(b.seed, s, 42);
-      final from = math.max(math.max(b.leave + 0.3, b.arrive - 4.5), plan.t0 + 5);
-      final to = math.min(from + len, b.depart - 0.3);
-      if (to - from < 7.5 || to > end - 1) continue;
-      if (busyCam.any((r) => to + 2 > r.$1 && from < r.$2 + 2)) continue;
-      candidates.add(_Follow(b, from, to));
+      // Best from the last of the walk there; if the camera is busy then,
+      // join them later, at the coffee, the smoke or the chat, in a gap.
+      final last = math.min(b.depart - 0.3, end - 1);
+      for (var from = math.max(math.max(b.leave + 0.3, b.arrive - 4.5), plan.t0 + 5); from + 7 <= last; from += 0.5) {
+        if (taken.any((r) => from >= r.$1 && from < r.$2)) continue;
+        var to = math.min(from + len, last);
+        for (final r in taken) {
+          if (r.$1 >= from) to = math.min(to, r.$1);
+        }
+        if (to - from >= 7) {
+          candidates.add(_Follow(b, from, to));
+          break;
+        }
+      }
     }
     candidates.sort((a, b) => a.from.compareTo(b.from));
     var next = plan.t0 + 5.0;
-    var lastKind = -1;
-    for (var i = 0; i < candidates.length; i++) {
-      final c = candidates[i];
-      if (c.from < next) continue;
-      // Rather another kind than last time, if one starts soon after.
-      if (c.b.kind.index == lastKind && candidates.skip(i + 1).any((o) => o.from < c.from + 8 && o.b.kind.index != lastKind)) continue;
-      _follows.add(c);
-      lastKind = c.b.kind.index;
-      next = c.to + 20 + 12 * rnd(i, s, 44);
+    final shown = <BreakKind>{};
+    while (true) {
+      final open = candidates.where((c) => c.from >= next).toList();
+      if (open.isEmpty) break;
+      // Of those starting soon, one of a kind not seen yet this build.
+      final soon = open.where((c) => c.from < open.first.from + 15);
+      final pick = soon.firstWhere((c) => !shown.contains(c.b.kind), orElse: () => open.first);
+      _follows.add(pick);
+      shown.add(pick.b.kind);
+      next = pick.to + 20 + 12 * rnd(_follows.length, s, 44);
     }
   }
 
@@ -882,20 +991,24 @@ class _Spot {
   final double? face;
 }
 
-/// One person's time off: [who] (a builder, or [CrewBreaks.driver]) is free
-/// over [from]–[to]. Away from the platform when [spot] is set: off at
-/// [leave], there at [arrive] (coffee: buying at [buyAt], at the spot from
-/// [stay]), leaving at [depart], back at their place at [home].
+/// One person's time off: [who] (a builder, or [CrewBreaks.driver]) is ours
+/// to pose over [from]–[to]. A trip away when [spot] is set: stepping off
+/// the platform at [start] (their rest spot) at [leave] to [behind] it,
+/// along [out] to arrive at [arrive] (coffee: buying at [buyAt], at the
+/// spot from [stay]), leaving at [depart] along [back], behind the platform
+/// again at [behindAt], stepping on at [stepOn], back at [home]. The
+/// driver's trips start and end at [door].
 class _Break {
   _Break(this.who, this.from, this.to, this.seed);
   final int who;
-  final double from, to;
+  final double from;
+  double to;
   final int seed;
   BreakKind kind = BreakKind.stretch;
-  vm.Vector3 door = vm.Vector3.zero();
+  vm.Vector3 door = vm.Vector3.zero(), start = vm.Vector3.zero(), behind = vm.Vector3.zero();
   _Spot? spot;
   int spotIndex = -1, machine = -1;
-  double leave = 0, arrive = 0, buyAt = 0, stay = 0, depart = 0, home = 0;
+  double leave = 0, arrive = 0, buyAt = 0, stay = 0, depart = 0, behindAt = 0, stepOn = 0, home = 0;
   final out = <vm.Vector3>[], back = <vm.Vector3>[];
 }
 

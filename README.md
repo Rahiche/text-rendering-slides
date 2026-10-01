@@ -11,6 +11,31 @@ flutter run -d macos -t lib/main_simple.dart              # just the talk, nativ
 tool/export_slides.sh --pdf build/slides/inside-flutters-text-pipeline.pdf   # PNG per slide + PDF
 ```
 
+## The booth (conference stall)
+
+Visitors type their name (English or Japanese, via the macOS input method) on a
+keyboard at the stall; a world made of text builds it, celebrates it, takes it
+down and builds the next one, forever. Fully offline; history of built names is
+kept on disk.
+
+| app | what | build |
+| --- | --- | --- |
+| **Name Factory · 名前工場** | 2D: the glyph factory rasterizes the name into bricks, a crane and builders lay them, a wrecking ball, recycling. Ctrl+Shift+M switches to the **Name Workshop · 名前工房**: one character at a time, each in a different craft (calligraphy, welding, neon, casting, 3D printing, carving, carpentry, bricks, embroidery, laser, concrete, blocks, kintsugi, stencil, light bulbs, topiary). | `tool/build_booth_macos.sh` |
+| **Name City · 名前の街** | 3D (flutter_scene, Flutter 3.47+): the name as a wall of brick pixels in a city of glyph towers; the smooth letters rise through it; fireworks; physics-y demolition. | `booth3d/tool/build_macos.sh` |
+
+Web previews: `/booth/` and `/workshop/` on the site.
+
+Operator keys (Ctrl+Shift+…): **S** skip · **⌫** remove last in line · **M** factory ↔ workshop ·
+**F** full screen · **↑/↓** fast-forward · **H** help · **R** reset today (twice) · **Q** quit.
+The booth apps ignore ⌘Q/⌘W/⌘H/⌘M so visitors can't close them.
+
+Frames at chosen scene times, without waiting in real time:
+
+```bash
+tool/booth_capture.sh --times 10,60,120 --names "田中太郎" [--mode craft] [--crafts neon]
+booth3d/tool/capture.sh --times 10,60,120 --names "田中太郎"
+```
+
 Other versions and experiments, each told inside one world:
 
 | version | link |

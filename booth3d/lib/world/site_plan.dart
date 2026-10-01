@@ -33,8 +33,9 @@ abstract final class SiteLayout {
 
 /// Name City's pace (the model's [BoothModel.pace]): names are built one
 /// letter at a time with a kerning step between letters ([BuildSchedule]),
-/// in [longest] at most. The celebration is longer than the booth's: the
-/// team's photo with the Glyph Works' mini name.
+/// in [longest] at most. The celebration is longer than the booth's (the
+/// team's photo with the Glyph Works' mini name), and so is the demolition
+/// (the new manager's visit comes first).
 class CityPace extends BuildPace {
   const CityPace();
 
@@ -43,6 +44,10 @@ class CityPace extends BuildPace {
 
   /// The celebration: fireworks, then the team's photo (photo_op.dart).
   static const celebrate = 24.0;
+
+  /// The demolition's first seconds, before the wrecking ball: the new
+  /// manager brings the next blueprint (verdict.dart).
+  static const verdict = 15.0;
 
   @override
   double nominal(NameRaster r) => math.min(BuildSchedule.of(r).natural, longest);
@@ -55,7 +60,15 @@ class CityPace extends BuildPace {
   double get sample => 0.75;
 
   @override
-  double phaseLen(Phase p) => p == Phase.celebrate ? celebrate : super.phaseLen(p);
+  double phaseLen(Phase p) => switch (p) {
+    Phase.celebrate => celebrate,
+    Phase.demolish => super.phaseLen(p) + verdict,
+    _ => super.phaseLen(p),
+  };
+
+  /// While [j] is in [Phase.demolish]: the seconds before the wrecking ball
+  /// (the manager's visit). None after a cut (a quick knock-down).
+  static double verdictOf(Job j) => j.cutAt != null ? 0 : math.max(0.0, j.phaseLen - phaseSeconds[Phase.demolish]!);
 }
 
 /// The build's timeline at its natural pace (seconds from the build start),

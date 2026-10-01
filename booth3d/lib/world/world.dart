@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_scene/scene.dart';
@@ -71,7 +73,7 @@ class World3D {
     site.fx.begin();
     site.camera.setFrom(director.camera.position);
     site.update(m, dt, night: sky.night);
-    city.gate = site.delivery.gateOpen(m.t);
+    city.gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t));
     typing
       ..attach(BoothUi.of(m))
       ..update(m, dt, site.fx);

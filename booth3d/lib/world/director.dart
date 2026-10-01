@@ -177,8 +177,10 @@ class Director {
         return Shot(orbit(tg, lerp(0.22, 0.36, seg(since, 7.5, 14)), r, 2.4), tg, fov: 46, settle: 2.6, drift: 1.4);
       case Phase.demolish:
         // Low and to the left: the ball comes swinging from the right, the
-        // bricks fly towards us.
-        final release = j.phaseLen * 0.26;
+        // bricks fly towards us. (From when the wrecking starts: after the
+        // new manager's visit, which the site films.)
+        final since = t - site.wreckAt, len = site.wreckLen;
+        final release = len * 0.26;
         final fr = fit(w, h, 46);
         if (since < release - 0.2) {
           // The ball comes down on the right: frame it with the wall.
@@ -188,7 +190,13 @@ class Director {
         }
         // Low three-quarters: the ball swings towards us, bricks fly past.
         final tg = vm.Vector3(w * 0.02, h * 0.42, 0);
-        return Shot(orbit(tg, -0.6 - 0.1 * seg(since, release, j.phaseLen), fr * lerp(0.74, 0.86, seg(since, release, j.phaseLen)), 2.6 - tg.y + 0.6), tg, fov: 50, settle: 1.3, drift: 1.2);
+        return Shot(
+          orbit(tg, -0.6 - 0.1 * seg(since, release, len), fr * lerp(0.74, 0.86, seg(since, release, len)), 2.6 - tg.y + 0.6),
+          tg,
+          fov: 50,
+          settle: 1.3,
+          drift: 1.2,
+        );
       case Phase.cleanup:
         // Follow the truck as it loads and drives off, then settle on the
         // empty, swept plaza with the crane (lit at night).

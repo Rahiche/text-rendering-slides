@@ -11,6 +11,7 @@ import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
 import 'site_plan.dart';
+import 'walk.dart';
 
 /// What the team photo puts on screen (the 2D overlay): the countdown and
 /// the flash. Refreshed every frame by the site.
@@ -451,47 +452,6 @@ class PhotoOp {
   }
 }
 
-/// One person's walk somewhere: from [start] to [end] along [pts], then
-/// standing at the end facing [face].
-class _Walk {
-  _Walk(this.pts, this.start, double speed, {this.face = 0}) : end = start + _length(pts) / speed;
-
-  final List<vm.Vector3> pts;
-  final double start, end, face;
-
-  vm.Vector3 get last => pts.last;
-
-  static double _length(List<vm.Vector3> pts) {
-    var l = 0.0;
-    for (var i = 0; i + 1 < pts.length; i++) {
-      l += pts[i].distanceTo(pts[i + 1]);
-    }
-    return l;
-  }
-
-  void pose(FigurePose f, double t, int seed) {
-    final total = _length(pts);
-    var d = total * c01((t - start) / math.max(end - start, 1e-3));
-    for (var i = 0; i + 1 < pts.length; i++) {
-      final a = pts[i], b = pts[i + 1];
-      final l = a.distanceTo(b);
-      if (d <= l || i + 2 == pts.length) {
-        final k = l > 0 ? c01(d / l) : 1.0;
-        f.pos.setValues(lerp(a.x, b.x, k), 0, lerp(a.z, b.z, k));
-        if (t < end && l > 0.01) {
-          OffDuty.walk(f, t, total / math.max(end - start, 1e-3), seed);
-          f.yaw = math.atan2(-(b.x - a.x), -(b.z - a.z));
-        } else {
-          OffDuty.stand(f, t, seed);
-          f.yaw = face;
-        }
-        return;
-      }
-      d -= l;
-    }
-  }
-}
-
 /// The tray's carry: keys of where its middle is and which way the carriers
 /// face; between keys it moves evenly (turning on the spot the shortest way
 /// first, unless told which way to face: backing in).
@@ -556,7 +516,7 @@ class _Plan {
         vm.Vector3(x, 0, WorksLayout.placeZ),
         vm.Vector3(x, 0, WorksLayout.trayZ),
       ];
-      toTray.add(_Walk(pts, math.max(end - 4.6, works.freeAt(i)), 1.8));
+      toTray.add(Walk(pts, math.max(end - 4.6, works.freeAt(i)), 1.8));
     }
     lift = [end - 1.6, works.trayDone! + 0.6, toTray[0].end + 0.15, toTray[1].end + 0.15].reduce(math.max);
     // Out of the front, round the wall's left end, along its front to the
@@ -571,7 +531,7 @@ class _Plan {
       ..turn(0)
       ..hold(0.2);
     // The photographer, with the tripod, after the tray.
-    toSpot = _Walk(
+    toSpot = Walk(
       [
         vm.Vector3(WorksLayout.stationX[2], 0, WorksLayout.makerZ),
         vm.Vector3(WorksLayout.gaps[1], 0, WorksLayout.makerZ),
@@ -598,13 +558,13 @@ class _Plan {
 
   final int serial;
   final double w;
-  final toTray = <_Walk>[];
+  final toTray = <Walk>[];
   late final double lift;
 
   /// Where the carry turns along the wall (left of its end).
   late final double xa;
   late final _Track out;
-  late final _Walk toSpot;
+  late final Walk toSpot;
   final slots = <int, vm.Vector3>{};
 
   /// When the celebration started (once seen).
@@ -634,7 +594,7 @@ class _Now {
     for (var i = 0; i < 2; i++) {
       final x = WorksLayout.tableX + (i == 0 ? -1 : 1) * (trayLen / 2 + 0.17), gap = WorksLayout.gaps[i];
       toHome.add(
-        _Walk(
+        Walk(
           [
             vm.Vector3(x, 0, WorksLayout.trayZ),
             vm.Vector3(x, 0, WorksLayout.placeZ),
@@ -648,7 +608,7 @@ class _Now {
       );
     }
     // The photographer packs up and follows.
-    spotHome = _Walk(p.toSpot.pts.reversed.toList(), away + 1.2, 1.5);
+    spotHome = Walk(p.toSpot.pts.reversed.toList(), away + 1.2, 1.5);
     // The builders and the foreman: over for the photo (behind the line of
     // the tray, then forward into place), and back.
     for (final MapEntry(key: who, value: slot) in p.slots.entries) {
@@ -656,9 +616,9 @@ class _Now {
       final start = c + 4.5 + (who == Crew3D.foreman ? 1.2 : 0.18 * who);
       final via = vm.Vector3(slot.x, 0, -1.75);
       final pts = [from, via, slot];
-      final go = _Walk(pts, start, (_Walk._length(pts) / math.max(1.0, ready - 0.6 - start)).clamp(1.3, 2.6));
+      final go = Walk(pts, start, (Walk.lengthOf(pts) / math.max(1.0, ready - 0.6 - start)).clamp(1.3, 2.6));
       final backPts = [slot, via, from];
-      final back = _Walk(backPts, away + 0.1 + 0.12 * (who % 6), math.max(1.4, _Walk._length(backPts) / 3.6), face: who == Crew3D.foreman ? 0.9 : 0.5);
+      final back = Walk(backPts, away + 0.1 + 0.12 * (who % 6), math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: who == Crew3D.foreman ? 0.9 : 0.5);
       crew[who] = (go: go, back: back);
     }
     done = [toHome[0].end, toHome[1].end, spotHome.end, for (final w in crew.values) w.back.end].reduce(math.max);
@@ -668,7 +628,7 @@ class _Now {
   final double c, away, ready;
   late final _Track back;
   late final double home, done;
-  final toHome = <_Walk>[];
-  late final _Walk spotHome;
-  final crew = <int, ({_Walk go, _Walk back})>{};
+  final toHome = <Walk>[];
+  late final Walk spotHome;
+  final crew = <int, ({Walk go, Walk back})>{};
 }

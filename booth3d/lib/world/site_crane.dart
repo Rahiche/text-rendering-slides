@@ -48,6 +48,10 @@ class Crane3D {
 
   bool get ballOn => _ball.visible;
 
+  /// Where the wrecking ball rests on the ground, waiting to be hooked up
+  /// (its centre), or null (put away). Shown unless it hangs from the hook.
+  vm.Vector3? ballRest;
+
   void init() {
     final yellow = pbr(lin(const Color(0xFFFFC23D)), roughness: 0.45, metallic: 0.25);
     final dark = pbr(rgb(0.05, 0.06, 0.08), roughness: 0.5, metallic: 0.6);
@@ -212,9 +216,12 @@ class Crane3D {
       ..normalize()
       ..add(hook);
     _hook.place((m) => setSpan(m, hook, _up, stretch: false).setTranslationRaw(hook.x, hook.y, hook.z));
-    _ball.visible = ballAt != null || _ballHanging;
-    if (_ball.visible) {
+    final rest = ballRest;
+    _ball.visible = ballAt != null || _ballHanging || rest != null;
+    if (ballAt != null || _ballHanging) {
       _ball.place((m) => setTrs(m, hook.x, hook.y - 1.55, hook.z));
+    } else if (rest != null) {
+      _ball.place((m) => setTrs(m, rest.x, rest.y, rest.z));
     }
     // The operator's seat (world): in the cab, facing down the jib.
     const sx = -0.8, sy = -1.33, sz = 1.0;

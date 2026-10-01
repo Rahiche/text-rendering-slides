@@ -28,6 +28,7 @@ import 'site_kern.dart';
 import 'site_lights.dart';
 import 'site_plan.dart';
 import 'site_props.dart';
+import 'verdict.dart';
 
 /// The name being built in the plaza.
 ///
@@ -68,6 +69,9 @@ class Site3D {
 
   /// The finale: the team's photo with the mini name.
   late final photo = PhotoOp(crew, works, fx, parts);
+
+  /// Before the wrecking ball: the new manager with the next blueprint.
+  late final verdict = Verdict3D(scene, crew, parts);
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
@@ -126,6 +130,10 @@ class Site3D {
   /// When the ball first hits the wall (scene time), once known.
   double? impactAt;
 
+  /// When the wrecking starts (after the manager's visit; scene time) and
+  /// how long it takes, in the demolition phase.
+  double wreckAt = 0, wreckLen = 12;
+
   /// The model's pace (how long each phase lasts), as of this frame.
   BuildPace _pace = const BuildPace();
 
@@ -154,9 +162,13 @@ class Site3D {
     delivery.init();
     parts.init();
     works.init();
+    verdict.init();
     crew
       ..offDuty = breaks.pose
-      ..stage = photo.pose;
+      ..stage = (who, p) {
+        photo.pose(who, p);
+        verdict.pose(who, p);
+      };
     _buildTruck();
     _buildBanner();
     vectorizeText('Aあ字ЖΩب한कก♥').then((gs) {
@@ -447,7 +459,9 @@ class Site3D {
     _truck.visible = false;
     _banner.visible = false;
     crane.slings(null);
-    crane.ballHanging = false;
+    crane
+      ..ballHanging = false
+      ..ballRest = null;
     scanY = -1;
     final plan = _plan;
     level = plan?.level(t) ?? 0;
@@ -476,6 +490,7 @@ class Site3D {
     kern.update(plan, j, t, fx, scanY: scanY);
     photo.update(m, j, plan, t);
     works.update(j, plan, t, night, _shapes);
+    verdict.update(m, j, t, w: wallWidth, impact: impactAt);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
     breaks.end();
     parts.end();
@@ -485,6 +500,7 @@ class Site3D {
     // The team photo; now and then the camera follows the delivery, visits
     // the works, or follows someone on a break.
     photo.focus(focus, t, w: wallWidth, h: wallHeight);
+    verdict.focus(focus, t);
     delivery.focus(focus, t);
     works.focus(focus, t);
     breaks.focus(focus, t);
@@ -803,8 +819,16 @@ class Site3D {
 
   void _demolish(Job j, double t, double dt, double night) {
     final plan = _plan;
-    final len = math.max(j.phaseLen, 0.01);
-    final u = j.since(t);
+    // First the manager's visit (not after a cut): the name still stands.
+    final pre = CityPace.verdictOf(j);
+    final len = math.max(j.phaseLen - pre, 0.01);
+    final u = j.since(t) - pre;
+    wreckAt = j.phaseStart + pre;
+    wreckLen = len;
+    if (u < 0 && plan != null) {
+      _verdict(j, t, dt, night, pre + u, pre);
+      return;
+    }
     for (final l in _letters) {
       l.node.visible = false;
     }
@@ -812,14 +836,14 @@ class Site3D {
       _idleCrane(vm.Vector3(wallWidth / 2 + 4, 12, -1), t, dt, night);
       return;
     }
-    _swing ??= _Swing(wallWidth, wallHeight, len);
+    _swing ??= _Swing(wallWidth, wallHeight, len, from: pre > 0 ? _lifted : null);
     final sw = _swing!;
     if (_falls == null) {
       _falls = _planFalls(j, sw);
       final order = List.generate(_falls!.length, (i) => i)..removeWhere((i) => !_falls![i].ever);
       order.sort((a, c) => _falls![a].landAt(b).compareTo(_falls![c].landAt(b)));
       _landOrder = order;
-      impactAt = j.phaseStart + sw.firstHit;
+      impactAt = j.phaseStart + pre + sw.firstHit;
     }
     // Outlines → pixels again: the smooth letters turn back into bricks as
     // a quick scan runs down the wall (not after a cut: no letters then).
@@ -878,7 +902,59 @@ class Site3D {
       fx.puff(p.x, 0.05, p.z, age, 0.55, seed: i, n: 2);
     }
     // Confetti from the celebration still lies about.
-    if (wasRevealed) fx.confettiShow(u + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+    if (wasRevealed) fx.confettiShow(u + pre + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+  }
+
+  // ── The manager's visit (verdict.dart): the name stands; the ball ──────────
+
+  /// Where the crane waits during the visit, and the ball's centre once it
+  /// has been lifted off the ground by the yard (the swing takes it from
+  /// there).
+  vm.Vector3 get _parked => vm.Vector3(wallWidth / 2 + 3.5, 12.5, 2.0);
+  static final _lifted = Verdict3D.ballRest + vm.Vector3(0, 3.9, 0);
+
+  /// [u] seconds into the visit ([pre] long): the smooth letters as they
+  /// were celebrated, glowing softly; the confetti; the crane waiting, then
+  /// fetching the wrecking ball from beside the yard: over it, down to it,
+  /// hooked on, lifted.
+  void _verdict(Job j, double t, double dt, double night, double u, double pre) {
+    _hideWall();
+    for (var i = 0; i < _letters.length; i++) {
+      final l = _letters[i];
+      if (!identical(l.node.mesh, l.full)) l.node.mesh = l.full;
+      l.node
+        ..visible = true
+        ..place((m) => setTrs(m, l.at.x, l.at.y, l.at.z));
+      l.mat
+        ..baseColorFactor = l.hue * 0.8
+        ..emissiveFactor = l.hue
+        ..emissiveStrength = 0.25 + 0.15 * (0.5 + 0.5 * math.sin(u * 1.6 - i * 0.9));
+    }
+    fx.confettiShow(u + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+    final g = Verdict3D.ballRest;
+    final go = pre - Verdict3D.hookFrom, lower = pre - Verdict3D.latchAt - 0.6, down = pre - Verdict3D.latchAt, lift = pre - Verdict3D.liftAt;
+    final above = vm.Vector3(g.x, g.y + 1.55 + 3.0, g.z), latch = vm.Vector3(g.x, g.y + 1.55, g.z);
+    if (u < go) {
+      crane.ballRest = g;
+      _idleCrane(_parked, t, dt, night);
+      return;
+    }
+    _cmdInit = true;
+    if (u < lift) {
+      crane.ballRest = g;
+      if (u < lower) {
+        _cmd.setFrom(polarLerp(_parked, above, eio(seg(u, go, lower))));
+      } else {
+        _cmd.setFrom(above + (latch - above) * eio(seg(u, lower, down)));
+      }
+      crane.update(_cmd, t, dt, night: night);
+      return;
+    }
+    // Hooked on: up it goes.
+    final ball = g + (_lifted - g) * eio(seg(u, lift, pre));
+    ballAt.setFrom(ball);
+    crane.swingBall(vm.Vector3(ball.x, 14, ball.z), ball, t, dt, night: night);
+    if (u < lift + 0.5) fx.puff(g.x, 0.05, g.z, (u - lift) / 0.5, 0.9, seed: 7, n: 3);
   }
 
   List<_Fall> _planFalls(Job j, _Swing sw) {
@@ -1021,7 +1097,7 @@ class _Letter {
 /// The wrecking ball's swing: lowered at the right of the wall, then
 /// released as a pendulum from above the middle, through the wall.
 class _Swing {
-  _Swing(this.w, this.h, this.len) {
+  _Swing(this.w, this.h, this.len, {this.from}) {
     pivotY = SiteLayout.jibY - 0.45 - 1.55 + 1.0;
     l = pivotY - h * 0.42;
     theta0 = math.asin(math.min(0.97, (w / 2 + 2.4) / l));
@@ -1041,6 +1117,10 @@ class _Swing {
 
   final double w, h, len;
   late final double pivotY, l, theta0, omega, release, firstHit;
+
+  /// Where the ball starts from (lifted off the ground by the yard, after
+  /// the manager's visit), or null: lowered from above.
+  final vm.Vector3? from;
   static const radius = 1.0;
   final z = -0.3;
 
@@ -1056,11 +1136,21 @@ class _Swing {
   /// Where the trolley (the pendulum's pivot) is: over the start while the
   /// ball comes down, then over the middle.
   vm.Vector3 pivotAt(double u) {
+    if (from != null && u < len * 0.2) {
+      // Carried over on the hook, its cable straight up.
+      final b = ballAt(u);
+      return vm.Vector3(b.x, pivotY, b.z);
+    }
     final shift = eio(seg(u, len * 0.2, release));
     return vm.Vector3(startX * (1 - shift), pivotY, z);
   }
 
   vm.Vector3 ballAt(double u) {
+    final f = from;
+    if (f != null && u < release) {
+      // Swung over from where it was lifted, to its start.
+      return polarLerp(f, vm.Vector3(startX, startY, z), eio(seg(u, 0, len * 0.2)));
+    }
     if (u < release) {
       // Lowered from above to its start, hanging still.
       final down = eo(seg(u, 0, len * 0.2));

@@ -389,7 +389,7 @@ class Crew3D {
         sink = -10;
     }
     _platform(w, deck, sink);
-    final floor = math.max(0.0, deck + sink + 0.05);
+    final floor = math.max(0.0, deck + sink + SiteLayout.deckRest + 0.05);
 
     for (var z = 0; z < builders; z++) {
       final p = poses[z]..rest();
@@ -537,7 +537,7 @@ class Crew3D {
       p.lean = 0.15 + 0.55 * eio(bend);
       p.bob = -0.08 * eio(bend);
       for (var s = 0; s < 2; s++) {
-        plan.pileSlot(plan.pileOf[i], plan.pile[i], floor - 0.05, _tgt);
+        plan.pileSlot(plan.pileOf[i], plan.pile[i], floor - 0.05 - SiteLayout.deckRest, _tgt);
         _tgt.x += s == 0 ? -0.08 : 0.08;
         _aim(p, s, _tgt);
       }
@@ -896,7 +896,7 @@ class Crew3D {
   // ── The platform ──────────────────────────────────────────────────────────
 
   void _platform(double w, double deck, double sink) {
-    final y = deck + sink;
+    final y = deck + sink + SiteLayout.deckRest;
     final mx = w / 2 + 0.78;
     final z0 = SiteLayout.deckZ0, z1 = SiteLayout.deckZ1, zc = (z0 + z1) / 2, dz = z1 - z0;
     final visible = sink > -9.9;

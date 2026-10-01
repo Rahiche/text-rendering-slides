@@ -24,6 +24,11 @@ abstract final class SiteLayout {
   /// [kernZ].
   static const deckZ0 = 0.3, deckZ1 = 1.9, stashZ = 0.92, crewZ = 1.38, kernZ = 0.42;
 
+  /// The platform's floor at its lowest ([BuildPlan.deckY] 0): resting on
+  /// its frame a step above the ground (boards flush with the ground
+  /// flickered against it). Everything on the deck stands this much higher.
+  static const deckRest = 0.18;
+
   /// Gravity for everything that falls.
   static const g = 9.8;
 
@@ -757,7 +762,7 @@ class BuildPlan {
   }
 
   vm.Vector3 _onTrip(int k, double u, double t) {
-    final deck = deckY(t);
+    final deck = deckY(t) + SiteLayout.deckRest;
     final low = yardHook(k);
     final high = vm.Vector3(low.x, math.max(8.5, deck + dropGap + hookAbove(k) + 2.5), low.z);
     vm.Vector3 over(int p) => vm.Vector3(pileX[p], deck + dropGap + hookAbove(k), SiteLayout.stashZ);
@@ -847,7 +852,7 @@ class BuildPlan {
     final layer = s ~/ per, w = s % per;
     return (out ?? vm.Vector3.zero())..setValues(
       pileX[p] + ((w % across) - (across - 1) / 2) * b * 1.02,
-      deck + 0.06 + (layer + 0.5) * b,
+      deck + SiteLayout.deckRest + 0.06 + (layer + 0.5) * b,
       SiteLayout.stashZ + ((w ~/ across) - 0.5) * b * 1.05,
     );
   }

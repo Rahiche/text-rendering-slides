@@ -1,0 +1,192 @@
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_scene/scene.dart' show SceneView;
+import 'package:text_slides/booth/model.dart';
+import 'package:text_slides/booth/platform.dart';
+import 'package:text_slides/booth/ui/booth_ui.dart';
+import 'package:text_slides/deck/theme.dart';
+
+import 'world/world.dart';
+
+/// 名前の街 · Name City — the conference booth's name builder in 3D.
+///
+///   flutter run -d macos                        (Flutter GPU is enabled in Info.plist)
+///   --dart-define=BOOTH3D_TIMES=10,60,120       capture frames at scene times, then quit
+///   --dart-define=BOOTH3D_NAMES=Ana,田中太郎      names typed at t=0 (capture)
+void main() => runApp(const NameCityApp());
+
+const _times = String.fromEnvironment('BOOTH3D_TIMES');
+const _names = String.fromEnvironment('BOOTH3D_NAMES');
+const _tag = String.fromEnvironment('BOOTH3D_TAG', defaultValue: 'city');
+
+class NameCityApp extends StatefulWidget {
+  const NameCityApp({super.key});
+
+  @override
+  State<NameCityApp> createState() => _NameCityAppState();
+}
+
+class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStateMixin {
+  final model = BoothModel();
+  final world = World3D();
+  final canvasKey = GlobalKey();
+  Ticker? _ticker;
+  Duration _last = Duration.zero;
+  double _speed = 1;
+  bool get _capturing => _times.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    BoothUi.of(model).title = (ja: '名前の街', en: 'Name City'); // history, toasts, operator state
+    HardwareKeyboard.instance.addHandler(_onKey);
+    if (!_capturing) {
+      BoothPlatform.keepAwake();
+      if (!const bool.fromEnvironment('BOOTH_WINDOWED')) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => BoothPlatform.enterFullScreen());
+      }
+    }
+    world.init().then((_) {
+      if (!mounted) return;
+      setState(() {});
+      if (_capturing) {
+        _capture();
+      } else {
+        _ticker = createTicker(_tick)..start();
+      }
+    });
+  }
+
+  void _tick(Duration elapsed) {
+    var dt = (elapsed - _last).inMicroseconds / 1e6;
+    _last = elapsed;
+    dt = math.min(dt, 0.1) * _speed;
+    final total = dt;
+    while (dt > 0) {
+      final step = math.min(dt, 1 / 30);
+      model.update(step);
+      dt -= step;
+    }
+    world.update(model, total);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    _ticker?.dispose();
+    model.dispose();
+    super.dispose();
+  }
+
+  /// Operator keys, as in the 2D booth (Ctrl+Shift+…).
+  bool _onKey(KeyEvent e) {
+    final k = HardwareKeyboard.instance;
+    if (!k.isControlPressed || !k.isShiftPressed || k.isAltPressed || k.isMetaPressed) return false;
+    final ui = BoothUi.of(model);
+    final key = e.logicalKey;
+    final void Function() action;
+    if (key == LogicalKeyboardKey.keyS) {
+      action = ui.operatorSkip;
+    } else if (key == LogicalKeyboardKey.backspace) {
+      action = ui.operatorDropLast;
+    } else if (key == LogicalKeyboardKey.keyF) {
+      action = BoothPlatform.toggleFullScreen;
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      action = () => ui.operatorSpeed(_speed = math.min(_speed * 2, 32));
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      action = () => ui.operatorSpeed(_speed = math.max(_speed / 2, 1));
+    } else if (key == LogicalKeyboardKey.keyH) {
+      action = ui.toggleHelp;
+    } else if (key == LogicalKeyboardKey.keyR) {
+      action = ui.operatorReset;
+    } else if (key == LogicalKeyboardKey.keyQ) {
+      action = BoothPlatform.quit;
+    } else {
+      return false;
+    }
+    if (e is KeyDownEvent) action();
+    return e is! KeyUpEvent;
+  }
+
+  Future<void> _capture() async {
+    final out = Directory('${Directory.systemTemp.path}/booth3d_capture/$_tag')..createSync(recursive: true);
+    for (final f in out.listSync()) {
+      if (f.path.endsWith('.png')) f.deleteSync();
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    model.update(1 / 30);
+    for (final n in _names.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)) {
+      model.submit(n);
+    }
+    final targets = _times.split(',').map((s) => double.parse(s.trim())).toList()..sort();
+    for (final target in targets) {
+      while (model.t < target) {
+        final step = math.min(1 / 30, target - model.t + 1e-9);
+        model.update(step);
+        world.update(model, step);
+        if (model.pending case final p?) await p;
+      }
+      // Let the async letter meshes and the IBL bake catch up, then render.
+      for (var i = 0; i < 6; i++) {
+        world.update(model, 0);
+        await WidgetsBinding.instance.endOfFrame;
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      }
+      final boundary = canvasKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 1);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      final j = model.job;
+      final name = 't${target.toStringAsFixed(0).padLeft(4, '0')}_${j?.phase.name ?? 'none'}.png';
+      File('${out.path}/$name').writeAsBytesSync(png!.buffer.asUint8List());
+      stdout.writeln('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)})');
+    }
+    stdout.writeln('CAPTURE_DONE ${out.path}');
+    exit(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final view = world.ready
+        ? SceneView(
+            world.scene,
+            cameraBuilder: (_) => world.director.camera,
+            pixelRatio: _capturing ? 1 : null,
+          )
+        : const ColoredBox(color: BP.bg);
+    final canvas = SizedBox.fromSize(
+      size: BP.canvas,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [view, BoothOverlay(model: model)],
+      ),
+    );
+    return MaterialApp(
+      title: '名前の街 · Name City',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: BP.bg,
+        textSelectionTheme: TextSelectionThemeData(cursorColor: BP.amber, selectionColor: BP.line.withValues(alpha: 0.35)),
+      ),
+      home: Material(
+        type: MaterialType.transparency,
+        child: DefaultTextStyle(
+          style: const TextStyle(fontFamily: BP.display, fontSize: 16, color: BP.ink),
+          child: ColoredBox(
+            color: BP.bg,
+            child: Center(
+              child: FittedBox(child: RepaintBoundary(key: canvasKey, child: canvas)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

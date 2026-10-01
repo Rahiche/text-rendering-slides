@@ -60,14 +60,14 @@ RailLayout railLayout(BoothModel m, UiInk k) {
 /// progress, then who's next as order tickets on a rail.
 void paintBoard(UiInk k, BoothModel m, BoothUi ui) {
   final j = m.job;
-  _sign(k, j, m.t);
+  _sign(k, j, m.t, ui.title);
   if (j != null) _nowBuilding(k, m, j, m.t);
   _rail(k, m, ui, m.t);
 }
 
 enum _Bulbs { wave, chase, party, dim }
 
-void _sign(UiInk k, Job? j, double t) {
+void _sign(UiInk k, Job? j, double t, ({String ja, String en})? title) {
   final c = k.c;
   const r = UG.sign;
   // Hung from above on two cables, like the deck's hall signs.
@@ -100,9 +100,10 @@ void _sign(UiInk k, Job? j, double t) {
 
   // 名前工場 · Name Factory (bricks), or 名前工房 · Name Workshop (crafts).
   final workshop = j?.mode == BuildMode.craft;
-  final ja = k.tp(workshop ? '名前工房' : '名前工場', UT.label(29, weight: 700));
+  final own = title;
+  final ja = k.tp(own?.ja ?? (workshop ? '名前工房' : '名前工場'), UT.label(29, weight: 700));
   final dot = k.tp('·', UT.label(29, color: BP.inkDim));
-  final en = k.tp(workshop ? 'Name Workshop' : 'Name Factory', UT.label(29, weight: 600));
+  final en = k.tp(own?.en ?? (workshop ? 'Name Workshop' : 'Name Factory'), UT.label(29, weight: 600));
   final w = ja.width + 12 + dot.width + 12 + en.width;
   var x = r.center.dx - w / 2;
   for (final p in [ja, dot, en]) {

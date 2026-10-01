@@ -89,6 +89,10 @@ class BoothUi extends ChangeNotifier {
 
   final BoothModel model;
   final BoothHistory history;
+
+  /// The board's title, when an app wants its own (the 3D booth: 名前の街 ·
+  /// Name City). Null: by build mode (名前工場 / 名前工房).
+  ({String ja, String en})? title;
   final text = UiText();
 
   /// No typing for this long: the input invites the next visitor.

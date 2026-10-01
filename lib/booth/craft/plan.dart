@@ -178,13 +178,15 @@ class CraftPlan {
   }
 }
 
-const _pad = 12;
+/// Padding (px) around each character's raster.
+const rasterPad = 12;
+const _pad = rasterPad;
 
-Future<VectorizeInput> _rasterize(String g) async {
+Future<VectorizeInput> _rasterize(String g, {TextStyle Function(double size, Color color)? style}) async {
   final tp = TextPainter(
     text: TextSpan(
       text: g,
-      style: craftStyle(craftRasterSize, color: const ui.Color(0xFFFFFFFF)),
+      style: (style ?? (size, color) => craftStyle(size, color: color))(craftRasterSize, const ui.Color(0xFFFFFFFF)),
     ),
     textDirection: TextDirection.ltr,
   )..layout();
@@ -207,6 +209,26 @@ Future<VectorizeInput> _rasterize(String g) async {
 List<GlyphGeometry> _vectorizeAll(List<VectorizeInput> inputs) => [
   for (final i in inputs) vectorize(i),
 ];
+
+/// Each non-space grapheme of [text], rasterized at [craftRasterSize] with
+/// the real text stack (in [craftStyle]) and vectorized on a background
+/// isolate. For the 3D booth, which extrudes them.
+///
+/// [style] (default [craftStyle]) gets the size and colour to render in;
+/// geometry is in raster px of a [craftRasterSize] render with [rasterPad]
+/// px of padding.
+Future<List<(String, GlyphGeometry)>> vectorizeText(
+  String text, {
+  TextStyle Function(double size, Color color)? style,
+}) async {
+  final chars = [
+    for (final g in text.characters)
+      if (g.trim().isNotEmpty) g,
+  ];
+  final inputs = [for (final g in chars) await _rasterize(g, style: style)];
+  final geos = await compute(_vectorizeAll, inputs);
+  return [for (var i = 0; i < chars.length; i++) (chars[i], geos[i])];
+}
 
 /// Crafts for [n] characters: a shuffled tour of every craft (no repeats
 /// within 16 characters), different for every name.

@@ -81,10 +81,15 @@ class Crew3D {
   /// pose them for their break instead. Set by the site.
   void Function(FigurePose p, int z, BuildPlan plan, double t, double floor)? offDuty;
 
-  /// The scenes that need the whole crew (the team photo, the manager's
-  /// visit): called for every figure [who] just before it's drawn, it may
-  /// pose them instead. Set by the site.
+  /// The scenes that need the whole crew (the finish, the team photo, the
+  /// manager's visit): called for every figure [who] just before it's
+  /// drawn, it may pose them instead. Set by the site.
   void Function(int who, FigurePose p)? stage;
+
+  /// Where the finish (site_finish.dart) has builder [z] at [t], if it has
+  /// them then: where they set off from when it's called off. Set by the
+  /// site.
+  vm.Vector3? Function(int z, double t)? finishAt;
 
   late final InstancedMesh _torso, _head, _hat, _brim, _arm, _leg, _hand, _eye, _board;
   late final InstancedMesh _deck, _bulbs;
@@ -312,9 +317,11 @@ class Crew3D {
   vm.Vector3 _watchSpot(int z, double w) => vm.Vector3(w / 2 + 1.5 + (z % 3) * 0.8 + (z ~/ 3) * 0.4, 0, -0.9 - (z ~/ 3) * 0.85);
 
   /// Around the right end of the wall, between the platform and the front
-  /// (from or to [from] on the platform, else their rest spot).
+  /// (from or to [from] on the platform, else their rest spot); from the
+  /// front of the wall (the finish called off), along it.
   List<vm.Vector3> _route(int z, double w, {required bool toWall, vm.Vector3? from}) {
     final work = from ?? _workSpot(z, w), watch = _watchSpot(z, w);
+    if (work.z < 0) return toWall ? [watch, vm.Vector3(work.x, 0, -2.6), work] : [work, vm.Vector3(work.x, 0, -2.6), watch];
     final corner = vm.Vector3(w / 2 + 1.25, 0, SiteLayout.crewZ);
     final pts = [work, corner, vm.Vector3(w / 2 + 1.35, 0, -0.5), watch];
     return toWall ? pts.reversed.toList() : pts;
@@ -374,9 +381,10 @@ class Crew3D {
       case Phase.build:
         deck = plan?.deckY(t) ?? 0;
       case Phase.reveal:
+        // Down, and away once the crew have gone round to finish the front.
         final top = plan?.deckY(plan.t0 + plan.len) ?? 0;
         deck = top * (1 - eio(seg(since, 0, 1.4)));
-        sink = -10 * eio(seg(since, 3.6, 5.8));
+        sink = -10 * eio(seg(since, 4.5, 6.7));
       case Phase.demolish:
         if (cut) {
           final top = plan?.deckY(j.phaseStart) ?? 0;
@@ -452,8 +460,10 @@ class Crew3D {
 
   final _place = CrewPlace(), _cutPlace = CrewPlace();
 
-  /// Where builder [z] was on the platform at [at] (for a build cut short).
+  /// Where builder [z] was at [at] (for a build cut short): on the
+  /// platform, or at the finish.
   vm.Vector3 _fromCut(int z, BuildPlan plan, double at) {
+    if (finishAt?.call(z, at) case final p?) return p;
     final c = plan.crewAt(z, at, _cutPlace);
     return vm.Vector3(c.x, 0, c.z);
   }

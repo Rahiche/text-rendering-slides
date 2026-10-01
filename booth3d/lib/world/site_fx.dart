@@ -13,9 +13,10 @@ import 'site_geo.dart';
 final fxPalette = [for (final c in const [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line, Color(0xFFFFFFFF)]) lin(c)];
 
 /// Particle pools for the site, drawn instanced and rebuilt from scene time
-/// every frame (so they're deterministic and bounded): dust puffs, glowing
-/// sparks (fireworks, pops), glowing pixels (the reveal), confetti, and the
-/// reveal's scan plane. Call [begin], emit, then [end] once per frame.
+/// every frame (so they're deterministic and bounded): dust puffs (and
+/// plaster dust), glowing sparks (fireworks, pops), glowing pixels, and
+/// confetti (and paint drips). Call [begin], emit, then [end] once per
+/// frame.
 class Fx3D {
   Fx3D(this.scene);
 
@@ -27,10 +28,6 @@ class Fx3D {
   final _nodes = <Node>[];
   int _nDust = 0, _nSparks = 0, _nPixels = 0, _nConfetti = 0;
   int _hiDust = 0, _hiSparks = 0, _hiPixels = 0, _hiConfetti = 0;
-
-  final _scan = Node(name: 'scan plane');
-  late final Node _scanBar, _scanSheet, _scanSheetDown;
-  late final UnlitMaterial _barMat, _sheetMat, _sheetDownMat;
 
   void init() {
     InstancedMesh pool(Geometry g, Material m, int n, String name) {
@@ -56,30 +53,6 @@ class Fx3D {
     final confettiNode = Node(name: 'confetti')..addComponent(InstancedMeshComponent(_confetti));
     _nodes.add(confettiNode);
     scene.add(confettiNode);
-
-    // The scan plane: a white-hot bar with a soft cyan sheet above and a
-    // fainter one below.
-    _barMat = UnlitMaterial()..baseColorFactor = vm.Vector4(6, 9, 12, 1);
-    _scanBar = Node(name: 'scan bar', mesh: Mesh(CuboidGeometry(vm.Vector3(1, 1, 1)), _barMat))..castsShadows = false;
-    _sheetMat = UnlitMaterial(colorTexture: gradientTexture(r: 120, g: 210, b: 255))
-      ..alphaMode = AlphaMode.blend
-      ..baseColorFactor = vm.Vector4(2.2, 2.2, 2.2, 0.85)
-      ..doubleSided = true;
-    _sheetDownMat = UnlitMaterial(colorTexture: gradientTexture(r: 255, g: 210, b: 120, power: 2.4))
-      ..alphaMode = AlphaMode.blend
-      ..baseColorFactor = vm.Vector4(1.6, 1.6, 1.6, 0.5)
-      ..doubleSided = true;
-    // A vertical quad facing −z: width × height, its bottom edge on y = 0.
-    final quad = MeshBatch()..quad(vm.Vector3(-0.5, 0, 0), vm.Vector3(0.5, 0, 0), vm.Vector3(0.5, 1, 0), vm.Vector3(-0.5, 1, 0), vm.Vector3(0, 0, -1));
-    final quadGeo = quad.build();
-    _scanSheet = Node(name: 'scan sheet', mesh: Mesh(quadGeo, _sheetMat))..castsShadows = false;
-    _scanSheetDown = Node(name: 'scan sheet below', mesh: Mesh(quadGeo, _sheetDownMat))..castsShadows = false;
-    _scan
-      ..add(_scanBar)
-      ..add(_scanSheet)
-      ..add(_scanSheetDown)
-      ..visible = false;
-    scene.add(_scan);
   }
 
   /// The fireworks' bursts this frame, brightest first: where, what colour,
@@ -88,7 +61,6 @@ class Fx3D {
 
   void begin() {
     _nDust = _nSparks = _nPixels = _nConfetti = 0;
-    _scan.visible = false;
     flashes.clear();
   }
 
@@ -162,20 +134,6 @@ class Fx3D {
     _confetti.setInstanceColor(_nConfetti, color);
     _nConfetti++;
   }
-
-  /// The reveal's scan plane at height [y] across [width], [depth] deep,
-  /// at [strength] (0..1).
-  void scan(double y, double width, double depth, double strength) {
-    if (strength <= 0) return;
-    _scan.visible = true;
-    final w = width + 1.6;
-    _scanBar.place((m) => setTqs(m, 0, y, -0.02, _qi, w, 0.045 + 0.03 * strength, depth));
-    _scanSheet.place((m) => setTqs(m, 0, y, -depth / 2 - 0.01, _qi, w, 1.25 * strength, 1));
-    _scanSheetDown.place((m) => setTqs(m, 0, y, -depth / 2 - 0.01, _qi, w, -0.6 * strength, 1));
-    _barMat.baseColorFactor = vm.Vector4(4 + 6 * strength, 7 + 8 * strength, 10 + 10 * strength, 1);
-  }
-
-  static final _qi = vm.Quaternion.identity();
 
   // ── Fireworks ─────────────────────────────────────────────────────────────
 

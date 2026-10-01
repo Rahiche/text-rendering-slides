@@ -461,7 +461,7 @@ class _WorkshopPainter extends CustomPainter {
   }
 
   void _craftSign(CraftChar ch) {
-    final r = Rect.fromLTWH(BW.dais.left - 104, BW.floorY - 112, 96, 104);
+    final r = Rect.fromLTWH(BW.dais.left - 120, BW.floorY - 112, 112, 104);
     c.drawLine(
       Offset(r.left + 14, r.bottom),
       Offset(r.left + 14, BW.floorY),
@@ -473,17 +473,23 @@ class _WorkshopPainter extends CustomPainter {
       ink.st(BP.lineDim, 2),
     );
     ink.box(r, col: ch.method.color);
-    final ja = _label(
-      ch.method.ja,
-      ch.method.ja.length > 4 ? 18 : 24,
-      color: ch.method.color,
-      weight: 600,
-    );
-    ja.paint(c, Offset(r.center.dx - ja.width / 2, r.top + 8));
-    final en = _label(ch.method.en, 13, color: BP.inkDim, mono: true);
-    en.paint(c, Offset(r.center.dx - en.width / 2, r.top + 40));
+    final maxW = r.width - 12;
+    final ja = _label(ch.method.ja, 24, color: ch.method.color, weight: 600);
+    _fitted(ja, Offset(r.center.dx, r.top + 8), maxW);
+    final en = _label(ch.method.en, 14, color: BP.inkDim, mono: true);
+    _fitted(en, Offset(r.center.dx, r.top + 42), maxW);
     final g = _label('${ch.char}  ${ch.hex}', 14, color: BP.ink, mono: true);
-    g.paint(c, Offset(r.center.dx - g.width / 2, r.bottom - g.height - 10));
+    _fitted(g, Offset(r.center.dx, r.bottom - g.height - 10), maxW);
+  }
+
+  /// Paints [p] centred on [top]'s x, shrunk to [maxW] if it's wider.
+  void _fitted(TextPainter p, Offset top, double maxW) {
+    final s = p.width > maxW ? maxW / p.width : 1.0;
+    c.save();
+    c.translate(top.dx - p.width * s / 2, top.dy + (1 - s) * p.height / 2);
+    c.scale(s);
+    p.paint(c, Offset.zero);
+    c.restore();
   }
 
   void _cart(CraftChar ch, double p) {

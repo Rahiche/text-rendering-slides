@@ -145,12 +145,13 @@ class BuildSchedule {
 
   double tapeY(int k) => (tapeRow[k] + 0.5) * b;
 
-  /// The first team's first brick, after the start.
-  static const lead = 1.0;
+  /// The first team's first brick, after the start (they boarded in the
+  /// intake).
+  static const lead = 1.5;
 
-  /// The platform down between letters: the next team boards, the last one
-  /// steps off.
-  static const board = 2.0;
+  /// The platform down between letters: the last team steps off (back to
+  /// their rest spots), the next one boards.
+  static const board = 2.5;
 
   /// The last team walks back to their places at the end.
   static const walkOff = 1.6;
@@ -1095,7 +1096,7 @@ class BuildPlan {
         // Back to their rest spot once the platform is down.
         final last = mine[j];
         final down = at(sc.downB[last]);
-        final end = last == nl - 1 ? t0 + len : down + 1.9 * s;
+        final end = last == nl - 1 ? t0 + len : down + 1.5 * s;
         legs.add(_Leg(down, restX(z), cz, CrewMode.free, until: end));
         _windows[z].add((from, end));
         i = j + 1;
@@ -1116,17 +1117,26 @@ class BuildPlan {
   }
 
   /// When builder [z] has to be on the platform (absolute [from, to)
-  /// windows, in order): from the platform coming down before their first
-  /// letter of a run to it coming down after their last (and its kerning).
-  /// Outside them they're free: a coffee, a smoke, a chat.
+  /// windows, in order). A window runs from the platform coming down before
+  /// the first letter of a run of consecutive letters they work on (2.5 s
+  /// before its first brick, at the normal pace) to the platform coming
+  /// down after the last one is laid and kerned, plus their walk back to
+  /// their rest spot. Outside them they're free: a coffee, a smoke, a chat.
   ///
-  /// At the start and the end of every window the platform is down (its
-  /// floor at ground level) and the builder is at their rest spot on it
-  /// ([restX], at [SiteLayout.crewZ]): they walk on and off there. The
-  /// first window may start before the build (during the intake, while
-  /// everyone walks onto the platform); the last team's ends with the
-  /// build. Free builders must be off the platform while it's up: it only
-  /// leaves the ground inside the windows of the builders on it.
+  /// Guaranteed, for every window:
+  /// - At its start and its end the platform is down (its floor at ground
+  ///   level) and the builder is at their rest spot on it ([restX], at
+  ///   [SiteLayout.crewZ]; Crew3D's work spot for them): they step on and
+  ///   off there. It stays down from the start until 2.5 s on, and for
+  ///   about a second after the end (both × the build's pace, [s]).
+  /// - It only leaves the ground inside the windows of the builders on it.
+  /// - The first window may start up to 1 s before the build (everyone is
+  ///   walking onto the platform in the intake), and the last letter's
+  ///   team's ends with the build, everybody back at their rest spots for
+  ///   the reveal.
+  ///
+  /// Outside their windows, without a break to go to, builders wait at
+  /// their rest spot on the platform (and ride it).
   List<(double, double)> busyWindows(int z) => _windows[z];
 
   /// Whether builder [z] is needed on the platform at [t].

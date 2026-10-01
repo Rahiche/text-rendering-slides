@@ -10,6 +10,9 @@ abstract final class BoothPlatform {
 
   static Future<void> toggleFullScreen() => _call('toggleFullScreen');
 
+  /// Operator quit (the booth app ignores ⌘Q).
+  static Future<void> quit() => _call('quit');
+
   /// Goes full screen (does nothing if already full screen).
   static Future<void> enterFullScreen() => _call('enterFullScreen');
 

@@ -18,6 +18,8 @@ PLIST="$OUT/Contents/Info.plist"
 plutil -replace CFBundleName -string "$NAME" "$PLIST"
 plutil -replace CFBundleDisplayName -string "$NAME" "$PLIST"
 plutil -replace CFBundleIdentifier -string dev.slides.nameFactory "$PLIST"
+# Visitors can't quit/hide/close it with ⌘-shortcuts (staff: Ctrl+Shift+Q).
+plutil -replace BoothKiosk -bool true "$PLIST"
 codesign --force --deep --sign - --entitlements macos/Runner/Release.entitlements "$OUT" 2>&1 | grep -v "replacing existing signature" || true
 
 mkdir -p "$DEST" build/share

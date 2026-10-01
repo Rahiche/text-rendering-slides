@@ -121,6 +121,8 @@ class _BoothSceneState extends State<BoothScene> with SingleTickerProviderStateM
       action = ui.operatorDropLast;
     } else if (key == LogicalKeyboardKey.keyM) {
       action = ui.operatorMode;
+    } else if (key == LogicalKeyboardKey.keyQ) {
+      action = BoothPlatform.quit;
     } else if (key == LogicalKeyboardKey.keyF) {
       action = BoothPlatform.toggleFullScreen;
     } else if (key == LogicalKeyboardKey.arrowUp) {

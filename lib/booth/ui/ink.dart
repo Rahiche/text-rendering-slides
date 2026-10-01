@@ -46,7 +46,7 @@ abstract final class UG {
   static const toastH = 62.0;
 
   // ── Operator (only while in use).
-  static const help = Rect.fromLTWH(620, 34, 580, 278);
+  static const help = Rect.fromLTWH(620, 34, 580, 346); // 8 rows of keys + footer
   static const chip = Offset(620, 34);
 }
 

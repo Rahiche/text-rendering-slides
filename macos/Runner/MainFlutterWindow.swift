@@ -51,6 +51,9 @@ class MainFlutterWindow: NSWindow {
       case "toggleFullScreen":
         self?.toggleFullScreen(nil)
         result(nil)
+      case "quit":
+        NSApp.terminate(nil)
+        result(nil)
       case "enterFullScreen":
         if let w = self, !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
         result(nil)

@@ -74,6 +74,7 @@ const _rows = [
   ('↑↓', 'Fast-forward ×2 / slower', '早送り'),
   ('R', 'Reset today’s count (twice)', '今日の記録をリセット'),
   ('H', 'Show / hide this help', 'ヘルプ'),
+  ('Q', 'Quit the app', '終了'),
 ];
 
 void _help(UiInk k, BoothModel m, BoothUi ui, Flash? flash) {

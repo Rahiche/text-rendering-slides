@@ -4,6 +4,7 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 
 import 'city.dart';
 import 'director.dart';
+import 'life.dart';
 import 'site.dart';
 import 'sky.dart';
 import 'typing.dart';
@@ -15,6 +16,7 @@ class World3D {
   late final sky = Sky3D(scene);
   late final site = Site3D(scene);
   late final typing = Typing3D(scene);
+  late final life = Life3D(scene);
   final director = Director();
   bool ready = false;
 
@@ -24,14 +26,15 @@ class World3D {
     site.init();
     typing.init();
     await city.init();
+    await life.init();
     ready = true;
   }
 
   /// Call once per frame after stepping the model.
   void update(BoothModel m, double dt) {
     if (!ready) return;
-    sky.update(m.t);
-    city.update(sky.night, m.t);
+    sky.update(m.t, dt);
+    city.update(sky, m.t);
     site.fx.begin();
     site.update(m, dt, night: sky.night);
     typing
@@ -42,5 +45,6 @@ class World3D {
       ..typingWeight = typing.weight
       ..night = sky.night
       ..update(m, dt, site);
+    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night);
   }
 }

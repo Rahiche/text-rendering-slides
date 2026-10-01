@@ -53,7 +53,11 @@ class SiteLights {
         innerConeAngle: 0.28,
         outerConeAngle: 0.62,
       );
-      final lamp = Node(name: 'floodlight', localTransform: trs(vm.Vector3(0, 8.75, 0)))..addComponent(SpotLightComponent(spot));
+      // The actual light on the wall comes from the city's plaza floods
+      // (local to the plaza, one shadow map); these towers are the fixtures,
+      // their lenses glowing. A second pair of unmasked spots lit the whole
+      // city every frame and cost ~15 fps.
+      final lamp = Node(name: 'floodlight', localTransform: trs(vm.Vector3(0, 8.75, 0)));
       tower.add(lamp);
       scene.add(tower);
       _towers.add((lamp, spot, lens));

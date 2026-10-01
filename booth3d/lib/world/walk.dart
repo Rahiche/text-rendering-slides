@@ -35,10 +35,54 @@ class Walk {
     return start + (end - start) * l / math.max(lengthOf(pts), 1e-6);
   }
 
-  /// Poses [f] walking (or, done, standing) at [t].
+  /// How far along the walk they are at [t].
+  double _along(double t) => lengthOf(pts) * c01((t - start) / math.max(end - start, 1e-3));
+
+  /// Where the walk has them at [t] (into [out]).
+  vm.Vector3 posAt(double t, vm.Vector3 out) {
+    var d = _along(t);
+    for (var i = 0; i + 1 < pts.length; i++) {
+      final a = pts[i], b = pts[i + 1];
+      final l = a.distanceTo(b);
+      if (d <= l || i + 2 == pts.length) {
+        final k = l > 0 ? c01(d / l) : 1.0;
+        return out..setValues(lerp(a.x, b.x, k), 0, lerp(a.z, b.z, k));
+      }
+      d -= l;
+    }
+    return out..setFrom(pts.last);
+  }
+
+  /// The way back to the start from where the walk has them at [t]: from
+  /// there through the points already passed, latest first.
+  List<vm.Vector3> backFrom(double t) {
+    final out = [posAt(t, vm.Vector3.zero())];
+    final d = _along(t);
+    final passed = [pts.first];
+    var l = 0.0;
+    for (var i = 0; i + 1 < pts.length; i++) {
+      l += pts[i].distanceTo(pts[i + 1]);
+      if (l < d - 1e-6) passed.add(pts[i + 1]);
+    }
+    for (final p in passed.reversed) {
+      if (p.distanceTo(out.last) > 1e-3) out.add(p);
+    }
+    return out;
+  }
+
+  /// Poses [f] walking (or, done, standing) at [t]; before it starts,
+  /// standing at the start facing the way.
   void pose(FigurePose f, double t, int seed) {
+    if (t <= start) {
+      final a = pts.first;
+      f.pos.setValues(a.x, 0, a.z);
+      OffDuty.stand(f, t, seed);
+      final b = pts.length > 1 ? pts[1] : a;
+      f.yaw = a.distanceTo(b) > 0.01 ? math.atan2(-(b.x - a.x), -(b.z - a.z)) : face;
+      return;
+    }
     final total = lengthOf(pts);
-    var d = total * c01((t - start) / math.max(end - start, 1e-3));
+    var d = _along(t);
     for (var i = 0; i + 1 < pts.length; i++) {
       final a = pts[i], b = pts[i + 1];
       final l = a.distanceTo(b);

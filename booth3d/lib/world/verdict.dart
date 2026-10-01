@@ -172,8 +172,10 @@ class Verdict3D {
   double? _impact;
 
   /// Poses the manager's party, the blueprint and the tubes for [j] at [t];
-  /// [w]: the wall's width. Call before the crew's update.
-  void update(BoothModel m, Job j, double t, {required double w, double? impact}) {
+  /// [w]: the wall's width. [held]: where someone else's scene has a
+  /// builder or the foreman at a time (null: not theirs then), so the crew
+  /// set off from there. Call before the crew's update.
+  void update(BoothModel m, Job j, double t, {required double w, double? impact, vm.Vector3? Function(int who, double t)? held}) {
     _t = t;
     _impact = impact;
     _nameFor(m.upcoming);
@@ -187,7 +189,7 @@ class Verdict3D {
       return;
     }
     var p = _p;
-    if (p == null || p.d != d || p.w != w) p = _p = _Plan(d, w, crew);
+    if (p == null || p.d != d || p.w != w) p = _p = _Plan(d, w, crew, held);
     if (t < p.arrive.map((a) => a.start).reduce(math.min) || t >= p.leave.map((l) => l.end).reduce(math.max)) return;
     for (var i = 0; i < 3; i++) {
       _party(i, p, t);
@@ -489,10 +491,11 @@ class Verdict3D {
     final Shot shot;
     final String id;
     if (u < _arrive) {
-      // From inside the plaza: in through the gate they come, towards us.
+      // From inside the plaza: in through the gate they come, towards us,
+      // stopping a few steps short.
       final m = crew.poses[Crew3D.manager].pos;
       id = 'verdict arrive';
-      shot = Shot(vm.Vector3(p.x - 1.4, 1.8, p.z - 1.6), vm.Vector3(m.x, 1.0, m.z), fov: 44, settle: 1.2, drift: 0.5);
+      shot = Shot(vm.Vector3(p.x - 4.2, 1.7, p.z - 2.2), vm.Vector3(m.x, 1.0, m.z), fov: 44, settle: 1.2, drift: 0.5);
     } else if (u < _unrolled + 0.2) {
       id = 'verdict unroll';
       shot = Shot(vm.Vector3(p.x + 0.9, 1.45, p.z - 4.0), vm.Vector3(p.x + 0.35, 0.95, p.z), fov: 42, settle: 1.4, drift: 0.4);
@@ -529,9 +532,10 @@ class Verdict3D {
 
 /// The verdict starting at [d], for a wall [w] wide: where the blueprint is
 /// held up, the party's walks (in, to their place to watch, out), the
-/// crew's walks round the blueprint and back.
+/// crew's walks round the blueprint and back (from wherever [held] has them
+/// when they set off: back from a photo cut short, say).
 class _Plan {
-  _Plan(this.d, this.w, Crew3D figures) : x = (w / 2 - 1.0).clamp(2.6, 8.6), z = -3.3 {
+  _Plan(this.d, this.w, Crew3D figures, vm.Vector3? Function(int who, double t)? held) : x = (w / 2 - 1.0).clamp(2.6, 8.6), z = -3.3 {
     // The party: along the front pavement from the east, in through the
     // site gate, to the blueprint's place; the manager in front.
     const gx = 13.0;
@@ -564,15 +568,20 @@ class _Plan {
       final at = vm.Vector3(x + rad * math.sin(a), 0, z - rad * math.cos(a));
       final from = figures.watchSpot(z0, w);
       final face = math.atan2(-(x - at.x), -(z - at.z));
-      final go = Walk([from, at], d + Verdict3D._gather + 0.15 * r, 1.6, face: face);
+      final start = d + Verdict3D._gather + 0.15 * r;
+      final go = Walk([held?.call(z0, start) ?? from, at], start, 1.6, face: face);
       final back = Walk([at, from], d + Verdict3D._disperse + 0.12 * r, 1.9, face: math.atan2(from.x, from.z));
       crew[z0] = (go: go, back: back);
     }
-    final fAt = vm.Vector3(x - 0.55, 0, z - 1.5);
+    // The foreman round the blueprint's right to its left front (straight
+    // there if he comes from the left), there before it's unrolled.
+    final fAt = vm.Vector3(x - 0.55, 0, z - 1.5), via = vm.Vector3(x + 1.5, 0, z - 1.7);
     final fFrom = vm.Vector3(w / 2 + 0.75, 0, -1.55);
+    final fStart = d + 1.5, here = held?.call(Crew3D.foreman, fStart);
+    final fWay = here == null ? [fFrom, via, fAt] : (here.x > x ? [here, via, fAt] : [here, fAt]);
     crew[Crew3D.foreman] = (
-      go: Walk([fFrom, vm.Vector3(x + 1.5, 0, z - 1.7), fAt], d + 1.5, 1.8, face: math.pi),
-      back: Walk([fAt, vm.Vector3(x + 1.5, 0, z - 1.7), fFrom], d + Verdict3D._disperse + 0.3, 1.9, face: 0.8),
+      go: Walk(fWay, fStart, (Walk.lengthOf(fWay) / (Verdict3D._arrive - 1.5)).clamp(1.8, 2.6), face: math.pi),
+      back: Walk([fAt, via, fFrom], d + Verdict3D._disperse + 0.3, 1.9, face: 0.8),
     );
   }
 

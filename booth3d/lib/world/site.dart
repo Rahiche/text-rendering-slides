@@ -490,7 +490,7 @@ class Site3D {
     kern.update(plan, j, t, fx, scanY: scanY);
     photo.update(m, j, plan, t);
     works.update(j, plan, t, night, _shapes);
-    verdict.update(m, j, t, w: wallWidth, impact: impactAt);
+    verdict.update(m, j, t, w: wallWidth, impact: impactAt, held: photo.whereAt);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
     breaks.end();
     parts.end();

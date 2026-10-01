@@ -39,8 +39,10 @@ class PhotoCue {
 /// the tray goes home to the works, safe before the wrecking ball.
 ///
 /// A pure function of scene time, planned once per build: the carry from
-/// the build's end, the photo from the celebration's start. A sample cut
-/// short has none of it (its mini letters stay in the works).
+/// the build's end, the photo from the celebration's start. Called off
+/// early (a sample giving way to a visitor's name, or skipped), everyone
+/// turns back from wherever they are: no countdown, no flash, the tray home
+/// the way it came (never lifted, it stays on its stand).
 class PhotoOp {
   PhotoOp(this.crew, this.works, this.fx, this.parts);
 
@@ -93,15 +95,16 @@ class PhotoOp {
       ..count = -1
       ..flash = 0;
     _now = null;
-    if (plan == null || j.cutAt != null || !identical(plan.job, j) || works.trayDone == null) return;
-    if (j.phase.index < Phase.build.index || j.phase.index > Phase.demolish.index) return;
+    if (plan == null || !identical(plan.job, j) || works.trayDone == null) return;
+    if (j.phase.index < Phase.build.index) return;
     final p = _plan(plan);
-    if (t < math.min(p.lift - 3.5, math.min(p.toTray[0].start, p.toTray[1].start))) return;
-    // The celebration's start: as it happened, or (before) as it will be.
+    // The celebration's start: as it happened, or (before) as it will be;
+    // and when the demolition came (the finale called off, if it was early).
     if (j.phase == Phase.celebrate) p.celebrate = j.phaseStart;
+    if (j.phase.index >= Phase.demolish.index && p.over.isNaN) p.over = j.phaseStart;
+    if (t < math.min(p.lift - 3.5, math.min(p.toTray[0].start, p.toTray[1].start))) return;
     final c = j.phase.index >= Phase.celebrate.index && !p.celebrate.isNaN ? p.celebrate : plan.t0 + plan.len + m.pace.phaseLen(Phase.reveal);
-    // A celebration cut short (a sample giving way): home at once.
-    final away = j.phase == Phase.demolish ? math.min(j.phaseStart, p.backAt(c)) : p.backAt(c);
+    final away = math.min(p.over.isNaN ? double.infinity : p.over, p.backAt(c));
     var now = _cached;
     if (now == null || !identical(now.p, p) || now.c != c || now.away != away) {
       now = _cached = _Now(
@@ -129,19 +132,21 @@ class PhotoOp {
   ({double x, double z, double yaw, double y})? _trayAt(_Now n, double t) {
     final p = n.p;
     if (t < p.lift || t >= n.home) return null;
-    if (t < p.out.end) {
+    if (t < math.min(p.out.end, n.away)) {
       final k = p.out.at(t);
       final up = eio(seg(t, p.lift, p.lift + 0.6));
       return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(WorksLayout.trayY, _hold, up));
     }
     if (t < n.away) {
       // Held for the photo, raised in the cheer.
-      final f = n.ready + _flash;
+      final f = n.flash;
       final up = eio(seg(t, f + 0.25, f + 0.9)) * (1 - eio(seg(t, f + 2.6, f + 3.2)));
       return (x: _spot.x, z: _spot.z, yaw: 0.0, y: lerp(_hold, _raised, up) - 0.02 * math.sin(t * 2.2) * (1 - up));
     }
-    final k = n.back.at(t);
-    final down = eio(seg(t, n.back.end - 0.6, n.back.end));
+    // (Lifted before [_Now.away], so there's a way back.)
+    final back = n.back!;
+    final k = back.at(t);
+    final down = eio(seg(t, back.end - 0.6, back.end));
     return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(_hold, WorksLayout.trayY, down));
   }
 
@@ -166,7 +171,7 @@ class PhotoOp {
     final k = _trayAt(n, t);
     for (var i = 0; i < 2; i++) {
       final to = p.toTray[i], home = n.toHome[i];
-      if (t < to.start || t >= home.end) continue;
+      if (home == null || t < to.start || t >= home.end) continue;
       works.finaleMakers |= 1 << i;
       final f = crew.poses[Crew3D.makers + i]
         ..rest()
@@ -201,11 +206,15 @@ class PhotoOp {
         OffDuty.stand(f, t, seed);
       }
       _hands(f, _end(k, side, 0.03, _a));
-      if (!walking) _cheer(f, t, n.ready + _flash, seed, hands: true);
+      if (!walking) _cheer(f, t, n.flash, seed, hands: true);
     }
   }
 
-  bool _moving(_Now n, double t) => (t >= n.p.lift + 0.6 && t < n.p.out.end - 0.3) || (t >= n.away && t < n.back.end - 0.6);
+  bool _moving(_Now n, double t) {
+    final p = n.p, back = n.back;
+    if (t >= p.lift + 0.6 && t < math.min(p.out.end - 0.3, n.away)) return true;
+    return back != null && t >= n.away && t < back.end - 0.6;
+  }
 
   /// Both of [f]'s hands on [at] (a little either side of it).
   void _hands(FigurePose f, vm.Vector3 at) {
@@ -244,16 +253,17 @@ class PhotoOp {
 
   void _tripodAt(_Now n, double t) {
     final go = n.p.toSpot, home = n.spotHome;
-    if (t < go.start || t >= home.end) return;
+    if (home == null || t < go.start || t >= home.end) return;
     works.finaleMakers |= 4;
     final w2 = crew.poses[Crew3D.makers + 2]
       ..rest()
       ..visible = true;
-    final f = n.ready + _flash;
-    final setUp = go.end, fold = n.away - 0.9;
-    if (t < setUp || t >= n.away) {
-      // Walking there (or home) with the tripod folded on the shoulder.
-      (t < setUp ? go : home).pose(w2, t, 61);
+    final f = n.flash;
+    final setUp = go.end, fold = n.fold;
+    if (n.away <= setUp || t < setUp || t >= n.packed) {
+      // Walking there (or home: turned back on the way, if it was called
+      // off) with the tripod folded on the shoulder.
+      (t < math.min(setUp, n.away) ? go : home).pose(w2, t, 61);
       w2
         ..armPitch[1] = 1.9
         ..armRoll[1] = 0.15;
@@ -263,7 +273,7 @@ class PhotoOp {
       return;
     }
     // Set up: legs out, the camera on top, pointed at the team.
-    final open = eio(seg(t, setUp, setUp + 1.2)) * (1 - eio(seg(t, fold, n.away)));
+    final open = eio(seg(t, setUp, setUp + 1.2)) * (1 - eio(seg(t, fold, n.packed)));
     _head.setValues(_tripod.x, 0.5 + 0.55 * open, _tripod.z);
     final head = _head;
     final aim = math.atan2(-(_spot.x - head.x), -(_spot.z - head.z));
@@ -279,7 +289,7 @@ class PhotoOp {
         ..cyl(head.x + ax * 0.08, head.y + 0.07, head.z + az * 0.08, 0.035, 0.08, _steel, yaw: aim, pitch: math.pi / 2)
         ..box(head.x, head.y + 0.15, head.z, 0.06, 0.04, 0.03, _white, yaw: aim);
       // The self-timer's red light blinks faster as it counts down.
-      if (t >= n.ready + _counts[0] - 0.4 && t < f) {
+      if (t >= n.ready + _counts[0] - 0.4 && t < math.min(f, n.away)) {
         final rate = 2.0 + 3 * seg(t, n.ready + _counts[0], f);
         if ((t * rate) % 1.0 < 0.5) parts.glow(head.x + ax * 0.05, head.y + 0.1, head.z + az * 0.05, 0.015, 0.015, 0.015, _red);
       }
@@ -330,6 +340,7 @@ class PhotoOp {
   // ── The 2D overlay's cue ──────────────────────────────────────────────────
 
   void _cue(_Now n, double t) {
+    if (t >= n.away) return;
     final f = n.ready + _flash;
     for (var i = 0; i < 3; i++) {
       final a = n.ready + _counts[i];
@@ -361,19 +372,19 @@ class PhotoOp {
     f
       ..rest()
       ..clipboard = false;
-    if (t < walk.go.end) {
-      walk.go.pose(f, t, seed);
-      return;
-    }
     if (t >= walk.back.start) {
       walk.back.pose(f, t, seed);
+      return;
+    }
+    if (t < walk.go.end) {
+      walk.go.pose(f, t, seed);
       return;
     }
     // In place, facing the camera.
     f.pos.setFrom(walk.go.last);
     OffDuty.stand(f, t, seed);
     f.yaw = 0.15 * math.sin(t * 0.6 + seed) * (1 - seg(t, n.ready + _counts[0] - 0.5, n.ready + _counts[0]));
-    final fl = n.ready + _flash;
+    final fl = n.flash;
     if (who == Crew3D.foreman) {
       // Hands under the back edge of the tray, behind the letters (and up
       // with it in the cheer).
@@ -392,7 +403,7 @@ class PhotoOp {
     }
     // Waiting: a word with the neighbour; for the countdown, a pose each
     // (a V, both arms up, a thumbs up, arms folded, hands on hips, a wave).
-    final strike = eio(seg(t, n.ready + _counts[0] - 0.6, n.ready + _counts[0]));
+    final strike = t < n.away ? eio(seg(t, n.ready + _counts[0] - 0.6, n.ready + _counts[0])) : 0.0;
     if (strike <= 0) {
       if ((t / 3).floor() % 3 == who % 3) OffDuty.talk(f, t, seed);
       return;
@@ -409,6 +420,17 @@ class PhotoOp {
     f.armRoll[0] = lerp(f.armRoll[0], r0, strike);
     f.armPitch[1] = lerp(f.armPitch[1], p1, strike);
     f.armRoll[1] = lerp(f.armRoll[1], r1, strike);
+  }
+
+  /// Where the finale has [who] (a builder or the foreman) at [t], or null
+  /// if it doesn't have them then: for whoever takes them over next (still
+  /// walking back from a photo called off, say).
+  vm.Vector3? whereAt(int who, double t) {
+    final walk = _now?.crew[who];
+    if (walk == null || t < walk.go.start || t >= walk.back.end) return null;
+    if (t >= walk.back.start) return walk.back.posAt(t, vm.Vector3.zero());
+    if (t < walk.go.end) return walk.go.posAt(t, vm.Vector3.zero());
+    return walk.go.last.clone();
   }
 
   // ── The camera ────────────────────────────────────────────────────────────
@@ -486,6 +508,16 @@ class _Track {
     if (l < 1e-3) return;
     turn(facing ?? math.atan2(-dx, -dz));
     _key(end + l / speed, x, z, _yaw.last);
+  }
+
+  /// The places it has been at by [t] (not counting where it's on its way
+  /// to), in order.
+  List<(double, double)> placesBy(double t) {
+    final out = <(double, double)>[];
+    for (var i = 0; i < _t.length && _t[i] <= t; i++) {
+      if (out.isEmpty || (out.last.$1 - _x[i]).abs() + (out.last.$2 - _z[i]).abs() > 1e-3) out.add((_x[i], _z[i]));
+    }
+    return out;
   }
 
   ({double x, double z, double yaw}) at(double t) {
@@ -567,8 +599,8 @@ class _Plan {
   late final Walk toSpot;
   final slots = <int, vm.Vector3>{};
 
-  /// When the celebration started (once seen).
-  double celebrate = double.nan;
+  /// When the celebration started, and when the demolition did (once seen).
+  double celebrate = double.nan, over = double.nan;
 
   /// When everyone's in place (the countdown follows): ten seconds into
   /// the celebration [c], or as soon as the tray and the tripod are there.
@@ -580,18 +612,41 @@ class _Plan {
 
 /// The finale's times for one celebration (starting at [c]; the team going
 /// back at [away]): when everyone's in place, the tray's way home, everyone's
-/// walks there and back.
+/// walks there and back. Called off before the photo ([away] early: the
+/// demolition came first), they turn back from wherever they've got to, and
+/// whoever hadn't set out stays put.
 class _Now {
-  _Now(this.p, this.c, this.away, {required double trayLen, required Map<int, vm.Vector3> watch}) : ready = p.readyAt(c) {
-    // The tray home: back the way it came, backing in at the end.
-    back = _Track(away, PhotoOp._spot.x, PhotoOp._spot.z, 0)
-      ..walk(p.xa, -2.6, 1.6)
-      ..walk(p.xa, 1.2, 1.6)
-      ..walk(WorksLayout.tableX, 3.0, 1.6)
-      ..walk(WorksLayout.tableX, WorksLayout.trayZ, 1.0, facing: 0)
-      ..hold(0.6);
-    home = back.end;
+  _Now(this.p, this.c, this.away, {required double trayLen, required Map<int, vm.Vector3> watch})
+    : ready = p.readyAt(c),
+      calledOff = away < p.backAt(c) - 1e-6 {
+    // (Never: far off, not infinite, so the easing over it stays a number.)
+    flash = away > ready + PhotoOp._flash ? ready + PhotoOp._flash : 1e9;
+    // The tray home: back the way it came from where it got to (in a hurry
+    // when called off), backing in at the end. Never lifted, it stays.
+    if (away > p.lift) {
+      final at = p.out.at(math.min(away, p.out.end));
+      final way = p.out.placesBy(away);
+      final b = back = _Track(away, at.x, at.z, at.yaw);
+      for (var i = way.length - 1; i >= 0; i--) {
+        final (x, z) = way[i];
+        if (i == 0) {
+          b.walk(x, z, 1.0, facing: 0);
+        } else {
+          b.walk(x, z, calledOff ? 2.0 : 1.6);
+        }
+      }
+      b.hold(0.6);
+      home = b.end;
+    } else {
+      back = null;
+      home = away;
+    }
     for (var i = 0; i < 2; i++) {
+      final to = p.toTray[i];
+      if (away <= to.start) {
+        toHome.add(null);
+        continue;
+      }
       final x = WorksLayout.tableX + (i == 0 ? -1 : 1) * (trayLen / 2 + 0.17), gap = WorksLayout.gaps[i];
       toHome.add(
         Walk(
@@ -602,13 +657,24 @@ class _Now {
             vm.Vector3(gap, 0, WorksLayout.makerZ),
             vm.Vector3(WorksLayout.stationX[i], 0, WorksLayout.makerZ),
           ],
-          home + 0.2,
+          math.max(home, to.end) + 0.2,
           1.35,
         ),
       );
     }
-    // The photographer packs up and follows.
-    spotHome = Walk(p.toSpot.pts.reversed.toList(), away + 1.2, 1.5);
+    // The photographer packs up and follows (or turns back on the way).
+    final go = p.toSpot;
+    if (away <= go.start) {
+      spotHome = null;
+      fold = packed = away;
+    } else if (away < go.end) {
+      spotHome = Walk(go.backFrom(away), away + 0.15, 1.5);
+      fold = packed = away;
+    } else {
+      fold = calledOff ? away : away - 0.9;
+      packed = fold + 0.9;
+      spotHome = Walk(go.pts.reversed.toList(), calledOff ? packed + 0.3 : away + 1.2, 1.5);
+    }
     // The builders and the foreman: over for the photo (behind the line of
     // the tray, then forward into place), and back.
     for (final MapEntry(key: who, value: slot) in p.slots.entries) {
@@ -617,18 +683,35 @@ class _Now {
       final via = vm.Vector3(slot.x, 0, -1.75);
       final pts = [from, via, slot];
       final go = Walk(pts, start, (Walk.lengthOf(pts) / math.max(1.0, ready - 0.6 - start)).clamp(1.3, 2.6));
-      final backPts = [slot, via, from];
-      final back = Walk(backPts, away + 0.1 + 0.12 * (who % 6), math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: who == Crew3D.foreman ? 0.9 : 0.5);
+      if (away <= go.start) continue;
+      final face = who == Crew3D.foreman ? 0.9 : 0.5;
+      final Walk back;
+      if (away < go.end) {
+        final backPts = go.backFrom(away);
+        back = Walk(backPts, away, math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
+      } else {
+        final backPts = [slot, via, from];
+        back = Walk(backPts, away + 0.1 + 0.12 * (who % 6), math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
+      }
       crew[who] = (go: go, back: back);
     }
-    done = [toHome[0].end, toHome[1].end, spotHome.end, for (final w in crew.values) w.back.end].reduce(math.max);
+    done = [away, home, for (final w in toHome) ?w?.end, ?spotHome?.end, for (final w in crew.values) w.back.end].reduce(math.max);
   }
 
   final _Plan p;
   final double c, away, ready;
-  late final _Track back;
+
+  /// The finale was called off before the photo was done.
+  final bool calledOff;
+
+  /// The flash (never, if called off before it: 1e9).
+  late final double flash;
+  late final _Track? back;
   late final double home, done;
-  final toHome = <Walk>[];
-  late final Walk spotHome;
+
+  /// When the photographer starts folding the tripod, and has.
+  late final double fold, packed;
+  final toHome = <Walk?>[];
+  late final Walk? spotHome;
   final crew = <int, ({Walk go, Walk back})>{};
 }

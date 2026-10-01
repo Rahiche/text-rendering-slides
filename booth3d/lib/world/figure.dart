@@ -87,7 +87,9 @@ class FigureRig {
   /// shoulders; [cab]: sits with the legs out (a cramped seat). Without
   /// [arms], only the trunk, the head and the legs.
   void solve(FigurePose p, {double size = 1, double width = 1, bool cab = false, bool arms = true}) {
-    final yaw = p.yaw, lean = p.lean, bob = p.bob;
+    final yaw = p.yaw, bob = p.bob;
+    // Reaching down bends the back as well as the knees.
+    final lean = p.stride.isFinite ? p.lean : math.min(1.25, p.lean + 1.4 * p.stoop);
     _setYaw(root, p.pos.x, p.pos.y, p.pos.z, yaw);
     // ── Legs: the hips' height from them.
     final walking = p.stride.isFinite;
@@ -110,8 +112,10 @@ class FigureRig {
     } else {
       final sit = smooth(0.95, 1.35, math.min(p.legPitch[0], p.legPitch[1]));
       // A crouch: the thighs come forward and the shins back, the feet
-      // stay under the hips.
-      final d = math.max(0.0, -bob) * (1 - sit) / size;
+      // stay under the hips; deeper for a deep bend (a grown-up bending as
+      // low as the toy did squats), and to reach down.
+      final squat = 0.3 * smooth(0.45, 0.9, p.lean) * smooth(0.0, -0.04, bob);
+      final d = (math.max(0.0, -bob) + squat + p.stoop) * (1 - sit) / size;
       final a = d > 0 ? math.acos(math.max(0.3, 1 - d / (thigh + shin))) : 0.0;
       final tuck = smooth(0.03, 0.18, bob);
       for (var s = 0; s < 2; s++) {
@@ -630,14 +634,15 @@ class Figures {
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
     _put(_head, n, r.head, hs, hs, hs);
     if (b.hair case final h?) _put(h, b.hairAt, r.head, hs, hs, hs);
-    final limb = math.sqrt(look.girth) * size;
+    // (A touch sturdier than life: they read better from afar.)
+    final arm = math.sqrt(look.girth) * size * 1.05, leg = math.sqrt(look.girth) * size * 1.08;
     for (var s = 0; s < 2; s++) {
       final k = 2 * n + s;
-      _put(_upperArm, k, r.upper[s], limb, size, limb);
-      _put(_forearm, k, r.lower[s], limb, size, limb);
+      _put(_upperArm, k, r.upper[s], arm, size, arm);
+      _put(_forearm, k, r.lower[s], arm, size, arm);
       _put(_hand, k, r.hand[s], size, size, size);
-      _put(_thigh, k, r.thighs[s], limb, size, limb);
-      _put(_shin, k, r.shins[s], limb, size, limb);
+      _put(_thigh, k, r.thighs[s], leg, size, leg);
+      _put(_shin, k, r.shins[s], leg, size, leg);
       _put(_foot, k, r.feet[s], size, size, size);
     }
     if (b.hat >= 0) {
@@ -824,13 +829,13 @@ class Figures {
   static MeshGeometry _upperArmGeometry() =>
       (_Mesh()..loft(
             const [
-              [0.052, 0.0, 0.0, 0.0],
-              [0.035, 0.046, 0.046, 0.0],
-              [0.0, 0.058, 0.056, 0.0],
-              [-0.07, 0.054, 0.05, 0.0],
-              [-0.16, 0.048, 0.045, 0.0],
-              [-0.25, 0.042, 0.041, 0.0],
-              [-0.3, 0.039, 0.039, 0.0],
+              [0.032, 0.0, 0.0, 0.0],
+              [0.02, 0.036, 0.04, 0.0],
+              [-0.015, 0.053, 0.053, 0.0],
+              [-0.08, 0.053, 0.05, 0.0],
+              [-0.16, 0.05, 0.047, 0.0],
+              [-0.25, 0.044, 0.043, 0.0],
+              [-0.3, 0.041, 0.041, 0.0],
               [-0.325, 0.0, 0.0, 0.0],
             ],
             seg: 8,

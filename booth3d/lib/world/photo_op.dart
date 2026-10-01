@@ -54,7 +54,7 @@ class PhotoOp {
   final cue = PhotoCue();
 
   /// The tray's height in the carriers' hands, and raised in the cheer.
-  static const _hold = 0.62, _raised = 1.08;
+  static const _hold = 0.98, _raised = 1.5;
 
   /// Where the tray is held for the photo (its middle), and where the
   /// tripod stands.
@@ -462,7 +462,7 @@ class PhotoOp {
     final Shot shot;
     if (close) {
       final back = math.max(1.6, works.trayLen * 1.15);
-      shot = Shot(vm.Vector3(0.14, 1.08, _spot.z - back), vm.Vector3(0, 0.8, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
+      shot = Shot(vm.Vector3(0.14, _hold + 0.46, _spot.z - back), vm.Vector3(0, _hold + 0.18, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
     } else {
       // From the pavement, a wide lens: the whole name, the team in front.
       final eye = vm.Vector3(0.3, 3.0, -10.0), tg = vm.Vector3(0, h * 0.42 + 0.2, -0.3);

@@ -44,11 +44,15 @@ class FigurePose {
   /// the knees, the feet and the hips follow it. NaN standing.
   double stride = double.nan;
 
+  /// How much lower the hips go to reach something low (metres: a crouch,
+  /// and a bend forward with it); [Crew3D.aim] sets it.
+  double stoop = 0;
+
   void rest() {
     hatUp = 0;
     hatSpin = 0;
     elbow[0] = elbow[1] = knee[0] = knee[1] = double.nan;
-    headYaw = headPitch = twist = 0;
+    headYaw = headPitch = twist = stoop = 0;
     stride = double.nan;
     lean = 0;
     bob = 0;
@@ -158,7 +162,7 @@ class Crew3D {
   /// makers lab coats and teal caps; the manager a navy suit and a white
   /// hat, his planners light blue shirts.
   static FigureLook _lookOf(int i) {
-    const skins = [0xEBC4A2, 0xC9946B, 0xE2B28C, 0x9A6644, 0xF0CDB0, 0xD6A47E, 0xB8845E, 0xE8BC98, 0xDDAE88, 0xF2D0B4, 0xC28B62, 0xE6B892, 0xD9A882, 0xEFC7A6, 0xA8714C];
+    const skins = [0xEAC9AE, 0xC59A7C, 0xE0BB9E, 0x9A6C52, 0xF0D2BC, 0xD6AE90, 0xB88B6E, 0xE8C6AC, 0xDDB89C, 0xF2D4C0, 0xC09073, 0xE6C2A6, 0xD9B194, 0xEFCDB4, 0xA97A5E];
     const hairs = [0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x1A1714, 0x2A211B, 0x8F8B86, 0x1A1714, 0x2A211B, 0x1A1714, 0x5A3F2C, 0x2A211B, 0x3D2B20, 0x1A1714, 0x2A211B];
     final l = FigureLook()
       ..skin = rgbHex(skins[i % skins.length])
@@ -242,15 +246,36 @@ class Crew3D {
   /// Where builder [z] watches from, beside a wall [w] wide (the front right).
   vm.Vector3 watchSpot(int z, double w) => _watchSpot(z, w);
 
-  /// Points arm [s] of [p] at [target] (world).
-  void _aim(FigurePose p, int s, vm.Vector3 target) {
-    // The shoulder as the figure stands, and the chest's turn.
+  /// Poses the skeleton for [p] and returns how far [target] is from
+  /// shoulder [s] (left in [_sh], the way in [_d]).
+  double _reach(FigurePose p, int s, vm.Vector3 target) {
     _rig.solve(p, arms: false);
     _rig.shoulder(s, 1, _sh);
     _d
       ..setFrom(target)
       ..sub(_sh);
-    final r = _d.length;
+    return _d.length;
+  }
+
+  /// Points arm [s] of [p] at [target] (world): crouching and bending to
+  /// it if it's low and near but out of reach.
+  void _aim(FigurePose p, int s, vm.Vector3 target) {
+    // The shoulder as the figure stands, and the chest's turn.
+    var r = _reach(p, s, target);
+    final hx = target.x - p.pos.x, hz = target.z - p.pos.z;
+    if (r > FigureRig.maxReach && target.y < _sh.y && hx * hx + hz * hz < 1.0) {
+      var lo = p.stoop, hi = p.stoop + 0.7;
+      for (var k = 0; k < 6; k++) {
+        p.stoop = (lo + hi) / 2;
+        if (_reach(p, s, target) > FigureRig.maxReach) {
+          lo = p.stoop;
+        } else {
+          hi = p.stoop;
+        }
+      }
+      p.stoop = hi;
+      r = _reach(p, s, target);
+    }
     if (r < 1e-6) return;
     _d.scale(1 / r);
     // Into the chest's frame (its rotation's transpose).
@@ -606,7 +631,7 @@ class Crew3D {
     } else {
       final fx = st.pushX + 0.42 + st.offset(t);
       for (var s = 0; s < 2; s++) {
-        _tgt.setValues(fx + 0.12, floor + 0.78, SiteLayout.kernZ + (s == 0 ? 0.1 : -0.1));
+        _tgt.setValues(fx + 0.12, floor + 1.12, SiteLayout.kernZ + (s == 0 ? 0.1 : -0.1));
         _aim(p, s, _tgt);
       }
     }

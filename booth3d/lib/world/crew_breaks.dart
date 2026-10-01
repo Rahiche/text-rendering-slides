@@ -529,6 +529,7 @@ class CrewBreaks {
         ..headYaw = q.headYaw
         ..headPitch = q.headPitch
         ..twist = q.twist
+        ..stoop = q.stoop
         ..stride = q.stride;
       return;
     }
@@ -552,7 +553,8 @@ class CrewBreaks {
     p
       ..headYaw = lerp(p.headYaw, q.headYaw, k)
       ..headPitch = lerp(p.headPitch, q.headPitch, k)
-      ..twist = lerp(p.twist, q.twist, k);
+      ..twist = lerp(p.twist, q.twist, k)
+      ..stoop = lerp(p.stoop, q.stoop, k);
     if (k >= 0.5) p.stride = q.stride;
   }
 

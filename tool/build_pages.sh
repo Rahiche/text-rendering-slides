@@ -54,4 +54,7 @@ if [ -f compare/out/flutter/lines.json ] && [ -f compare/fonts/NotoSansJP.ttf ];
   cp compare/fonts/NotoSansJP.ttf build/pages/compare/fonts/
 fi
 touch build/pages/.nojekyll
+# Generated asset folders (flutter_scene's) carry a ".gitignore: *"; the
+# deploy is a git push, which would silently leave those assets out.
+find build/pages -name .gitignore -delete
 echo "Site assembled in build/pages (${WORLDS[*]})"

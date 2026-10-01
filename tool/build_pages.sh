@@ -19,10 +19,12 @@ flutter build web --wasm --release --base-href "$PLACEHOLDER"
 rm -rf build/pages
 mkdir -p build/pages
 cp tool/pages/index.html build/pages/index.html
-# The conference-stall loop (main.dart routes /booth/ to it).
-cp -R build/web build/pages/booth
-sed -i.bak "s#${PLACEHOLDER}#${BASE}booth/#" build/pages/booth/index.html
-rm build/pages/booth/index.html.bak
+# The conference-stall loop (main.dart routes /booth/ and /workshop/ to it).
+for b in booth workshop; do
+  cp -R build/web "build/pages/$b"
+  sed -i.bak "s#${PLACEHOLDER}#${BASE}$b/#" "build/pages/$b/index.html"
+  rm "build/pages/$b/index.html.bak"
+done
 for w in "${WORLDS[@]}"; do
   cp -R build/web "build/pages/$w"
   # Only index.html carries the base href.

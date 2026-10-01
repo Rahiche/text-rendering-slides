@@ -55,7 +55,9 @@ class MainFlutterWindow: NSWindow {
         NSApp.terminate(nil)
         result(nil)
       case "enterFullScreen":
-        if let w = self, !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
+        // Not while running as a small test/export window (SLIDES_EXPORT).
+        let testing = ProcessInfo.processInfo.environment["SLIDES_EXPORT"] != nil
+        if let w = self, !testing, !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
         result(nil)
       default:
         result(FlutterMethodNotImplemented)

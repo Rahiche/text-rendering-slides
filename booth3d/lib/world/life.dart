@@ -732,6 +732,11 @@ class _People {
       hz = p.homeX > 0 ? 5.2 + 0.8 * p.job : 1.6 - 0.9 * p.job;
       ax = hx - p.homeX * (p.homeX > 0 ? 1.2 : 1.0);
       az = hz + (p.homeX > 0 ? 0.9 : -0.35);
+    } else if ((phase == Phase.reveal || phase == Phase.celebrate) && p.job == 0 && p.homeX < 0) {
+      // At the wall's left end, behind its front: out of the way of the
+      // Glyph Works' tray coming round to the front.
+      hz = az = 0.6 + 0.9 * (p.phase * 10).floor().remainder(2);
+      ax = hx;
     } else if (p.job == 1) {
       // By the safety banner, keeping an eye on the street (left of the
       // gate); while the truck comes or goes, at the gate post, guiding it.

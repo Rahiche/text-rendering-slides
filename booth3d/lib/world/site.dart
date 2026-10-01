@@ -18,6 +18,7 @@ import 'crew_breaks.dart';
 import 'delivery.dart';
 import 'glyph_works.dart';
 import 'kit.dart';
+import 'photo_op.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_crane.dart';
@@ -64,6 +65,9 @@ class Site3D {
   /// name (one pool: three draws).
   late final parts = PropPool(scene, 'site parts', home: vm.Vector3(WorksLayout.cx, 0.5, WorksLayout.z1 - 1));
   late final works = GlyphWorks(scene, crew, fx, parts);
+
+  /// The finale: the team's photo with the mini name.
+  late final photo = PhotoOp(crew, works, fx, parts);
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
@@ -150,7 +154,9 @@ class Site3D {
     delivery.init();
     parts.init();
     works.init();
-    crew.offDuty = breaks.pose;
+    crew
+      ..offDuty = breaks.pose
+      ..stage = photo.pose;
     _buildTruck();
     _buildBanner();
     vectorizeText('Aあ字ЖΩب한कก♥').then((gs) {
@@ -468,6 +474,7 @@ class Site3D {
     delivery.update(j, plan, t, night);
     _drawPallets(j, t);
     kern.update(plan, j, t, fx, scanY: scanY);
+    photo.update(m, j, plan, t);
     works.update(j, plan, t, night, _shapes);
     crew.update(m, plan, w: wallWidth, seat: crane.seat, seatYaw: crane.seatYaw, impact: impactAt, trip: trip, night: night);
     breaks.end();
@@ -475,8 +482,9 @@ class Site3D {
     props.update(night);
     lights.update(night, t, fx.flashes);
     hookAt.setFrom(crane.hook);
-    // Now and then the camera follows the delivery, visits the works, or
-    // follows someone on a break.
+    // The team photo; now and then the camera follows the delivery, visits
+    // the works, or follows someone on a break.
+    photo.focus(focus, t, w: wallWidth, h: wallHeight);
     delivery.focus(focus, t);
     works.focus(focus, t);
     breaks.focus(focus, t);

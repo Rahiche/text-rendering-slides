@@ -14,6 +14,7 @@ import 'package:text_slides/deck/theme.dart';
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
 import 'kern_chip.dart';
 import 'perf.dart';
+import 'photo_chip.dart';
 import 'quality.dart';
 import 'tuning.dart';
 import 'world/site_plan.dart' show CityPace;
@@ -193,7 +194,12 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       size: BP.canvas,
       child: Stack(
         fit: StackFit.expand,
-        children: [view, BoothOverlay(model: model), KernChip(model: model, caption: world.site.kern.caption)],
+        children: [
+          view,
+          BoothOverlay(model: model),
+          KernChip(model: model, caption: world.site.kern.caption),
+          PhotoChip(model: model, cue: world.site.photo.cue),
+        ],
       ),
     );
     return MaterialApp(

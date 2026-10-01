@@ -33,12 +33,16 @@ abstract final class SiteLayout {
 
 /// Name City's pace (the model's [BoothModel.pace]): names are built one
 /// letter at a time with a kerning step between letters ([BuildSchedule]),
-/// in [longest] at most.
+/// in [longest] at most. The celebration is longer than the booth's: the
+/// team's photo with the Glyph Works' mini name.
 class CityPace extends BuildPace {
   const CityPace();
 
   /// The longest build at the normal pace (a long name is squeezed).
   static const longest = 210.0;
+
+  /// The celebration: fireworks, then the team's photo (photo_op.dart).
+  static const celebrate = 24.0;
 
   @override
   double nominal(NameRaster r) => math.min(BuildSchedule.of(r).natural, longest);
@@ -49,6 +53,9 @@ class CityPace extends BuildPace {
 
   @override
   double get sample => 0.75;
+
+  @override
+  double phaseLen(Phase p) => p == Phase.celebrate ? celebrate : super.phaseLen(p);
 }
 
 /// The build's timeline at its natural pace (seconds from the build start),

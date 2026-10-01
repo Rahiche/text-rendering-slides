@@ -21,7 +21,7 @@ import 'site_plan.dart';
 /// Where the Glyph Works stands (world units): the plaza's left-rear corner,
 /// behind the smoking corner, open to the front (−z, the sun's side).
 abstract final class WorksLayout {
-  static const x0 = -16.75, x1 = -10.55, z0 = 4.6, z1 = 7.75;
+  static const x0 = -15.75, x1 = -9.55, z0 = 4.6, z1 = 7.75;
   static const cx = (x0 + x1) / 2;
 
   /// The roof, and the top of the open front (the sign board above it).
@@ -36,9 +36,10 @@ abstract final class WorksLayout {
   /// The walkways between the benches, to the front.
   static const gaps = [cx - 1.05, cx + 1.05];
 
-  /// The display table at the front, the tray on it, and where a maker
-  /// stands to put a letter on the tray (behind the table).
-  static const tableX = cx + 0.3, tableZ = 5.2, tableY = 0.5, tableW = 2.5, tableD = 0.45;
+  /// The display stand at the front (the tray overhangs it, so two can lift
+  /// it at its ends), the tray on it, and where a maker stands to put a
+  /// letter on the tray (behind it).
+  static const tableX = cx + 0.3, tableZ = 5.2, tableY = 0.5, tableW = 0.9, tableD = 0.45;
   static const trayY = tableY + 0.045, trayZ = tableZ + 0.04, placeZ = 5.8;
 
   /// Where the front's middle is (for the walk out with the tray).
@@ -122,6 +123,9 @@ class GlyphWorks {
 
   /// When the last mini letter is on the tray (null before a plan).
   double? get trayDone => _minis.isEmpty ? null : _minis.map((m) => m.place).reduce(math.max);
+
+  /// When maker [i] is back at their station after their last letter.
+  double freeAt(int i) => _minis.where((m) => m.method == i).fold(double.negativeInfinity, (a, m) => math.max(a, m.home));
 
   /// The mini name's height and its foot on the tray: its letters stand at
   /// their places on the wall, scaled.
@@ -382,7 +386,7 @@ class GlyphWorks {
     return out..setValues(pose.at.x + x * c + z * s, pose.at.y + y, pose.at.z - x * s + z * c);
   }
 
-  static final _wood = v4(hex3(0x2A3344)), _trim = v4(hex3(0xE9B949)), _peg = v4(hex3(0x1B2233));
+  static final _wood = v4(hex3(0x2A3344)), _trim = v4(hex3(0xE9B949));
 
   void _tray() {
     if (_plan == null) return;
@@ -420,7 +424,7 @@ class GlyphWorks {
       // above a descender's foot).
       if (foot > 0.012) {
         _onTray(m.slotX, foot / 2, 0, _q);
-        props.box(_q.x, _q.y, _q.z, math.max(0.02, shape.width * s * 0.5), foot, 0.03, _peg, yaw: pose.yaw);
+        props.box(_q.x, _q.y, _q.z, 0.014, foot, 0.014, _trim, yaw: pose.yaw);
       }
       return;
     }

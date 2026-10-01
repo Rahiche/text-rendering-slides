@@ -649,7 +649,11 @@ List<Stroke> skeletonStrokes(
       if (freeA == freeB || br.closed) return false; // both ends free or both at junctions
       final j = freeA ? br.b! : br.a!;
       if ((degree[j] ?? 0) < 3) return false;
-      final r = freeA ? br.rad.last : br.rad.first;
+      // A thinning spur is shorter than its own stroke is wide. Judge by the
+      // branch's own (median) half-width: the junction's is inflated where
+      // strokes cross, which used to prune real arms (t's crossbar, 4's foot).
+      final rs = [...br.rad]..sort();
+      final r = rs[rs.length ~/ 2];
       if (br.length < math.max(3.0, 1.6 * r + 1)) {
         removed = true;
         return true;

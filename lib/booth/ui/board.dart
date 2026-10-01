@@ -98,10 +98,11 @@ void _sign(UiInk k, Job? j, double t) {
     k.bulb(Offset(x0 + (x1 - x0) * i / (n - 1), UG.bulbY), on);
   }
 
-  // 名前工場 · Name Factory
-  final ja = k.tp('名前工場', UT.label(29, weight: 700));
+  // 名前工場 · Name Factory (bricks), or 名前工房 · Name Workshop (crafts).
+  final workshop = j?.mode == BuildMode.craft;
+  final ja = k.tp(workshop ? '名前工房' : '名前工場', UT.label(29, weight: 700));
   final dot = k.tp('·', UT.label(29, color: BP.inkDim));
-  final en = k.tp('Name Factory', UT.label(29, weight: 600));
+  final en = k.tp(workshop ? 'Name Workshop' : 'Name Factory', UT.label(29, weight: 600));
   final w = ja.width + 12 + dot.width + 12 + en.width;
   var x = r.center.dx - w / 2;
   for (final p in [ja, dot, en]) {

@@ -75,6 +75,14 @@ void main() {
     expect(horizontal(g.strokes[1]), isTrue);
   });
 
+  test('t: a short crossbar survives spur pruning', () {
+    // Stem 12 wide (half-width 6), crossbar 12 px out on each side.
+    final g = vectorize(raster(60, 80, (x, y) => (x >= 24 && x < 36 && y >= 6 && y < 74) || (y >= 22 && y < 32 && x >= 12 && x < 48)));
+    final horizontals = g.strokes.where(horizontal).toList();
+    final span = horizontals.fold<double>(0, (a, s) => a + (s.pts[2 * s.count - 2] - s.pts[0]).abs());
+    expect(span, greaterThan(20), reason: 'the crossbar is kept (${g.strokes.length} strokes)');
+  });
+
   test('口: outline + hole; four sides, the left side first', () {
     final g = vectorize(raster(60, 60, (x, y) {
       final outer = x >= 8 && x < 52 && y >= 8 && y < 52;

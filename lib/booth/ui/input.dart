@@ -74,8 +74,13 @@ class _NameInputState extends State<NameInput> {
       SchedulerBinding.instance.ensureVisualUpdate();
     }
     if (!_quiet && (v.text != _last.text || v.composing != _last.composing)) _ui.typed();
+    _ui.draft.value = _committed(v);
     _last = v;
   }
+
+  /// The text without the composing region (what the visitor has committed).
+  static String _committed(TextEditingValue v) =>
+      _composing(v) && v.composing.end <= v.text.length ? v.text.replaceRange(v.composing.start, v.composing.end, '') : v.text;
 
   /// Enter ([TextInputAction.done]).
   void _submitted(String _) {

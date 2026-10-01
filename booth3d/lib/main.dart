@@ -143,7 +143,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       final png = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       final j = model.job;
-      final name = 't${target.toStringAsFixed(0).padLeft(4, '0')}_${j?.phase.name ?? 'none'}.png';
+      // Whole seconds as t0020; fractions keep a decimal (t0020.5).
+      final stamp = target == target.roundToDouble() ? target.toStringAsFixed(0).padLeft(4, '0') : target.toStringAsFixed(1).padLeft(6, '0');
+      final name = 't${stamp}_${j?.phase.name ?? 'none'}.png';
       File('${out.path}/$name').writeAsBytesSync(png!.buffer.asUint8List());
       stdout.writeln('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)})');
     }

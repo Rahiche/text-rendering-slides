@@ -108,6 +108,11 @@ class BoothUi extends ChangeNotifier {
 
   // ── Typing ────────────────────────────────────────────────────────────────
 
+  /// What's typed in the input right now, without the input method's
+  /// composing region (only committed text). For scenes that react to
+  /// typing (the 3D booth drops each character into the plaza).
+  final draft = ValueNotifier<String>('');
+
   /// Scene time of the last keystroke (or Enter).
   double lastInput = 0;
 

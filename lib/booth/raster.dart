@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 
 import '../deck/theme.dart';
 import 'layout.dart';
+import 'web_fonts.dart';
 
 /// One pixel of the name's raster, laid as one brick.
 class Brick {
@@ -89,6 +90,7 @@ class NameRaster {
   /// Rasterizes [name] with the real text stack and turns its coverage into
   /// bricks, sized to fill [BL.plot] as well as the name allows.
   static Future<NameRaster> of(String name) async {
+    await awaitFallbackFonts(name, style: nameStyle(40)); // web: no tofu bricks
     final plot = BL.plot;
     // Width per px of font size, to pick the largest size that still fits.
     final probe = TextPainter(

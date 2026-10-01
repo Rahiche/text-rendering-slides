@@ -7,6 +7,7 @@
 #   <base>/workers/       easy vs hard
 #   <base>/detective/     the case of 直
 #   <base>/classic/       plain blueprint deck
+#   <base>/booth/, /workshop/, /city/   the conference-stall name builders
 # Each folder is the same build; the app picks its world from the URL path.
 set -euo pipefail
 
@@ -19,6 +20,10 @@ flutter build web --wasm --release --base-href "$PLACEHOLDER"
 rm -rf build/pages
 mkdir -p build/pages
 cp tool/pages/index.html build/pages/index.html
+# Name City, the 3D booth: its own app (booth3d/, flutter_scene, WebGL2).
+(cd booth3d && flutter build web --wasm --release --base-href "${BASE}city/" | grep -E "✓|rror" || true)
+rm -rf build/pages/city
+cp -R booth3d/build/web build/pages/city
 # The conference-stall loop (main.dart routes /booth/ and /workshop/ to it).
 for b in booth workshop; do
   cp -R build/web "build/pages/$b"

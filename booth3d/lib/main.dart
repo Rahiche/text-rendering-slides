@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -12,6 +11,7 @@ import 'package:text_slides/booth/platform.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:text_slides/deck/theme.dart';
 
+import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
 import 'world/world.dart';
 
 /// 名前の街 · Name City — the conference booth's name builder in 3D.
@@ -115,10 +115,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   }
 
   Future<void> _capture() async {
-    final out = Directory('${Directory.systemTemp.path}/booth3d_capture/$_tag')..createSync(recursive: true);
-    for (final f in out.listSync()) {
-      if (f.path.endsWith('.png')) f.deleteSync();
-    }
+    final out = CaptureSink(_tag);
     await Future<void>.delayed(const Duration(milliseconds: 600));
     model.update(1 / 30);
     for (final n in _names.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)) {
@@ -146,11 +143,11 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       // Whole seconds as t0020; fractions keep a decimal (t0020.5).
       final stamp = target == target.roundToDouble() ? target.toStringAsFixed(0).padLeft(4, '0') : target.toStringAsFixed(1).padLeft(6, '0');
       final name = 't${stamp}_${j?.phase.name ?? 'none'}.png';
-      File('${out.path}/$name').writeAsBytesSync(png!.buffer.asUint8List());
-      stdout.writeln('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)})');
+      out
+        ..save(name, png!.buffer.asUint8List())
+        ..log('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)})');
     }
-    stdout.writeln('CAPTURE_DONE ${out.path}');
-    exit(0);
+    out.finish();
   }
 
   @override

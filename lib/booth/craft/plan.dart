@@ -10,6 +10,7 @@ import 'geometry.dart';
 import 'method.dart';
 import 'methods.dart';
 import 'stage.dart';
+import '../web_fonts.dart';
 import 'workshop_layout.dart';
 
 /// Font size characters are rasterized at for vectorizing.
@@ -92,6 +93,7 @@ class CraftPlan {
   }
 
   static Future<CraftPlan> of(String name) async {
+    await awaitFallbackFonts(name, style: craftStyle(40)); // web: no tofu glyphs
     final graphemes = name.characters.toList();
     // Rasterize each non-space character with the real text stack.
     final rasters = <(int, String, VectorizeInput)>[];
@@ -225,6 +227,10 @@ Future<List<(String, GlyphGeometry)>> vectorizeText(
     for (final g in text.characters)
       if (g.trim().isNotEmpty) g,
   ];
+  await awaitFallbackFonts(
+    chars.join(),
+    style: (style ?? (size, color) => craftStyle(size, color: color))(40, const ui.Color(0xFFFFFFFF)),
+  );
   final inputs = [for (final g in chars) await _rasterize(g, style: style)];
   final geos = await compute(_vectorizeAll, inputs);
   return [for (var i = 0; i < chars.length; i++) (chars[i], geos[i])];

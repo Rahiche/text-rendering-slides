@@ -39,6 +39,7 @@ dependencies:
   text_slides:
     path: ..
   characters: ^1.4.1
+  hooks: ^2.2.0
 
 dev_dependencies:
   flutter_test:

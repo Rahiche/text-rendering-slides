@@ -756,16 +756,44 @@ class Site3D {
       _idleCrane(vm.Vector3(SiteLayout.mastX - 5, 9, SiteLayout.mastZ - 4), t, dt, night);
     }
     final falls = _falls;
-    // The truck comes in from the left, waits by the rubble, leaves right.
+    // The truck drives in along the avenue (the city's eastbound lane), backs
+    // into the plaza next to the rubble, and drives out again east — it never
+    // cuts through the city blocks beside the plaza.
     final park = -wallWidth / 2 - 2.6;
-    final tx = f < 0.2 ? lerp(-44, park, eo(f / 0.2)) : (f > 0.82 ? lerp(park, 46, eio((f - 0.82) / 0.18)) : park);
-    truckAt.setValues(tx, 0, -4.6);
+    const lane = -13.0, bay = -4.6, far = 70.0;
+    double tx, tz, yaw;
+    if (f < 0.12) {
+      tx = lerp(-far, park, eo(f / 0.12));
+      tz = lane;
+      yaw = 0;
+    } else if (f < 0.2) {
+      final k = (f - 0.12) / 0.08;
+      tx = park;
+      tz = lerp(lane, bay, eio(k));
+      yaw = math.pi / 2 * eo(k / 0.35); // swings round, then reverses in
+    } else if (f < 0.82) {
+      tx = park;
+      tz = bay;
+      yaw = math.pi / 2;
+    } else if (f < 0.9) {
+      final k = (f - 0.82) / 0.08;
+      tx = park;
+      tz = lerp(bay, lane, eio(k));
+      yaw = math.pi / 2;
+    } else {
+      final k = (f - 0.9) / 0.1;
+      tx = lerp(park, far, eio(k));
+      tz = lane;
+      yaw = math.pi / 2 * (1 - eo(k / 0.25));
+    }
+    truckAt.setValues(tx, 0, tz);
     _truck
       ..visible = true
-      ..place((m) => setTrs(m, truckAt.x, truckAt.y, truckAt.z));
+      ..place((m) => setTrs(m, truckAt.x, truckAt.y, truckAt.z, yaw: yaw));
     _truckBeacon.emissiveStrength = (t * 2.2) % 1.0 < 0.5 ? 6 : 0.4;
     if (falls == null) return;
-    final hopper = truckAt + vm.Vector3(-0.85, 2.2, 0);
+    // The tub sits behind the cab: −0.85 m along the truck's length.
+    final hopper = truckAt + vm.Vector3(-0.85 * math.cos(yaw), 2.2, 0.85 * math.sin(yaw));
     for (var i = 0; i < falls.length; i++) {
       final fall = falls[i];
       if (!fall.ever) {

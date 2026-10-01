@@ -6,16 +6,8 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'kit.dart';
 import 'site.dart';
+import 'shot.dart';
 import 'site_plan.dart';
-
-/// One framing: where the camera is, what it looks at, its field of view
-/// (degrees), how quickly the camera settles into it, and how much it
-/// drifts like a hand-held camera.
-class Shot {
-  Shot(this.eye, this.target, {this.fov = 40, this.settle = 2.2, this.drift = 1});
-  final vm.Vector3 eye, target;
-  final double fov, settle, drift;
-}
 
 /// The cinematographer. Every phase has its shots — a wide establishing
 /// shot of the city while a name comes in, a rotation of framings while the
@@ -35,6 +27,8 @@ class Director {
   final _fov = _Spring(42);
   Job? _job;
   int _jobs = 0;
+  String? _focus;
+  bool _focusWasCut = false;
 
   /// How much the camera should care about the typed letters (0..1).
   double typingWeight = 0;
@@ -46,10 +40,26 @@ class Director {
     final j = m.job;
     final t = m.t;
     var shot = _keepInFront(_shot(j, t, site));
+    // Something worth following (kerning close up, a break, the driver).
+    Focus? f;
+    for (final r in site.focus) {
+      if (f == null || r.priority > f.priority) f = r;
+    }
+    var cutTo = false;
+    if (f != null && f.cut) {
+      shot = _keepInFront(f.shot);
+      cutTo = f.id != _focus;
+    } else if (f != null) {
+      shot = _blend(shot, _keepInFront(f.shot), eio(f.weight.clamp(0.0, 1.0)));
+    }
+    // Back from a cut-to request: cut back too.
+    final cutBack = f?.id != _focus && _focusWasCut;
+    _focus = f?.id;
+    _focusWasCut = f?.cut ?? false;
     // Someone is typing: make sure their letters (dropping in at the front
     // of the plaza, just above the input on screen) are in the picture.
     if (typingWeight > 0.001 && j != null) shot = _blend(shot, _keepInFront(_typingShot(j, t, site)), eio(typingWeight));
-    var cut = false;
+    var cut = cutTo || cutBack;
     if (!identical(j, _job)) {
       _job = j;
       _jobs++;

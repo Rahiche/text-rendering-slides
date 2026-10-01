@@ -10,6 +10,7 @@ import 'city_plan.dart';
 import 'city_props.dart';
 import 'city_signs.dart';
 import 'city_towers.dart';
+import '../tuning.dart';
 import 'kit.dart';
 import 'sky.dart';
 
@@ -357,7 +358,7 @@ class City3D {
         outerConeAngle: 0.56,
         // One flood casts the wall's shadow (enough for depth; two cost a
         // second shadow map every frame).
-        castsShadow: s < 0,
+        castsShadow: s < 0 && Tuning.floodShadow,
         shadowMapResolution: 1024,
         shadowSoftness: 1.2,
         channelMask: local,

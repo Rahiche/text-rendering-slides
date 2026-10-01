@@ -12,6 +12,8 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:text_slides/deck/theme.dart';
 
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
+import 'perf.dart';
+import 'tuning.dart';
 import 'world/world.dart';
 
 /// 名前の街 · Name City — the conference booth's name builder in 3D.
@@ -19,6 +21,8 @@ import 'world/world.dart';
 ///   flutter run -d macos                        (Flutter GPU is enabled in Info.plist)
 ///   --dart-define=BOOTH3D_TIMES=10,60,120       capture frames at scene times, then quit
 ///   --dart-define=BOOTH3D_NAMES=Ana,田中太郎      names typed at t=0 (capture)
+///   --dart-define=BOOTH3D_PERF=true             log frame times, memory and scene size
+///   --dart-define=BOOTH3D_SPEED=8               start fast-forwarded (as Ctrl+Shift+↑)
 void main() => runApp(const NameCityApp());
 
 const _times = String.fromEnvironment('BOOTH3D_TIMES');
@@ -38,7 +42,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   final canvasKey = GlobalKey();
   Ticker? _ticker;
   Duration _last = Duration.zero;
-  double _speed = 1;
+  double _speed = Tuning.speed;
+  late final _perf = PerfLog.enabled ? PerfLog(world, model) : null;
+  final _watch = Stopwatch();
   bool get _capturing => _times.isNotEmpty;
 
   @override
@@ -58,6 +64,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       if (_capturing) {
         _capture();
       } else {
+        _perf?.start();
         _ticker = createTicker(_tick)..start();
       }
     });
@@ -73,7 +80,15 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       model.update(step);
       dt -= step;
     }
-    world.update(model, total);
+    if (_perf case final perf?) {
+      _watch
+        ..reset()
+        ..start();
+      world.update(model, total);
+      perf.frame(_watch.elapsedMicroseconds / 1000);
+    } else {
+      world.update(model, total);
+    }
   }
 
   @override
@@ -156,7 +171,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         ? SceneView(
             world.scene,
             cameraBuilder: (_) => world.director.camera,
-            pixelRatio: _capturing ? 1 : null,
+            pixelRatio: _capturing ? 1 : Tuning.ratio,
           )
         : const ColoredBox(color: BP.bg);
     final canvas = SizedBox.fromSize(

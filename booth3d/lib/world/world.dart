@@ -5,6 +5,7 @@ import 'package:text_slides/booth/web_fonts.dart';
 import 'package:text_slides/booth/model.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
 
+import '../tuning.dart';
 import 'city.dart';
 import 'director.dart';
 import 'life.dart';
@@ -25,6 +26,7 @@ class World3D {
 
   Future<void> init() async {
     await Scene.initializeStaticResources();
+    scene.antiAliasingMode = Tuning.aa;
     if (kIsWeb) await _warmUpFonts();
     sky.init();
     site.init();

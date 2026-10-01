@@ -14,6 +14,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'crew.dart';
 import 'kit.dart';
+import 'shot.dart';
 import 'site_crane.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
@@ -83,6 +84,10 @@ class Site3D {
 
   /// When the ball first hits the wall (scene time), once known.
   double? impactAt;
+
+  /// What the camera should follow this frame (see [Focus]): filled during
+  /// [update] by the site, the crew and the deliveries.
+  final focus = <Focus>[];
   final ballAt = vm.Vector3.zero();
   final truckAt = vm.Vector3(-40, 0, -4.5);
 
@@ -344,6 +349,7 @@ class Site3D {
   void update(BoothModel m, double dt, {double night = 0}) {
     final j = m.job;
     final t = m.t;
+    focus.clear();
     if (j == null) return;
     if (!identical(j, _job)) _startJob(j);
     final r = j.raster;
@@ -818,9 +824,6 @@ class Site3D {
       fx.confettiShow(u + phaseSeconds[Phase.celebrate]! + phaseSeconds[Phase.demolish]!, wallWidth, j.serial, fade: c01(f / 0.3));
     }
   }
-
-  /// Where the camera should look while building (the top of the wall).
-  vm.Vector3 get focus => vm.Vector3(0, math.max(level, wallHeight * 0.35), 0);
 }
 
 class _Letter {

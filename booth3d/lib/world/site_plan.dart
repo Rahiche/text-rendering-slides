@@ -401,6 +401,26 @@ class BuildPlan {
 
   /// The first brick not yet finally in the wall at [t] (the bounce over).
   int settledBy(double t) => math.min(total, math.max(0, ((t - 0.25 - t0) / len * total).floor()));
+
+  // ── Who's needed when ─────────────────────────────────────────────────────
+
+  /// When builder [z] has to be at their place on the platform (absolute
+  /// [from, to) windows, in order). Outside them they're free: a coffee, a
+  /// smoke, a chat (see the crew's breaks). For now the whole build.
+  List<(double, double)> busyWindows(int z) => _busy[z] ??= [if (zoneBricks[z].isNotEmpty) (t0 - 1.5, t0 + len)];
+  final _busy = <int, List<(double, double)>>{};
+
+  /// Whether builder [z] is needed at the wall at [t].
+  bool busy(int z, double t) => busyWindows(z).any((w) => t >= w.$1 && t < w.$2);
+
+  /// When builder [z] is next needed at or after [t], or null if not again
+  /// in this build.
+  double? nextBusy(int z, double t) {
+    for (final (a, e) in busyWindows(z)) {
+      if (t < e) return math.max(a, t);
+    }
+    return null;
+  }
 }
 
 /// A brick's place, size and spin at one moment.

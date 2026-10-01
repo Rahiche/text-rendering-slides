@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import '../tuning.dart';
 import 'kit.dart';
 
 /// Day and night over the city, an 8-minute day painted in the talk's
@@ -58,8 +59,8 @@ class Sky3D {
       intensity: 3,
       castsShadow: true,
       shadowMaxDistance: 80,
-      shadowCascadeCount: 3,
-      shadowMapResolution: 2048,
+      shadowCascadeCount: Tuning.cascades,
+      shadowMapResolution: Tuning.shadowRes,
       shadowSoftness: 0.05,
       shadowDepthBias: 0.015,
       shadowNormalBias: 0.02,
@@ -119,7 +120,7 @@ class Sky3D {
   void _bindEnvironment() {
     scene.skyEnvironment = SkyEnvironment(
       _ibl,
-      refresh: SkyEnvironmentRefresh.interval,
+      refresh: Tuning.iblInterval ? SkyEnvironmentRefresh.interval : SkyEnvironmentRefresh.manual,
       interval: const Duration(milliseconds: 1500),
       faceResolution: 64,
       equirectWidth: 256,

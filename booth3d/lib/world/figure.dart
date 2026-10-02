@@ -761,8 +761,8 @@ class Figures {
       ..tri(nose[2], nose[3], nose[1], _w, c);
     // Ears, eyes (dark brown: the skin colour barely shows), the mouth.
     for (final side in const [-1.0, 1.0]) {
-      m.ellipsoid(side * 0.078, 0.122, 0.006, 0.012, 0.028, 0.019, _w, seg: 6, rings: 4);
-      m.ellipsoid(side * 0.031, 0.132, -0.086, 0.011, 0.0085, 0.008, _eye, seg: 7, rings: 4);
+      m.ellipsoid(side * 0.078, 0.122, 0.006, 0.012, 0.028, 0.019, _w, seg: 6, rings: 3);
+      m.ellipsoid(side * 0.031, 0.132, -0.086, 0.011, 0.0085, 0.008, _eye, seg: 6, rings: 3);
     }
     m.box(0, 0.07, -0.095, 0.016, 0.0035, 0.004, _lips);
     return m.build();
@@ -819,7 +819,7 @@ class Figures {
       Hair.medium => 0.014,
       _ => 0.016,
     };
-    m.shell(edge, puff, flare: h == Hair.bob || h == Hair.long ? 0.02 : 0.0, seg: 16, rings: 6);
+    m.shell(edge, puff, flare: h == Hair.bob || h == Hair.long ? 0.02 : 0.0, seg: 14, rings: 5);
     // Brows.
     for (final side in const [-1.0, 1.0]) {
       m.box(side * 0.032, 0.153, -0.089, 0.017, 0.004, 0.006, _w, rotZ: side * 0.12);
@@ -874,7 +874,7 @@ class Figures {
           [-0.155, 0.011, 0.03, 0.006],
           [-0.168, 0.0, 0.0, 0.006],
         ],
-        seg: 8,
+        seg: 6,
         e: 2.4,
         color: _w,
       );
@@ -895,7 +895,7 @@ class Figures {
               [-0.43, 0.052, 0.054, -0.004],
               [-0.455, 0.0, 0.0, -0.004],
             ],
-            seg: 9,
+            seg: 8,
             color: _w,
           ))
           .build();
@@ -930,7 +930,7 @@ class Figures {
       [-0.185, 0.036, -0.05, -0.08],
       [-0.2, 0.0, -0.062, -0.074],
     ];
-    m.sweepZ(secs, seg: 10, e: 3.2, top: _w, sole: _sole);
+    m.sweepZ(secs, seg: 8, e: 3.2, top: _w, sole: _sole);
     return m.build();
   }
 
@@ -949,12 +949,12 @@ class Figures {
         [0.286, 0.04, 0.048, 0.011],
         [0.292, 0.0, 0.0, 0.011],
       ],
-      seg: 16,
+      seg: 12,
       color: _w,
       capStart: false,
     );
     m.box(0, 0.282, 0.008, 0.012, 0.012, 0.095, _w);
-    m.brim(0.168, 0.102, 0.12, 0.026, 0.006, peak: 0.05, seg: 16, color: _w);
+    m.brim(0.168, 0.102, 0.12, 0.026, 0.006, peak: 0.05, seg: 12, color: _w);
     return m.build();
   }
 
@@ -981,7 +981,7 @@ class Figures {
   /// from the waist over the shoulders, open down the front in a V.
   static MeshGeometry _vestGeometry() {
     final m = _Mesh();
-    m.loft(_vestRings, seg: 16, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+    m.loft(_vestRings, seg: 14, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
     return m.build();
   }
 
@@ -1013,7 +1013,7 @@ class Figures {
             return [y + dy, r.$1 + 0.004, r.$2 + 0.004, r.$3];
           }(),
       ];
-      m.loft(rings, seg: 16, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+      m.loft(rings, seg: 14, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
     }
     // Over the shoulders: front and back.
     for (final side in const [-1.0, 1.0]) {

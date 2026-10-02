@@ -394,9 +394,14 @@ class Batch {
   void add(Material m, MeshData d) => (_parts[m] ??= []).add(d);
 
   /// Adds one merged node per material to [scene].
-  void build(Scene scene, String name, {bool castsShadows = true, int lightChannelMask = 0xFF}) {
+  void build(Scene scene, String name, {bool castsShadows = true, int lightChannelMask = 0xFF}) => _build(scene.add, name, castsShadows, lightChannelMask);
+
+  /// Adds one merged node per material under [parent].
+  void buildInto(Node parent, String name, {bool castsShadows = true, int lightChannelMask = 0xFF}) => _build(parent.add, name, castsShadows, lightChannelMask);
+
+  void _build(void Function(Node n) add, String name, bool castsShadows, int lightChannelMask) {
     for (final e in _parts.entries) {
-      scene.add(
+      add(
         Node(name: name, mesh: Mesh(merged(e.value), e.key))
           ..castsShadows = castsShadows
           ..lightChannelMask = lightChannelMask,

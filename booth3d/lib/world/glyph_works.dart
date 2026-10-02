@@ -296,12 +296,18 @@ class GlyphWorks {
 
   /// Plans the build's letters down the line and the camera's visits (once,
   /// when its plan is ready), keeping clear of [busyCam] (the deliveries'
-  /// shots) and the kerning close-ups.
-  void planFor(BuildPlan plan, {List<(double, double)> busyCam = const []}) {
+  /// shots) and the kerning close-ups: the first letter's [journey] down
+  /// the line, followed (unless the camera's touring the city instead),
+  /// and visits to the steps.
+  void planFor(BuildPlan plan, {List<(double, double)> busyCam = const [], bool journey = true}) {
     _clear();
     _plan = plan;
     final name = _name = WorksName.measure(plan.job.name, plan.letters, latin: _latin, arabic: _arabic);
-    _planJourney(plan, busyCam, name);
+    if (journey) {
+      _planJourney(plan, busyCam, name);
+    } else {
+      _journey = null;
+    }
     _schedule(plan, const {});
     _planCuts(plan, busyCam, name);
     final job = _job = _Job(name);

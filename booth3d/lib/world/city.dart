@@ -297,6 +297,8 @@ class City3D {
     _bulbMat = pbr(rgb(1, 0.92, 0.78), roughness: 0.3, emissive: lin(const Color(0xFFFFD9A0)), emissiveStrength: 0);
     final bulb = InstancedMesh(geometry: SphereGeometry(radius: 0.3, segments: 14, rings: 8), material: _bulbMat);
     void lamp(double x, double z, double towards, {bool light = false}) {
+      // (None in front of the mini world's buildings.)
+      if (Plan.inLot(x, z, 1.5)) return;
       // The arm reaches over the road side (towards +x when towards > 0).
       pole.addInstance(trs(vm.Vector3(x, 2.5, z)));
       final ax = x + 0.4 * towards;

@@ -41,4 +41,14 @@ abstract final class Plan {
   static const peopleFar = [-20.6, -20.0];
   static const peopleBlock = [27.1, 27.6];
   static const lampFlank = 18.75, lampFar = aveZ0 - 2.3, bollardZ = aveZ1 + 0.2;
+
+  /// Lots the mini world's scenes (vignette.dart) have instead of the
+  /// city's own blocks and trees (x0, z0, x1, z1): the bidi works and the
+  /// glyph atlas across the side streets, the Unicode tower up the
+  /// right-hand one, the pixel farm beyond the park.
+  static const lots = [(-41.0, 4.6, -24.0, 17.8), (24.0, 5.6, 41.0, 20.0), (28.0, 84.0, 40.0, 100.0), (-15.8, 73.6, -2.2, 84.4)];
+
+  /// Whether (x, z) is on one of the [lots] ([margin] metres round it).
+  static bool inLot(double x, double z, [double margin = 0]) =>
+      lots.any((l) => x > l.$1 - margin && x < l.$3 + margin && z > l.$2 - margin && z < l.$4 + margin);
 }

@@ -19,7 +19,7 @@ import 'site_plan.dart';
 ///
 /// In between, the world's requests ([Site3D.focus]): the kerning, the
 /// Glyph Works, a break, the delivery, the finish, the photo, the new
-/// manager. Edited like a broadcast: a new shot is a cut (a glide if it's
+/// manager, Script Alley and the rest of the mini world (vignette.dart). Edited like a broadcast: a new shot is a cut (a glide if it's
 /// framed much as the last one), every shot holds a couple of seconds at
 /// least, and a request right after another cuts straight to it. Within a
 /// shot the camera follows on critically damped springs, drifts a little

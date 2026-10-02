@@ -163,10 +163,13 @@ class CityTowers {
         final h = 7 + 9 * rnd(seed, 2) + (z > 30 ? 4 : 0);
         final d = 9 + 4 * rnd(seed, 3);
         final x = side * (Plan.walkBlock + 1.2 + d / 2);
-        _box(vm.Vector3(x, 0, z + len / 2), len, h, d, rotY: faceRot, seed: seed, kind: _blockKinds[seed % _blockKinds.length]);
-        // Signs on every other front roof (the taller row behind carries the
-        // rest, so from the plaza they stack at different heights).
-        if ((front++).isEven) roofs.add((at: vm.Vector3(x, h + 0.5, z + len / 2), rotY: math.atan2(x, z + len / 2), width: math.min(len, d) * 0.92));
+        // (A lot of the mini world's: no block.)
+        if (!Plan.inLot(x, z + len / 2)) {
+          _box(vm.Vector3(x, 0, z + len / 2), len, h, d, rotY: faceRot, seed: seed, kind: _blockKinds[seed % _blockKinds.length]);
+          // Signs on every other front roof (the taller row behind carries
+          // the rest, so from the plaza they stack at different heights).
+          if ((front++).isEven) roofs.add((at: vm.Vector3(x, h + 0.5, z + len / 2), rotY: math.atan2(x, z + len / 2), width: math.min(len, d) * 0.92));
+        }
         z += len + 1.2 + 2 * rnd(seed, 4);
       }
       z = 6.0;

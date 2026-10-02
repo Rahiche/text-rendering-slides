@@ -37,7 +37,17 @@ import 'site_plan.dart';
 import 'site_plinths.dart';
 import 'site_props.dart';
 import 'site_wreck.dart';
+import 'v_atlas.dart';
+import 'v_bidi.dart';
+import 'v_family.dart';
+import 'v_farm.dart';
+import 'v_forge.dart';
+import 'v_gym.dart';
+import 'v_tofu.dart';
+import 'v_tower.dart';
+import 'v_tram.dart';
 import 'verdict.dart';
+import 'vignette.dart';
 
 /// The name being built in the plaza.
 ///
@@ -89,6 +99,26 @@ class Site3D {
   /// 文字横丁 · Script Alley in the park: a stall for each rule a script
   /// breaks (built by the world, as it waits for its letters).
   late final alley = ScriptAlley(scene, fx);
+
+  /// The rest of the mini world: small scenes round the city, each acting
+  /// out an idea from the talk (vignette.dart); the camera visits one or
+  /// two each build, and all of them in turn while no one's name is up.
+  late final vignettes = Vignettes(
+    scene,
+    fx,
+    crew,
+    (kit) => [
+      TofuShop(kit),
+      LineTram(kit),
+      LigatureForge(kit),
+      UnicodeTower(kit),
+      ZwjFamily(kit),
+      WeightGym(kit),
+      BidiWorks(kit),
+      GlyphAtlas(kit),
+      PixelFarm(kit),
+    ],
+  );
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
@@ -412,9 +442,23 @@ class Site3D {
     plinths.plan(plan);
     _plinthsAt = t;
     delivery.planFor(plan);
-    works.planFor(plan, busyCam: delivery.camWindows);
-    alley.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows]);
-    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: [...delivery.camWindows, ...works.camWindows, ...alley.camWindows]);
+    // Every other sample word (no one waiting), a tour of the mini world
+    // instead of a letter's journey through the works.
+    final tour = j.sample && j.serial.isOdd;
+    if (tour) {
+      vignettes.planFor(plan, busyCam: delivery.camWindows, sample: true);
+      works.planFor(plan, busyCam: [...delivery.camWindows, ...vignettes.camWindows], journey: false);
+      alley.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows, ...vignettes.camWindows]);
+    } else {
+      works.planFor(plan, busyCam: delivery.camWindows);
+      alley.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows]);
+      vignettes.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows, ...alley.camWindows]);
+    }
+    breaks.planFor(
+      plan,
+      driverBreaks: delivery.driverBreaks,
+      busyCam: [...delivery.camWindows, ...works.camWindows, ...alley.camWindows, ...vignettes.camWindows],
+    );
     final fp = _finishPlan = finish.planFor(
       plan,
       len: CityPace.reveal,
@@ -431,7 +475,7 @@ class Site3D {
     _slid = List.filled(plan.letterCount, -1.0);
     // Capture runs log the timeline (when each letter goes up and is kerned,
     // and finished).
-    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint('${plan.describe()}${fp.describe()}${finish.describeShots()}${alley.describe()}');
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint('${plan.describe()}${fp.describe()}${finish.describeShots()}${alley.describe()}${vignettes.describe()}');
   }
 
   /// The letters' colours, in the order of the name's characters.
@@ -581,6 +625,7 @@ class Site3D {
     focus.clear();
     _pace = m.pace;
     alley.update(t, night);
+    vignettes.update(t, night, camera: camera);
     parts.begin();
     if (j == null) {
       parts.end();
@@ -646,19 +691,25 @@ class Site3D {
     verdict.focus(focus, t);
     delivery.focus(focus, t);
     works.focus(focus, t);
-    if (j.phase == Phase.build) alley.focus(focus, t);
-    breaks.focus(focus, t);
-    // Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
-    // the camera (with capture mode, to check a spot from a fixed eye);
-    // several views split by '|' are taken in turn, one per captured frame.
-    const look = String.fromEnvironment('BOOTH3D_LOOK');
-    if (look.isNotEmpty) {
-      final views = look.split('|');
-      final v = views[math.min(lookIndex, views.length - 1)].split(',').map(double.parse).toList();
-      focus.add(
-        Focus('look $lookIndex', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9),
-      );
+    if (j.phase == Phase.build) {
+      alley.focus(focus, t);
+      vignettes.focus(focus, t);
     }
+    breaks.focus(focus, t);
+    _pin();
+  }
+
+  /// Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
+  /// the camera (with capture mode, to check a spot from a fixed eye);
+  /// several views split by '|' are taken in turn, one per captured frame.
+  void _pin() {
+    const look = String.fromEnvironment('BOOTH3D_LOOK');
+    if (look.isEmpty) return;
+    final views = look.split('|');
+    final v = views[math.min(lookIndex, views.length - 1)].split(',').map(double.parse).toList();
+    focus.add(
+      Focus('look $lookIndex', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9),
+    );
   }
 
   /// What [caption] says, for [shot] (the director's name for what's on
@@ -666,6 +717,10 @@ class Site3D {
   /// demolition and the cleanup.
   void captionFor(BoothModel m, String shot) {
     final j = m.job, plan = _plan, t = m.t;
+    if (vignettes.captionFor(shot) case final c?) {
+      caption.update(t, c.topic, kick: c.kick, line: c.line, note: c.note);
+      return;
+    }
     if (j == null || plan == null) {
       caption.update(t, null);
       return;

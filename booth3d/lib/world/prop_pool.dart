@@ -13,9 +13,12 @@ import 'site_geo.dart';
 /// away, so the batches' bounds stay where the props are and they're culled
 /// when out of view. Nothing here casts a shadow.
 class PropPool {
-  PropPool(this.scene, this.name, {required this.home, this.maxBoxes = 128, this.maxCyls = 32, this.maxGlows = 32});
+  PropPool(this.scene, this.name, {required this.home, this.maxBoxes = 128, this.maxCyls = 32, this.maxGlows = 32, this.parent});
 
   final Scene scene;
+
+  /// Where its nodes go (null: the scene's root).
+  final Node? parent;
   final String name;
   final vm.Vector3 home;
   final int maxBoxes, maxCyls, maxGlows;
@@ -36,7 +39,12 @@ class PropPool {
         ..castsShadows = false
         ..visible = false;
       _nodes.add(node);
-      scene.add(node);
+      final p = parent;
+      if (p != null) {
+        p.add(node);
+      } else {
+        scene.add(node);
+      }
       return im;
     }
 

@@ -197,6 +197,8 @@ class CitySigns {
       final side = k.isEven ? 1.0 : -1.0;
       final z = -6.0 + 13.0 * (k ~/ 2) + 4 * rnd(k, 3);
       final x = side * (Plan.walkBlock + 0.9);
+      // (None on the mini world's buildings.)
+      if (Plan.inLot(x, z, 1.5)) continue;
       const y = 3.4;
       final panelH = m.height + 0.7, panelW = m.width + 0.6;
       // A lightbox panel sticking out over the sidewalk, facing the camera,

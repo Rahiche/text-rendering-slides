@@ -57,7 +57,7 @@ class World3D {
     sky.init();
     site.init();
     typing.init();
-    await Future.wait([city.init(), site.alley.init()]);
+    await Future.wait([city.init(), site.alley.init(), site.vignettes.init()]);
     stage.value = 'people';
     await life.init();
     ready = true;
@@ -76,7 +76,7 @@ class World3D {
     const world = 'ب ع ا مرحبا ש שלום क ह नमस्ते ก สวัสดี 한 Ж Я Привет Ω λ Γεια σου ¶ Ⅲ ß ñ ♻ ♥';
     TextStyle style(String? locale) => TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale));
     await awaitFallbackFontsAll(
-      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...ScriptAlley.fontRuns, ...CitySigns.fontRuns],
+      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...ScriptAlley.fontRuns, ...site.vignettes.fontRuns, ...CitySigns.fontRuns],
       firstWait: const Duration(seconds: 4),
       quiet: const Duration(milliseconds: 700),
       max: const Duration(seconds: 15),
@@ -127,6 +127,7 @@ class World3D {
     final out = [
       for (final p in site.crew.poses)
         if (p.visible && (p.pos.z < Plan.plazaZ0 - 0.2 || p.pos.x.abs() > Plan.plazaX + 0.2)) p.pos,
+      ...site.vignettes.kit.walkers,
     ];
     mark('director');
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork, others: out);

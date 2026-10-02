@@ -56,6 +56,8 @@ class CityProps {
     const sakura = [0xF29AC4, 0xF7B0D2, 0xE889B6];
     var k = 0;
     void tree(double x, double z, {double size = 1, bool? pink}) {
+      // (None on the mini world's lots.)
+      if (Plan.inLot(x, z, 1.5)) return;
       k++;
       final s = size * (0.85 + 0.35 * rnd(k, 1));
       final isPink = pink ?? rnd(k, 2) < 0.28;
@@ -140,10 +142,11 @@ class CityProps {
       for (final x in [-0.72, 0.72]) part(CuboidGeometry(vm.Vector3(0.07, 0.46, 0.44)), vm.Matrix4.translation(vm.Vector3(x, 0.23, 0.02)), iron),
     ]);
     final benches = InstancedMesh(geometry: geo, material: pbr(rgb(1, 1, 1), roughness: 0.7));
-    // Facing the paths in the park (front = local −Z).
+    // Facing the paths in the park (front = local −Z); none in front of
+    // the tofu shop and the forge (vignettes).
     for (var z = Plan.parkZ0 + 5.0; z < Plan.parkZ1; z += 9) {
-      benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
-      benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
+      if ((z - 49).abs() > 1) benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
+      if ((z + 4 - 44).abs() > 1) benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
     }
     // On the plaza's flanks, facing the build.
     for (final s in [-1.0, 1.0]) {

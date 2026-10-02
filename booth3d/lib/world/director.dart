@@ -287,25 +287,27 @@ class Director {
       case Phase.cleanup:
         // The truck comes in and backs up to the rubble; the bricks go
         // into it; then up over the swept plaza, ready for the next name.
-        final truck = site.truckAt;
-        if (u < 0.3) {
-          _kind = 'cleanup truck';
-          final tx = truck.x.clamp(-w / 2 - 12, w / 2 + 2);
-          final tg = vm.Vector3(tx * 0.6 - 1.5, 1.4, -2.5);
-          return Shot(vm.Vector3(tg.x - 5, 6.5, -17), tg, fov: 44, settle: 1.6);
-        }
         final park = -w / 2 - 2.6;
-        if (u < 0.72) {
-          // From the front right of it, the rubble beyond: the bricks
-          // arcing over into its tub.
+        if (u < 0.26) {
+          // High and wide from behind the bay, out over the avenue: the
+          // truck comes along it, brakes past the bay and reverses round
+          // into it, towards us; the loader scooping up the rubble.
+          _kind = 'cleanup truck';
+          final tg = vm.Vector3(park + 3.4, 0.4, -6.6);
+          return Shot(vm.Vector3(park - 1.0, 9.6, 6.6), tg, fov: 52, settle: 1.6, drift: 0.6);
+        }
+        if (u < 0.78) {
+          // From the truck's far side, raised: the truck backs in, the
+          // loader comes round with its bucketful, lifts it over the tub
+          // and tips the bricks in, towards us.
           _kind = 'cleanup load';
-          final k = seg(u, 0.3, 0.72);
-          final tg = vm.Vector3(park + 1.6, 1.7, -4.2);
-          return Shot(vm.Vector3(park + lerp(6.2, 5.4, k), lerp(2.6, 3.0, k), -11.2), tg, fov: 42, settle: 1.4, drift: 0.7);
+          final k = seg(u, 0.26, 0.78);
+          final tg = vm.Vector3(park + 1.4, lerp(1.9, 2.3, k), -3.6);
+          return Shot(vm.Vector3(park - lerp(5.0, 4.4, k), lerp(3.7, 4.1, k), lerp(-0.9, -1.4, k)), tg, fov: 46, settle: 1.4, drift: 0.6);
         }
         // Rising over the empty plaza (the crane lit at night).
         _kind = 'cleanup clear';
-        final k = eio(seg(u, 0.72, 1));
+        final k = eio(seg(u, 0.78, 1));
         final tg = vm.Vector3(2.5, lerp(1.6, 2.6, k), lerp(-1, 1.5, k));
         return Shot(vm.Vector3(lerp(-3.5, 0.5, k), lerp(4.5, 10.5, k), -17.2), tg, fov: 46, settle: 1.6, drift: 0.8);
     }

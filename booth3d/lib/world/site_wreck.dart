@@ -220,11 +220,12 @@ class Wreck {
   }
   static final _q0 = vm.Quaternion.identity();
 
-  /// Steps the physics without the ball (the cleanup).
-  void settle(double t, double dt) {
+  /// Steps the physics without the ball (the cleanup), [beforeStep] moving
+  /// anything kinematic.
+  void settle(double t, double dt, {void Function(double t)? beforeStep}) {
     if (!active) return;
     _now = t;
-    physics.advance(dt);
+    physics.advance(dt, beforeStep: beforeStep);
     _breakUp();
   }
 

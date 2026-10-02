@@ -80,6 +80,18 @@ class Sky3D {
       shadowNormalBias: 0.02,
     );
     scene.directionalLight = _light;
+    // Contact occlusion: feet on the ground, bricks on bricks, kerbs, the
+    // stalls' counters: darker where things meet, so nothing floats.
+    scene.ambientOcclusion
+      ..enabled = Tuning.ao
+      ..method = AmbientOcclusionMethod.groundTruth
+      ..intensity = 0.9
+      ..radius = 0.45
+      ..power = 1.5
+      ..halfResolution = true;
+    _light
+      ..contactShadows = Tuning.ao
+      ..contactShadowDistance = 0.35;
     scene.toneMapping = ToneMappingMode.aces;
     scene.postProcess.bloom
       ..enabled = true

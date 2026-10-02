@@ -345,7 +345,9 @@ GlyphGeometry _outline(VectorizeInput input) {
 }
 
 /// A thin board [w]×[h] whose front (−Z, the side the camera sees) shows a
-/// whole texture upright; its edges and back take the texture's corner.
+/// whole texture upright; its edges and back take the colour at the middle
+/// of the texture's top edge (the board's own: corners may be rounded off
+/// and see-through).
 MeshGeometry boardGeometry(double w, double h, {double thick = 0.05}) {
   final d = CuboidGeometry(vm.Vector3(w, h, thick)).extractMeshData();
   final uv = d.texCoords!, n = d.normals!, p = d.positions;
@@ -354,8 +356,8 @@ MeshGeometry boardGeometry(double w, double h, {double thick = 0.05}) {
       uv[i * 2] = p[i * 3] / w + 0.5;
       uv[i * 2 + 1] = 0.5 - p[i * 3 + 1] / h;
     } else {
-      uv[i * 2] = 0.01;
-      uv[i * 2 + 1] = 0.01;
+      uv[i * 2] = 0.5;
+      uv[i * 2 + 1] = 0.006;
     }
   }
   return MeshGeometry.fromMeshData(d);

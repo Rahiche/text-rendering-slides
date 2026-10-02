@@ -90,6 +90,7 @@ class World3D {
       ..night = sky.night
       ..begin();
     site.camera.setFrom(director.camera.position);
+    site.cameraTarget.setFrom(director.camera.target);
     site.update(m, dt, night: sky.night);
     city.gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t));
     typing
@@ -101,6 +102,6 @@ class World3D {
       ..night = sky.night
       ..update(m, dt, site);
     site.captionFor(m, director.shotLabel);
-    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.delivery);
+    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork);
   }
 }

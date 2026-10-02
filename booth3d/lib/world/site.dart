@@ -19,6 +19,7 @@ import 'crew_breaks.dart';
 import 'delivery.dart';
 import 'glyph_works.dart';
 import 'kit.dart';
+import 'life.dart' show StreetWork;
 import 'photo_op.dart';
 import 'physics.dart';
 import 'prop_pool.dart';
@@ -31,6 +32,7 @@ import 'site_fx.dart';
 import 'site_geo.dart';
 import 'site_kern.dart';
 import 'site_lights.dart';
+import 'site_loader.dart';
 import 'site_plan.dart';
 import 'site_props.dart';
 import 'site_wreck.dart';
@@ -106,6 +108,11 @@ class Site3D {
   // 完成！ sign and the recycling truck.
   final _banner = Node(name: 'banner 完成');
   final _truck = Node(name: 'truck');
+
+  /// The truck's body (sprung: it dips when it brakes) and its wheels
+  /// (rolling; the front pair steers): node, axle x, side z.
+  final _truckBody = Node(name: 'truck body');
+  final _truckWheels = <(Node, double, double)>[];
   late final PhysicallyBasedMaterial _truckBeacon, _bannerGlow;
 
   // Shapes for glyph fireworks: other scripts (once) and the name (per job).
@@ -122,9 +129,16 @@ class Site3D {
   List<_Fall>? _falls;
   _Swing? _swing;
 
-  /// The wreck in real physics (see [Wreck]).
+  /// The wreck in real physics (see [Wreck]), and the cleanup's loader.
   final physics = Physics();
   late final wreck = Wreck(physics, _placeBrick);
+  late final loader = Loader3D(scene);
+
+  /// The cleanup: which bricks are gone (taken off camera).
+  List<bool> _gone = const [];
+
+  /// Where the camera looks (set by the world, with [camera]).
+  final cameraTarget = vm.Vector3.zero();
   int _finalized = 0;
 
   /// Per letter: how far right of its place its settled bricks were last
@@ -196,6 +210,7 @@ class Site3D {
     works.init();
     verdict.init();
     finish.init();
+    loader.init();
     crew
       ..offDuty = breaks.pose
       ..stage = (who, p) {
@@ -226,7 +241,7 @@ class Site3D {
     final glass = pbr(rgb(0.08, 0.16, 0.24), roughness: 0.1, metallic: 0.3);
     final steel = pbr(rgb(0.6, 0.62, 0.66), roughness: 0.35, metallic: 0.8);
     final chassis = MeshBatch()..box(vm.Vector3(0.1, 0.62, 0), vm.Vector3(5.6, 0.32, 1.7));
-    _truck.add(Node(mesh: Mesh(chassis.build(), dark)));
+    _truckBody.add(Node(mesh: Mesh(chassis.build(), dark)));
     // Tipper body with ribs.
     final tub = MeshBatch()
       ..box(vm.Vector3(-0.85, 1.05, 0), vm.Vector3(3.6, 0.14, 2.2)) // floor
@@ -240,32 +255,46 @@ class Site3D {
         ..box(vm.Vector3(x, 1.75, 1.13), vm.Vector3(0.12, 1.3, 0.06))
         ..box(vm.Vector3(x, 1.75, -1.13), vm.Vector3(0.12, 1.3, 0.06));
     }
-    _truck.add(Node(mesh: Mesh(tub.build(), body)));
+    _truckBody.add(Node(mesh: Mesh(tub.build(), body)));
     final cabin = MeshBatch()
       ..box(vm.Vector3(2.05, 1.45, 0), vm.Vector3(1.55, 1.5, 2.05))
       ..box(vm.Vector3(2.95, 1.0, 0), vm.Vector3(0.35, 0.5, 2.05)); // bonnet
-    _truck.add(Node(mesh: Mesh(cabin.build(), cab)));
+    _truckBody.add(Node(mesh: Mesh(cabin.build(), cab)));
     final windows = MeshBatch()
       ..box(vm.Vector3(2.84, 1.72, 0), vm.Vector3(0.04, 0.62, 1.8))
       ..box(vm.Vector3(2.15, 1.72, 1.03), vm.Vector3(1.05, 0.58, 0.04))
       ..box(vm.Vector3(2.15, 1.72, -1.03), vm.Vector3(1.05, 0.58, 0.04));
-    _truck.add(Node(mesh: Mesh(windows.build(), glass)));
+    _truckBody.add(Node(mesh: Mesh(windows.build(), glass)));
     final grill = MeshBatch()..box(vm.Vector3(3.13, 0.95, 0), vm.Vector3(0.04, 0.32, 1.5));
-    _truck.add(Node(mesh: Mesh(grill.build(), steel)));
+    _truckBody.add(Node(mesh: Mesh(grill.build(), steel)));
     final lamp = pbr(rgb(1, 0.95, 0.8), emissive: rgb(1, 0.9, 0.7), emissiveStrength: 3);
     for (final z in [-0.72, 0.72]) {
-      _truck.add(Node(mesh: Mesh(SphereGeometry(radius: 0.13, segments: 10, rings: 6), lamp), localTransform: trs(vm.Vector3(3.13, 1.12, z)))..castsShadows = false);
+      _truckBody.add(Node(mesh: Mesh(SphereGeometry(radius: 0.13, segments: 10, rings: 6), lamp), localTransform: trs(vm.Vector3(3.13, 1.12, z)))..castsShadows = false);
     }
     _truckBeacon = pbr(lin(BP.amber), emissive: lin(BP.amber), emissiveStrength: 4);
-    _truck.add(Node(mesh: Mesh(CylinderGeometry(bottomRadius: 0.14, topRadius: 0.1, height: 0.18, radialSegments: 12), _truckBeacon), localTransform: trs(vm.Vector3(2.05, 2.29, 0)))..castsShadows = false);
-    final wheel = CylinderGeometry(bottomRadius: 0.46, topRadius: 0.46, height: 0.34, radialSegments: 18);
-    final hub = CylinderGeometry(bottomRadius: 0.2, topRadius: 0.2, height: 0.36, radialSegments: 12);
+    _truckBody.add(Node(mesh: Mesh(CylinderGeometry(bottomRadius: 0.14, topRadius: 0.1, height: 0.18, radialSegments: 12), _truckBeacon), localTransform: trs(vm.Vector3(2.05, 2.29, 0)))..castsShadows = false);
+    // Wheels (their axle along z): a tyre, and a hub with its nuts on the
+    // outside, so you can see them turn.
+    final tyre = CylinderGeometry(bottomRadius: 0.46, topRadius: 0.46, height: 0.34, radialSegments: 20);
+    final white = vm.Vector4(1, 1, 1, 1);
+    MeshGeometry hubOf(double side) => merged([
+      part(CylinderGeometry(bottomRadius: 0.21, topRadius: 0.21, height: 0.36, radialSegments: 8), trs(vm.Vector3.zero(), rotX: math.pi / 2), white),
+      for (var k = 0; k < 6; k++)
+        part(CuboidGeometry(vm.Vector3(0.05, 0.05, 0.05)), vm.Matrix4.translation(vm.Vector3(0.13 * math.cos(k * math.pi / 3), 0.13 * math.sin(k * math.pi / 3), side * 0.195)), white),
+      part(CuboidGeometry(vm.Vector3(0.06, 0.06, 0.06)), vm.Matrix4.translation(vm.Vector3(0, 0, side * 0.2)), white),
+    ]);
+    final hubs = {-1.0: hubOf(-1), 1.0: hubOf(1)};
+    final rim = pbr(rgb(1, 1, 1), roughness: 0.35, metallic: 0.8)..baseColorFactor = rgb(0.62, 0.64, 0.68);
     for (final x in [-1.9, -0.9, 2.2]) {
       for (final z in [-0.92, 0.92]) {
-        _truck.add(Node(mesh: Mesh(wheel, dark), localTransform: trs(vm.Vector3(x, 0.46, z), rotX: math.pi / 2)));
-        _truck.add(Node(mesh: Mesh(hub, steel), localTransform: trs(vm.Vector3(x, 0.46, z), rotX: math.pi / 2)));
+        final w = Node(name: 'truck wheel', localTransform: trs(vm.Vector3(x, 0.46, z)))
+          ..add(Node(mesh: Mesh(tyre, dark), localTransform: trs(vm.Vector3.zero(), rotX: math.pi / 2)))
+          ..add(Node(mesh: Mesh(hubs[z.sign]!, rim)));
+        _truckWheels.add((w, x, z));
+        _truck.add(w);
       }
     }
+    _truck.add(_truckBody);
     _truck.visible = false;
     scene.add(_truck);
     // ♻ on both sides of the tipper.
@@ -275,7 +304,7 @@ class Site3D {
       final mesh = extrudeGlyph(g, unitsPerPx: 0.95 / g.inkHeight, depth: 0.05);
       final mat = pbr(rgb(0.95, 0.97, 0.96), roughness: 0.4, emissive: rgb(0.5, 0.9, 0.7), emissiveStrength: 0.4);
       for (final z in [-1.13, 1.13]) {
-        _truck.add(Node(mesh: Mesh(glyphGeometry(mesh), mat), localTransform: trs(vm.Vector3(-0.85, 1.28, z * 1.03), rotY: z < 0 ? 0 : math.pi)));
+        _truckBody.add(Node(mesh: Mesh(glyphGeometry(mesh), mat), localTransform: trs(vm.Vector3(-0.85, 1.28, z * 1.03), rotY: z < 0 ? 0 : math.pi)));
       }
     });
   }
@@ -333,6 +362,8 @@ class Site3D {
     _falls = null;
     _swing = null;
     wreck.end();
+    loader.end(physics);
+    _gone = const [];
     _swaps = null;
     _finalized = 0;
     _slid = [];
@@ -1072,6 +1103,75 @@ class Site3D {
     _bricks.setInstanceTransform(i, setTqs(_m, t.x, t.y, t.z, q, k, k, k));
   }
 
+  /// What's in the street's way: the delivery truck, and the cleanup's
+  /// truck (cars stop behind it in the lane, people wait while it crosses
+  /// the pavement).
+  late final StreetWork streetWork = _SiteWork(this);
+
+  /// The cleanup truck's pose at [t], if it's about.
+  ({double x, double z, double yaw, double odo, double steer, double pitch})? _truckNow(double t) {
+    final j = _job;
+    if (j == null || j.phase != Phase.cleanup) return null;
+    final len = math.max(j.phaseLen, 0.01);
+    return _truckPose(j.since(t) / len, len, -wallWidth / 2 - 2.6, -4.6);
+  }
+
+  /// The truck's turn into the bay (radius, metres), the lane it comes
+  /// along and its speed on it (m/s).
+  static const _turnR = 4.2, _lane = -13.0, _cruise = 9.0;
+
+  /// The recycling truck [f] through a cleanup [len] seconds long: braking
+  /// along the eastbound lane to a stop just past the bay; reversing round
+  /// into it (a quarter turn, then straight back) to stand tub first by the
+  /// rubble (yaw π/2: its cab, local +x, towards the avenue); out the same
+  /// way, forwards, from 0.8. Also: how far it has rolled (signed: back is
+  /// negative), its front wheels' steering (0..1) and its body's pitch.
+  ({double x, double z, double yaw, double odo, double steer, double pitch}) _truckPose(double f, double len, double park, double bay) {
+    final cx = park + _turnR, cz = _lane + _turnR;
+    final arc = math.pi / 2 * _turnR, total = arc + (bay - cz);
+    final tIn = 0.14 * len, brake = _cruise * tIn * 0.7;
+    // [k] metres back along the way in from where it stopped: round the arc
+    // (full lock), then straight (the wheel unwinding as it comes out).
+    ({double x, double z, double yaw, double steer}) along(double k) {
+      final steer = smooth(0.0, 0.6, k) * (1 - smooth(arc - 0.4, arc + 1.0, k));
+      if (k <= arc) {
+        final a = k / _turnR;
+        return (x: cx - _turnR * math.sin(a), z: cz - _turnR * math.cos(a), yaw: a, steer: steer);
+      }
+      return (x: park, z: cz + (k - arc), yaw: math.pi / 2, steer: steer);
+    }
+
+    // The body's pitch (nose down +): down while braking and springing
+    // back through level after the stop; a little rock as it stops backing.
+    double settle(double since) => since < 0 ? 0 : 0.024 * math.exp(-since * 3.2) * math.cos(since * 11);
+    double backed(double since) => since < 0 ? 0 : -0.01 * math.exp(-since * 3) * math.sin(since * 10);
+    if (f < 0.14) {
+      // At speed (from off to the left), then braking to the stop.
+      final t = f * len, tc = 0.4 * tIn;
+      final s = t < tc ? _cruise * t : _cruise * t - 0.5 * (_cruise / (tIn - tc)) * (t - tc) * (t - tc);
+      return (x: cx - brake + s, z: _lane, yaw: 0.0, odo: s, steer: 0.0, pitch: 0.024 * smooth(tc, tc + 0.2, t));
+    }
+    if (f < 0.8) {
+      final k = eio(seg(f, 0.14, 0.36)) * total;
+      final p = along(k);
+      return (x: p.x, z: p.z, yaw: p.yaw, odo: brake - k, steer: p.steer, pitch: settle(f * len - tIn) + backed(f * len - 0.36 * len));
+    }
+    // Out: forwards back along the way in, accelerating, then east.
+    final g = seg(f, 0.8, 1.0), run = g * g * (total + 14);
+    if (run <= total) {
+      final p = along(total - run);
+      return (x: p.x, z: p.z, yaw: p.yaw, odo: brake - total + run, steer: p.steer, pitch: -0.012 * (1 - g));
+    }
+    return (x: cx + (run - total), z: _lane, yaw: 0.0, odo: brake - total + run, steer: 0.0, pitch: 0.0);
+  }
+
+  /// Whether the camera (last frame) has [p] in its picture (roughly).
+  bool _inView(vm.Vector3 p) {
+    final d = p - camera, look = cameraTarget - camera;
+    if (d.length2 < 1e-6 || look.length2 < 1e-6) return true;
+    return d.normalized().dot(look.normalized()) > 0.62;
+  }
+
   /// Dust where bricks first came down on the ground.
   void _impactDust(double t) {
     wreck.impacts.removeWhere((e) => t - e.$1 >= 0.9 || t < e.$1);
@@ -1239,70 +1339,89 @@ class Site3D {
       _idleCrane(vm.Vector3(SiteLayout.mastX - 5, 9, SiteLayout.mastZ - 4), t, dt, night);
     }
     final falls = _falls;
-    // The truck drives in along the avenue (the city's eastbound lane), backs
-    // into the plaza next to the rubble, and drives out again east — it never
-    // cuts through the city blocks beside the plaza.
+    // The truck: in along the avenue's eastbound lane, braking; reversing
+    // round into the bay by the rubble, tub first; out the same way.
     final park = -wallWidth / 2 - 2.6;
-    const lane = -13.0, bay = -4.6, far = 70.0;
-    double tx, tz, yaw;
-    if (f < 0.12) {
-      tx = lerp(-far, park, eo(f / 0.12));
-      tz = lane;
-      yaw = 0;
-    } else if (f < 0.2) {
-      final k = (f - 0.12) / 0.08;
-      tx = park;
-      tz = lerp(lane, bay, eio(k));
-      yaw = math.pi / 2 * eo(k / 0.35); // swings round, then reverses in
-    } else if (f < 0.82) {
-      tx = park;
-      tz = bay;
-      yaw = math.pi / 2;
-    } else if (f < 0.9) {
-      final k = (f - 0.82) / 0.08;
-      tx = park;
-      tz = lerp(bay, lane, eio(k));
-      yaw = math.pi / 2;
-    } else {
-      final k = (f - 0.9) / 0.1;
-      tx = lerp(park, far, eio(k));
-      tz = lane;
-      yaw = math.pi / 2 * (1 - eo(k / 0.25));
-    }
-    truckAt.setValues(tx, 0, tz);
+    const bay = -4.6;
+    final tp = _truckPose(f, len, park, bay);
+    final yaw = tp.yaw;
+    truckAt.setValues(tp.x, 0, tp.z);
     _truck
       ..visible = true
-      ..place((m) => setTrs(m, truckAt.x, truckAt.y, truckAt.z, yaw: yaw));
+      ..place((m) => setTrs(m, tp.x, 0, tp.z, yaw: yaw));
+    // Its body dips forward as it brakes and rocks back as it stops; the
+    // wheels roll, the front pair steers.
+    _truckBody.place((m) => setTrs(m, 0, 0, 0, roll: -tp.pitch));
+    for (final (w, x, z) in _truckWheels) {
+      final steer = x > 0 ? -0.5 * tp.steer : 0.0;
+      w.place((m) => setTrs(m, x, 0.46, z, yaw: steer, roll: -tp.odo / 0.46));
+    }
     _truckBeacon.emissiveStrength = (t * 2.2) % 1.0 < 0.5 ? 6 : 0.4;
     if (falls == null || !wreck.active) return;
-    // The tub sits behind the cab: −0.85 m along the truck's length.
-    final hopper = truckAt + vm.Vector3(-0.85 * math.cos(yaw), 2.2, 0.85 * math.sin(yaw));
-    wreck.releaseAll();
+    final truck = trs(vm.Vector3(truckAt.x, truckAt.y, truckAt.z), rotY: yaw);
+    // The loader's bucketful: the bricks nearest the rubble's left end.
+    if (_gone.length != falls.length) {
+      wreck.releaseAll();
+      _gone = List.filled(falls.length, false);
+      final near = [
+        for (var i = 0; i < falls.length; i++)
+          if (falls[i].ever) i,
+      ]..sort((a, c) => wreck.positionOf(a).x.compareTo(wreck.positionOf(c).x));
+      final load = near.take(40).toList();
+      for (final i in load) {
+        wreck.pickUp(i);
+        _gone[i] = true;
+      }
+      physics.clock = u;
+      loader.start(physics, load, b, park, bay, _placeBrick, (i) => _bricks.setInstanceTransform(i, hidden));
+    }
+    // The rest of the rubble goes off camera (and whatever's left at the
+    // cut to the swept plaza).
+    var taken = 0;
     for (var i = 0; i < falls.length; i++) {
       if (!falls[i].ever) {
         _bricks.setInstanceTransform(i, hidden);
         continue;
       }
-      // Lying where the physics left it until it's picked up; then out of
-      // the physics, over into the tub.
-      final go = len * (0.22 + 0.55 * rnd(i, 13));
-      final k = seg(u, go, go + 0.85);
-      if (k <= 0) continue;
+      if (_gone[i]) continue;
+      if (f < 0.78 && (taken >= 30 || _inView(wreck.positionOf(i)))) continue;
       wreck.pickUp(i);
-      if (k >= 1) {
-        _bricks.setInstanceTransform(i, hidden);
-        continue;
-      }
-      final rest = wreck.positionOf(i);
-      final p = rest + (hopper - rest) * eio(k) + vm.Vector3(0, 2.4 * math.sin(k * math.pi), 0);
-      _bricks.setInstanceTransform(i, _brickM(p.x, p.y, p.z, 1 - 0.35 * k, k * 6, i));
-      if (k < 0.3 && i % 4 == 0) fx.puff(rest.x, 0.05, rest.z, k / 0.3, 0.35, seed: i, n: 1);
+      _gone[i] = true;
+      _bricks.setInstanceTransform(i, hidden);
+      taken++;
     }
-    wreck.settle(t, dt);
+    loader.update(f, truck, cut: 0.78, leave: 0.8);
+    wreck.settle(t, dt, beforeStep: (tu) => loader.beforeStep(physics, tu / len));
+    loader.ride(truck, physics);
     _wallHidden = false;
     if (j.cutAt == null) {
       fx.confettiShow(u + _pace.phaseLen(Phase.celebrate) + _pace.phaseLen(Phase.demolish), wallWidth, j.serial, fade: c01(f / 0.3));
     }
+  }
+}
+
+/// The site's street works: the delivery's, else the cleanup truck's.
+class _SiteWork implements StreetWork {
+  _SiteWork(this.site);
+  final Site3D site;
+
+  @override
+  (double, double)? laneBlock(bool eastbound, double t) {
+    final d = site.delivery.laneBlock(eastbound, t);
+    if (d != null || !eastbound) return d;
+    final p = site._truckNow(t);
+    if (p == null || p.z > -9.5) return null;
+    return (p.x - 4.2, p.x + 4.2);
+  }
+
+  @override
+  (double, double)? gateBusy(double t) {
+    final d = site.delivery.gateBusy(t);
+    if (d != null) return d;
+    final p = site._truckNow(t);
+    if (p == null || p.z < -14 || p.z > -6.5) return null;
+    final park = -site.wallWidth / 2 - 2.6;
+    return (math.min(p.x, park) - 3.2, math.max(p.x, park) + 3.2);
   }
 }
 

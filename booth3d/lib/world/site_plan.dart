@@ -58,6 +58,10 @@ class CityPace extends BuildPace {
   /// manager brings the next blueprint (verdict.dart).
   static const verdict = 15.0;
 
+  /// The cleanup: the truck reverses in, the loader tips a bucketful into
+  /// it, it drives off (site_loader.dart).
+  static const cleanup = 14.0;
+
   @override
   double nominal(NameRaster r) => math.min(BuildSchedule.of(r).natural, longest);
 
@@ -73,6 +77,7 @@ class CityPace extends BuildPace {
     Phase.reveal => reveal,
     Phase.celebrate => celebrate,
     Phase.demolish => super.phaseLen(p) + verdict,
+    Phase.cleanup => cleanup,
     _ => super.phaseLen(p),
   };
 

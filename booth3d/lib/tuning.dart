@@ -21,7 +21,7 @@ import 'perf_stub.dart' if (dart.library.io) 'perf_io.dart' show perfEnv;
 /// compare what each costs without rebuilding:
 ///   BOOTH3D_RATIO=1.25  BOOTH3D_AA=smaa  BOOTH3D_CASCADES=2  BOOTH3D_SHADOWRES=1536  BOOTH3D_FLOODSHADOW=0
 ///   BOOTH3D_IBL=interval|manual  BOOTH3D_IBLSEC=4  BOOTH3D_CUBE=128  BOOTH3D_IBLFACE=64  BOOTH3D_IBLEQ=256
-///   BOOTH3D_STATICSHADOW=1  BOOTH3D_SPEED=8
+///   BOOTH3D_STATICSHADOW=1  BOOTH3D_SPEED=8  BOOTH3D_AO=0
 abstract final class Tuning {
   static String? _env(String key) => PerfLog.enabled ? perfEnv(key) : null;
   static double? _num(String key) => double.tryParse(_env(key) ?? '');
@@ -47,5 +47,11 @@ abstract final class Tuning {
   /// and the sun here turns every frame: with it, each frame allocated and
   /// re-rendered three 2048² tiles. So no static shadows.
   static final bool staticShadows = _env('BOOTH3D_STATICSHADOW') == '1';
+  /// Contact occlusion (ambient occlusion at half resolution, and the
+  /// sun's contact shadows): things darken where they meet the ground and
+  /// each other, so nothing floats. The capture build reads it from a
+  /// define (to compare), a perf build from the environment.
+  static final bool ao = (_env('BOOTH3D_AO') ?? const String.fromEnvironment('BOOTH3D_AO', defaultValue: '1')) != '0';
+
   static final double speed = _num('BOOTH3D_SPEED') ?? const int.fromEnvironment('BOOTH3D_SPEED', defaultValue: 1).toDouble();
 }

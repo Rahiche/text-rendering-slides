@@ -190,7 +190,9 @@ class Site3D {
   final truckAt = vm.Vector3(-40, 0, -4.5);
 
   void init() {
-    _bricks = InstancedMesh(geometry: CuboidGeometry(vm.Vector3.all(1)), material: pbr(rgb(1, 1, 1), roughness: 0.55));
+    // Bricks with chamfered edges: they catch the light, and in the wall
+    // neighbours meet in a groove (the joints read).
+    _bricks = InstancedMesh(geometry: (MeshBatch()..chamferedCube(0.075)).build(), material: pbr(rgb(1, 1, 1), roughness: 0.55));
     scene.add(Node(name: 'bricks')..addComponent(InstancedMeshComponent(_bricks)));
     _pallets = InstancedMesh(geometry: CuboidGeometry(vm.Vector3.all(1)), material: pbr(lin(const Color(0xFFA77445)), roughness: 0.85));
     for (var i = 0; i < _maxPallets; i++) {

@@ -34,6 +34,71 @@ class MeshBatch {
     }
   }
 
+  /// One triangle facing [n] (wound to face along it).
+  void tri(vm.Vector3 p0, vm.Vector3 p1, vm.Vector3 p2, vm.Vector3 n) {
+    final base = _p.length ~/ 3;
+    for (final (p, u, v) in [(p0, 0.0, 0.0), (p1, 1.0, 0.0), (p2, 0.0, 1.0)]) {
+      _p.addAll([p.x, p.y, p.z]);
+      _n.addAll([n.x, n.y, n.z]);
+      _uv.addAll([u, v]);
+    }
+    final c = (p1 - p0).cross(p2 - p0);
+    _i.addAll(c.dot(n) >= 0 ? [base, base + 1, base + 2] : [base, base + 2, base + 1]);
+  }
+
+  /// A unit cube (centred) with its edges chamfered [b] deep: flat faces,
+  /// a 45° strip along every edge and a facet at every corner, so its
+  /// edges catch the light (and neighbours meet in a groove).
+  void chamferedCube(double b) {
+    const h = 0.5;
+    final i = h - b;
+    vm.Vector3 v(double x, double y, double z) => vm.Vector3(x, y, z);
+    // Faces: for each axis and sign, the inset square.
+    for (var axis = 0; axis < 3; axis++) {
+      for (final s in const [-1.0, 1.0]) {
+        vm.Vector3 at(double a, double c) {
+          final p = [0.0, 0.0, 0.0];
+          p[axis] = s * h;
+          p[(axis + 1) % 3] = a;
+          p[(axis + 2) % 3] = c;
+          return v(p[0], p[1], p[2]);
+        }
+
+        final n = [0.0, 0.0, 0.0]..[axis] = s;
+        quad(at(-i, -i), at(i, -i), at(i, i), at(-i, i), v(n[0], n[1], n[2]));
+      }
+    }
+    // Edge strips: along each axis, at each pair of signs of the others.
+    for (var axis = 0; axis < 3; axis++) {
+      final a1 = (axis + 1) % 3, a2 = (axis + 2) % 3;
+      for (final s1 in const [-1.0, 1.0]) {
+        for (final s2 in const [-1.0, 1.0]) {
+          vm.Vector3 at(double along, double d1, double d2) {
+            final p = [0.0, 0.0, 0.0];
+            p[axis] = along;
+            p[a1] = d1;
+            p[a2] = d2;
+            return v(p[0], p[1], p[2]);
+          }
+
+          final n = [0.0, 0.0, 0.0]
+            ..[a1] = s1 * math.sqrt1_2
+            ..[a2] = s2 * math.sqrt1_2;
+          quad(at(-i, s1 * h, s2 * i), at(i, s1 * h, s2 * i), at(i, s1 * i, s2 * h), at(-i, s1 * i, s2 * h), v(n[0], n[1], n[2]));
+        }
+      }
+    }
+    // Corner facets.
+    const k = 0.5773502691896258;
+    for (final sx in const [-1.0, 1.0]) {
+      for (final sy in const [-1.0, 1.0]) {
+        for (final sz in const [-1.0, 1.0]) {
+          tri(v(sx * h, sy * i, sz * i), v(sx * i, sy * h, sz * i), v(sx * i, sy * i, sz * h), v(sx * k, sy * k, sz * k));
+        }
+      }
+    }
+  }
+
   /// A box from its centre, three half-axes (any orientation).
   void orientedBox(vm.Vector3 c, vm.Vector3 ax, vm.Vector3 ay, vm.Vector3 az) {
     for (final (axis, s1, s2) in [(ax, ay, az), (ay, az, ax), (az, ax, ay)]) {

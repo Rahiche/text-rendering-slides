@@ -956,12 +956,12 @@ class BuildPlan {
       ..yaw = 0
       ..spinAxis = (src[i] * 7) % 3;
     if (t >= lay) {
-      // In the wall, with a small bounce just after landing.
+      // In the wall: set down onto the mortar, a little rebound and it
+      // settles.
       final u = (t - lay) / 0.24;
       out.pos.setValues(cellX[i] + offsetAt(letter[i], t), cellY[i], 0);
       if (u < 1) {
-        out.pos.y += 0.32 * b * math.max(0, math.sin(u * math.pi * 1.5)) * (1 - u);
-        out.scale = 1 + 0.2 * (1 - u) * (1 - u);
+        out.pos.y += 0.07 * b * math.sin(u * math.pi * 2.5) * math.exp(-u * 4);
         out.landing = u;
       }
       return out;

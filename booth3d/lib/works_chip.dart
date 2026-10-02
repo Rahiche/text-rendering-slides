@@ -10,7 +10,7 @@ import 'world/glyph_works.dart' show WorksCaption, worksSteps;
 /// The Glyph Works' lower third while the camera visits it, over the plaza
 /// on the right (where the kerning caption goes; they never show together):
 ///
-///   ③ フォント · FONT · CMAP           文字工場 · GLYPH WORKS
+///   ③ フォント · FONT · CMAP     ●●●○○○○     文字工場 · GLYPH WORKS
 ///   よ   U+3088   Space Grotesk ✕  Noto Kufi Arabic ✕  system font ✓
 ///        cmap: found by fallback
 ///
@@ -61,19 +61,24 @@ class _WorksPainter extends CustomPainter {
     final k = UiInk(canvas, text);
     final (ja, en) = worksSteps[c.step];
     final kick = k.tp('$ja · $en', UT.mono(14, color: BP.amber, weight: 600, ls: 1.2));
-    final where = k.tp('文字工場 · GLYPH WORKS', UT.mono(11, color: BP.inkDim, weight: 500, ls: 1.0));
+    final where = k.tp(
+      c.journey ? "文字の旅 · A LETTER'S JOURNEY" : '文字工場 · GLYPH WORKS',
+      UT.mono(11, color: c.journey ? BP.amber : BP.inkDim, weight: 500, ls: 1.0),
+    );
     final glyph = k.tp(c.letter, UT.name(40, color: BP.ink, height: 1.0));
     final value = k.tp(c.value, UT.mono(22, color: BP.amber, weight: 700));
     final note = k.tp(c.note, UT.mono(12, color: BP.inkDim, weight: 500));
     // At the font step, each font looked in, ✕ or ✓.
     final fonts = [for (final (name, hit) in c.fonts) (k.tp(name, UT.mono(15, color: hit ? BP.green : BP.red, weight: 600)), hit)];
     const mark = 16.0, gap = 14.0, pad = 18.0, num = 26.0;
+    // Where the letter is down the line: a dot per step, this one lit.
+    const dot = 9.0, dotGap = 5.0, stripW = 7 * dot + 6 * dotGap;
     var fontsW = 0.0;
     for (final (p, _) in fonts) {
       fontsW += p.width + mark + 6 + gap;
     }
     final valueW = value.width + (fonts.isEmpty ? 0 : gap + fontsW);
-    final w = pad * 2 + math.max(num + 8 + kick.width + 24 + where.width, glyph.width + 18 + math.max(valueW, note.width));
+    final w = pad * 2 + math.max(num + 8 + kick.width + 20 + stripW + 16 + where.width, glyph.width + 18 + math.max(valueW, note.width));
     final slide = 36 * (1 - Curves.easeOutCubic.transform(show));
     final box = Rect.fromLTWH(_right - w + slide, _bottom - _h, w, _h);
     k.faded(show, () {
@@ -87,6 +92,17 @@ class _WorksPainter extends CustomPainter {
       n.paint(canvas, o - Offset(n.width / 2, n.height / 2));
       kick.paint(canvas, Offset(box.left + pad + num + 8, box.top + 8));
       where.paint(canvas, Offset(box.right - pad - where.width, box.top + 10));
+      final sx = box.right - pad - where.width - 16 - stripW, sy = box.top + 10 + where.height / 2;
+      for (var i = 0; i < 7; i++) {
+        final o = Offset(sx + i * (dot + dotGap) + dot / 2, sy);
+        if (i == c.step) {
+          canvas.drawCircle(o, dot / 2, k.fl(BP.amber));
+        } else if (i < c.step) {
+          canvas.drawCircle(o, dot / 2 - 1, k.fl(BP.amber.withValues(alpha: 0.4)));
+        } else {
+          canvas.drawCircle(o, dot / 2 - 1.5, k.st(BP.inkFaint, 1.2));
+        }
+      }
       // The letter on its baseline, its values beside it, the note under them.
       final base = box.bottom - 22;
       final x0 = box.left + pad;

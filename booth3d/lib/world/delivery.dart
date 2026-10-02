@@ -161,7 +161,7 @@ class Delivery3D implements StreetWork {
       for (final st in plan.steps)
         if (st != null) (st.a - 2.0, st.e + 2.0),
     ];
-    bool clashes(double a) => kerns.any((r) => a + 9 > r.$1 && a - 12 < r.$2);
+    bool clashes(double a) => kerns.any((r) => a + 3 > r.$1 && a - 12 < r.$2);
     var earliest = j.startedAt + 11;
     var k = 0;
     while (k < n && cap > 0) {
@@ -204,7 +204,7 @@ class Delivery3D implements StreetWork {
       if (breakTo - breakFrom > 6) driverBreaks.add(DriverBreak(breakFrom, breakTo, _toWorld(_controls, vm.Vector3.zero(), parked: true)));
       run.filmed = !clashes(run.arrive);
       _runs.add(run);
-      if (run.filmed) camWindows.add((run.arrive - 12, run.arrive + 9));
+      if (run.filmed) camWindows.add((run.arrive - 12, run.arrive + 3));
       earliest = run.depart + 48; // to the depot and back
     }
     while (k < n) {
@@ -777,14 +777,15 @@ class Delivery3D implements StreetWork {
   }
 
   /// The camera's request at [t] (priority 2): behind the truck as it comes
-  /// along the avenue, alongside as it turns in and parks, then a look at
-  /// the first pallets swinging off. Nothing during a kerning close-up.
+  /// along the avenue, then alongside as it turns in and pulls up by the
+  /// yard; then away (to the Glyph Works, where a letter's journey starts,
+  /// or the build). Nothing during a kerning close-up.
   void focus(List<Focus> out, double t) {
     if (out.any((f) => f.priority > 2)) return;
     for (var n = 0; n < _runs.length; n++) {
       final r = _runs[n];
       final a = r.arrive;
-      if (!r.filmed || t < a - 11 || t >= a + 8.5) continue;
+      if (!r.filmed || t < a - 11 || t >= a + 2.5) continue;
       _at(t);
       final px = _pPos.x, pz = _pPos.z;
       if (t < a - 5) {
@@ -795,14 +796,9 @@ class Delivery3D implements StreetWork {
         return;
       }
       // Cut to alongside, from inside the plaza: it turns in through the
-      // gate and pulls up by the yard; then the crane at work, swinging the
-      // pallets over to the yard; then back to the build.
-      final sideEye = vm.Vector3(5.8, 5.2, -7.6), sideTg = vm.Vector3(lerp(px, gateX, 0.5), 1.4, lerp(pz, parkZ, 0.4));
-      final workEye = vm.Vector3(6.4, 6.6, -8.6), workTg = vm.Vector3(13.4, 2.6, -2.6);
-      final f = eio(seg(t, a + 1.2, a + 3.2));
-      final eye = sideEye + (workEye - sideEye) * f, tg = sideTg + (workTg - sideTg) * f;
-      final shot = Shot(eye, tg, fov: lerp(44, 46, f), settle: 1.3, drift: 0.5);
-      out.add(Focus('delivery $n', shot, priority: 2, weight: 1 - seg(t, a + 6.2, a + 8.5), cut: t < a + 6.2));
+      // gate and pulls up by the yard.
+      final eye = vm.Vector3(5.8, 5.2, -7.6), tg = vm.Vector3(lerp(px, gateX, 0.5), 1.4, lerp(pz, parkZ, 0.4));
+      out.add(Focus('delivery $n', Shot(eye, tg, fov: 44, settle: 1.3, drift: 0.5), priority: 2, cut: true));
       return;
     }
   }

@@ -136,6 +136,9 @@ class WorksCaption {
 
   /// At the font step: the fonts looked in so far, and whether each had it.
   List<(String, bool)> fonts = const [];
+
+  /// Whether the camera's following this letter all the way down the line.
+  bool journey = false;
 }
 
 /// 文字工場 · Glyph Works: while the crew build the name in bricks, the works
@@ -258,6 +261,10 @@ class GlyphWorks {
   final _steps = <_Steps>[];
   final _cuts = <_Cut>[];
 
+  /// The one letter the camera follows through all seven steps (see
+  /// [_planJourney]), or null.
+  _Journey? _journey;
+
   /// When the last letter's pixels are on the board (null before a plan).
   double? get boardDone => _steps.isEmpty ? null : _steps.last.at[7];
 
@@ -293,6 +300,7 @@ class GlyphWorks {
     _clear();
     _plan = plan;
     final name = _name = WorksName.measure(plan.job.name, plan.letters, latin: _latin, arabic: _arabic);
+    _planJourney(plan, busyCam, name);
     _schedule(plan, const {});
     _planCuts(plan, busyCam, name);
     final job = _job = _Job(name);
@@ -309,6 +317,10 @@ class GlyphWorks {
     for (final c in _cuts) {
       // ignore: avoid_print
       print('PLAN works cut ${f(c.from)}-${f(c.to)} ${worksSteps[c.step].$2} ${name.letters[c.k].text}');
+    }
+    if (_journey case final jn?) {
+      // ignore: avoid_print
+      print('PLAN works journey ${name.letters[jn.k].text}: ${[for (final (a, e, _) in jn.stretches) '${f(a)}-${f(e)}'].join(', ')}');
     }
   }
 
@@ -346,6 +358,7 @@ class GlyphWorks {
     _plan = null;
     _steps.clear();
     _cuts.clear();
+    _journey = null;
     camWindows.clear();
     pending = null;
     _plateK = -1;
@@ -384,9 +397,27 @@ class GlyphWorks {
       final makers = List.filled(3, -1e9);
       var plate = -1e9;
       for (var k = 0; k < n; k++) {
+        final s = _Steps(k, k % 3);
+        if (_journey case final jn? when jn.k == k) {
+          // Followed all the way: its own times, the others behind it.
+          for (var i = 0; i < 7; i++) {
+            s
+              ..at[i] = jn.at[i]
+              ..end[i] = jn.end[i];
+            if (i > 0) free[i - 1] = jn.at[i] + 0.3;
+          }
+          s.at[7] = jn.at[7];
+          free[6] = jn.at[7] + 0.3;
+          plate = jn.at[7];
+          s
+            ..walkIn = s.at[0] - _walkIn
+            ..homeAt = jn.at[7] + 0.3 + _walkHome;
+          makers[s.maker] = s.homeAt;
+          _steps.add(s);
+          continue;
+        }
         final a = plan.at(sc.layA[k]), d = plan.at(sc.downB[k]);
         final len = (1.8 * (d - a)).clamp(12.0, 32.0) * squeeze;
-        final s = _Steps(k, k % 3);
         final ready = math.max(first, makers[s.maker] + _walkIn + 0.3);
         var t = math.max(d - len, ready);
         final pin = pins[k];
@@ -437,12 +468,16 @@ class GlyphWorks {
     final s = plan.job.serial;
     // (A kerning close-up eases in from 0.7–1.1 s before its step and out
     // by 0.6 s after.)
+    final journey = _journey;
     final busy = [
       for (final st in plan.steps)
         if (st != null) (st.a - 1.5, st.e + 1.0),
       for (final (a, e) in busyCam) (a - 2.0, e + 2.0),
+      if (journey != null)
+        for (final (a, e, _) in journey.stretches) (a - 2.0, e + 2.0),
     ]..sort((x, y) => x.$1.compareTo(y.$1));
-    final first = plan.t0 + 12, last = plan.t0 + plan.len - 1.0;
+    // (After a journey, the next visit only half a minute after it.)
+    final first = journey == null ? plan.t0 + 12 : math.max(plan.t0 + 12, journey.at[7] + 25), last = plan.t0 + plan.len - 1.0;
     // The gaps between them.
     final gaps = <(double, double)>[];
     var from = first;
@@ -462,7 +497,8 @@ class GlyphWorks {
     // first. (Before the fonts' cmaps are in, anything past Latin is taken
     // to fall back.)
     final fallback = name.letters.any((l) => l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0);
-    final room = ((last - first) / 38).floor() + 1;
+    // (After the journey, one or two more at most.)
+    final room = math.min(((last - first) / 38).floor() + 1, journey == null ? 99 : 2);
     final want = switch (room) {
       <= 1 => const [5],
       2 => fallback ? const [2, 5] : const [3, 5],
@@ -484,7 +520,7 @@ class GlyphWorks {
       int? best;
       var cost = double.infinity;
       for (var k = 0; k < natural.length; k++) {
-        if (pins.containsKey(k)) continue;
+        if (pins.containsKey(k) || k == journey?.k) continue;
         final turn = natural[k][7] - natural[k][0], dt = at - natural[k][x == 1 ? 0 : x];
         if (natural[k][7] + math.max(0.0, dt) > deadline) continue;
         final c = dt >= 0 ? (dt <= 0.35 * turn ? dt : double.infinity) : (-dt <= 0.3 * turn ? -1.6 * dt : double.infinity);
@@ -502,7 +538,7 @@ class GlyphWorks {
     // again) in the first gap that has it, up to 20 s past [next]; else
     // the nearest step further down the line, in the first gap that has
     // one.
-    var next = plan.t0 + 12 + 6 * rnd(s, 61), earliest = first;
+    var next = first + 6 * rnd(s, 61), earliest = first;
     var done = 0;
     // Long enough to see the step through (the bytes out and decoded; the
     // lookups up to the case that has the glyph; the scan…): 6–9 s.
@@ -560,6 +596,83 @@ class GlyphWorks {
       _cuts.add(_Cut(a, e, c.step, c.k));
       camWindows.add((a, e));
     }
+    if (journey != null) {
+      for (final (a, e, _) in journey.stretches) {
+        camWindows.add((a, e));
+      }
+      camWindows.sort((x, y) => x.$1.compareTo(y.$1));
+    }
+  }
+
+  /// Seconds on each step while the camera follows a letter all the way:
+  /// the bytes out of the feeder, the decoder, the font cases (a second more
+  /// to fall back), the stick, the bender, the rasterizer, the walk to the
+  /// board.
+  static const _dwell = [3.2, 3.6, 4.2, 4.0, 4.2, 4.6, 4.0];
+
+  /// One letter's whole life in the works, followed by the camera: the
+  /// first letter (its big one goes up first), from the moment the camera's
+  /// free once the build is under way (after the delivery's shot), step by
+  /// step at [_dwell] each. A kerning close-up (or another shot) takes the
+  /// camera away: the letter waits at the end of its step, and the camera
+  /// comes back for the next. Faster, down to 60 %, if it wouldn't land
+  /// before the build ends; none if it still wouldn't.
+  void _planJourney(BuildPlan plan, List<(double, double)> busyCam, WorksName name) {
+    _journey = null;
+    if (name.letters.isEmpty) return;
+    const k = 0;
+    final l = name.letters[k];
+    // (Before the fonts' cmaps are in, anything past Latin is taken to fall
+    // back.)
+    final fallback = l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0;
+    final busy = [
+      for (final st in plan.steps)
+        if (st != null) (st.a - 1.0, st.e + 0.6),
+      for (final (a, e) in busyCam) (a - 0.3, e + 0.3),
+    ]..sort((x, y) => x.$1.compareTo(y.$1));
+    // The first moment ≥ [t] with [len] seconds free of them.
+    double clear(double t, double len) {
+      var x = t;
+      for (var moved = true; moved;) {
+        moved = false;
+        for (final (a, e) in busy) {
+          if (x < e && x + len > a) {
+            x = e;
+            moved = true;
+          }
+        }
+      }
+      return x;
+    }
+
+    final deadline = plan.t0 + plan.len - 1.0;
+    for (var pace = 1.0; pace > 0.55; pace -= 0.1) {
+      final jn = _Journey(k);
+      // The works' front first (1.8 s), then the steps; back after a cut
+      // away, 0.4 s before the next.
+      var from = clear(plan.t0 + 3.0, 1.8 + _dwell[0] * pace);
+      var t = from + 1.8;
+      var opening = true;
+      for (var i = 0; i < 7; i++) {
+        final d = (_dwell[i] + (i == 2 && fallback ? 1.0 : 0)) * pace;
+        if (clear(t, d) > t + 1e-6) {
+          // Away: this stretch ends with the step before; the letter waits.
+          jn.stretches.add((from, t + 0.5, opening));
+          opening = false;
+          from = clear(t, 0.4 + d);
+          t = from + 0.4;
+        }
+        jn.at[i] = t;
+        jn.end[i] = t + d;
+        t += d + 0.15;
+      }
+      jn.at[7] = t;
+      jn.stretches.add((from, t + 0.6, opening));
+      if (t <= deadline) {
+        _journey = jn;
+        return;
+      }
+    }
   }
 
   /// How far into a visit the step it comes for starts (the works' front,
@@ -573,6 +686,24 @@ class GlyphWorks {
     final plan = _plan, name = _name;
     if (plan == null || name == null || plan.job.phase != Phase.build || plan.job.cutAt != null) return;
     if (out.any((f) => f.priority >= 2)) return;
+    if (_journey case final jn?) {
+      for (final (a, e, opening) in jn.stretches) {
+        if (t < a || t >= e) continue;
+        final u = t - a;
+        final st = _steps[jn.k];
+        final step = st.stepAt(t).clamp(0, 6);
+        final Shot shot;
+        if (opening && u < 1.8) {
+          shot = Shot(vm.Vector3(WorksLayout.cx + 0.9, 2.5, WorksLayout.z0 - 5.4), vm.Vector3(WorksLayout.cx - 0.3, 1.25, 6.0), fov: 54, settle: 0.6, drift: 0.4);
+        } else {
+          shot = _stepShot(step, 0.2 * seg(t, jn.stretches.first.$1, jn.at[7]));
+          _caption(name, jn.k, step, t, seg(u, opening ? 1.7 : 0.2, opening ? 2.3 : 0.6) * (1 - seg(t, e - 0.5, e)));
+          caption.journey = true;
+        }
+        out.add(Focus('works journey ${a.toStringAsFixed(1)}', shot, priority: 2, cut: true));
+        return;
+      }
+    }
     for (final c in _cuts) {
       if (t < c.from || t >= c.to) continue;
       final u = t - c.from;
@@ -588,6 +719,7 @@ class GlyphWorks {
       } else {
         shot = _stepShot(step, drift);
         _caption(name, c.k, step, t, seg(u, 1.7, 2.3) * (1 - seg(t, c.to - 0.5, c.to)));
+        caption.journey = false;
       }
       out.add(Focus('works ${c.from.toStringAsFixed(1)}', shot, priority: 2, cut: true));
       return;
@@ -2085,6 +2217,16 @@ class _Steps {
     }
     return 7;
   }
+}
+
+/// A letter followed all the way down the line: when it's at each step
+/// (as [_Steps.at]/[_Steps.end]; [at] 7: on the board), and the camera's
+/// stretches with it (from, to, and whether it opens on the works' front).
+class _Journey {
+  _Journey(this.k);
+  final int k;
+  final at = Float64List(8), end = Float64List(7);
+  final stretches = <(double, double, bool)>[];
 }
 
 /// A camera visit: from, to, the step it comes for and the letter.

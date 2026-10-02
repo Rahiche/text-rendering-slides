@@ -1,2 +1,6 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Apple Silicon only: the physics backend (Rapier) has no prebuilt library
+// for Intel Macs.
+EXCLUDED_ARCHS = x86_64

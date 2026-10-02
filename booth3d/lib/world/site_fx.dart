@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show Color;
 
 import 'package:flutter_scene/scene.dart';
@@ -13,9 +14,10 @@ import 'site_geo.dart';
 final fxPalette = [for (final c in const [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line, Color(0xFFFFFFFF)]) lin(c)];
 
 /// Particle pools for the site, drawn instanced and rebuilt from scene time
-/// every frame (so they're deterministic and bounded): dust puffs (and
-/// plaster dust), glowing sparks (fireworks, pops), glowing pixels, and
-/// confetti (and paint drips). Call [begin], emit, then [end] once per
+/// every frame (so they're deterministic and bounded): dust and smoke (soft
+/// billboards: a flipbook of billowy puffs, lit from above, dissolving where
+/// they meet the ground), glowing sparks (fireworks, pops), glowing pixels,
+/// and confetti (and paint drips). Call [begin], emit, then [end] once per
 /// frame.
 class Fx3D {
   Fx3D(this.scene);
@@ -24,10 +26,15 @@ class Fx3D {
 
   static const _maxDust = 280, _maxSparks = 2600, _maxPixels = 700, _maxConfetti = 440;
 
-  late final InstancedMesh _dust, _sparks, _pixels, _confetti;
+  late final InstancedMesh _sparks, _pixels, _confetti;
+  late final BillboardGeometry _dust;
+  late final SpriteMaterial _dustMat;
+
+  /// 0 by day … 1 at night: the dust takes the light it's in.
+  double night = 0;
   final _nodes = <Node>[];
   int _nDust = 0, _nSparks = 0, _nPixels = 0, _nConfetti = 0;
-  int _hiDust = 0, _hiSparks = 0, _hiPixels = 0, _hiConfetti = 0;
+  int _hiSparks = 0, _hiPixels = 0, _hiConfetti = 0;
 
   void init() {
     InstancedMesh pool(Geometry g, Material m, int n, String name) {
@@ -41,8 +48,16 @@ class Fx3D {
       return im;
     }
 
-    final dustMat = pbr(lin(const Color(0xFFE6DCCB)), roughness: 1.0, emissive: lin(const Color(0xFFB9AE9C)), emissiveStrength: 0.6)..alphaMode = AlphaMode.blend;
-    _dust = pool(SphereGeometry(radius: 0.5, segments: 10, rings: 7), dustMat, _maxDust, 'dust');
+    _dustMat = SpriteMaterial(colorTexture: _smokeAtlas())
+      ..blendMode = SpriteBlendMode.alpha
+      ..softDepthFade = 0.35
+      ..cameraNearFade = 1.2;
+    _dust = BillboardGeometry(capacity: _maxDust)
+      ..flipbookColumns = 4
+      ..flipbookRows = 4;
+    final dustNode = Node(name: 'dust', mesh: Mesh(_dust, _dustMat))..castsShadows = false;
+    _nodes.add(dustNode);
+    scene.add(dustNode);
     _sparks = pool(SphereGeometry(radius: 0.5, segments: 6, rings: 4), UnlitMaterial(), _maxSparks, 'sparks');
     _pixels = pool(CuboidGeometry(vm.Vector3.all(1)), UnlitMaterial(), _maxPixels, 'pixels');
     final confettiMat = pbr(rgb(1, 1, 1), roughness: 0.45, metallic: 0.2);
@@ -65,9 +80,10 @@ class Fx3D {
   }
 
   void end() {
-    for (var i = _nDust; i < _hiDust; i++) {
-      _dust.setInstanceTransform(i, hidden);
-    }
+    _dust.commit(_nDust);
+    // Dust is lit by the sky: warm by day, a dim blue at night.
+    final k = smooth(0.1, 0.8, night);
+    _dustMat.tint = vm.Vector4(lerp(0.95, 0.2, k), lerp(0.9, 0.23, k), lerp(0.84, 0.32, k), 1);
     for (var i = _nSparks; i < _hiSparks; i++) {
       _sparks.setInstanceTransform(i, hidden);
     }
@@ -77,7 +93,6 @@ class Fx3D {
     for (var i = _nConfetti; i < _hiConfetti; i++) {
       _confetti.setInstanceTransform(i, hidden);
     }
-    _hiDust = _nDust;
     _hiSparks = _nSparks;
     _hiPixels = _nPixels;
     _hiConfetti = _nConfetti;
@@ -92,22 +107,79 @@ class Fx3D {
   final _c = vm.Vector4.zero();
 
   /// A puff of dust [age] (0..1 through its life) of size [r], tinted by
-  /// [tint] (rgb, and alpha for its opacity).
+  /// [tint] (rgb, and alpha for its opacity): a few soft billows that swell,
+  /// rise, drift with the air, turn slowly and thin out.
   void puff(double x, double y, double z, double age, double r, {int seed = 0, int n = 3, vm.Vector4? tint}) {
     if (age < 0 || age >= 1) return;
+    final e = eo(age);
     for (var k = 0; k < n; k++) {
       if (_nDust >= _maxDust) return;
-      final a = (seed * 7 + k * 2.39996);
-      final spread = r * (0.35 + 0.9 * eo(age));
-      final px = x + math.cos(a) * spread * 0.7, pz = z + math.sin(a) * spread * 0.7;
-      final py = y + r * 0.25 + r * 0.5 * eo(age) + 0.05 * k;
-      final s = r * (0.55 + 0.9 * eo(age)) * (0.8 + 0.25 * rnd(seed, k));
-      _dust.setInstanceTransform(_nDust, setTrs(_m, px, py, pz, s: s));
-      final alpha = (tint?.w ?? 0.55) * (1 - age) * (1 - age);
+      final a = seed * 7 + k * 2.39996;
+      final spread = r * (0.3 + 0.85 * e);
+      final px = x + math.cos(a) * spread * 0.7 + 0.25 * r * age, pz = z + math.sin(a) * spread * 0.7;
+      final py = y + r * 0.3 + r * 0.65 * e + 0.05 * k;
+      final s = 1.7 * r * (0.6 + 1.0 * e) * (0.8 + 0.3 * rnd(seed, k));
+      // In fast, out slowly.
+      final alpha = (tint?.w ?? 0.6) * seg(age, 0, 0.1) * math.pow(1 - age, 1.4).toDouble();
+      _p.setValues(px, py, pz);
       _c.setValues(tint?.x ?? 1, tint?.y ?? 1, tint?.z ?? 1, alpha);
-      _dust.setInstanceColor(_nDust, _c);
+      _dust.setInstance(_nDust, center: _p, width: s, height: s, rotation: rnd(seed, k, 3) * 6.283 + (rnd(seed, k, 4) - 0.5) * 1.4 * age, color: _c, frame: (rnd(seed, k, 5) * 16).floorToDouble());
       _nDust++;
     }
+  }
+
+  final _p = vm.Vector3.zero();
+
+  /// The dust's flipbook: 4 × 4 billows, each a lumpy disc of fractal noise,
+  /// lighter on top (lit from above), soft at the edge.
+  static Texture2D _smokeAtlas() {
+    const cells = 4, cell = 64, n = cells * cell;
+    final px = Uint8List(n * n * 4);
+    for (var c = 0; c < cells * cells; c++) {
+      final ox = (c % cells) * cell, oy = (c ~/ cells) * cell;
+      for (var y = 0; y < cell; y++) {
+        for (var x = 0; x < cell; x++) {
+          final u = (x + 0.5) / cell * 2 - 1, v = (y + 0.5) / cell * 2 - 1;
+          final rr = math.sqrt(u * u + v * v), ang = math.atan2(v, u);
+          final edge = 0.58 + 0.3 * _fbm(math.cos(ang) * 1.4 + c * 3.1, math.sin(ang) * 1.4 + c * 1.7, 2);
+          var d = 1 - smooth(edge * 0.3, edge, rr);
+          d *= 0.5 + 0.5 * _fbm(u * 2.4 + c * 5.3, v * 2.4 - c * 2.9, 4);
+          final shade = 0.72 + 0.28 * (0.5 - 0.5 * v) + 0.1 * (_fbm(u * 3 + c, v * 3 - c, 2) - 0.5);
+          final i = ((oy + y) * n + ox + x) * 4;
+          final g = (255 * shade.clamp(0.0, 1.0)).round();
+          px[i] = g;
+          px[i + 1] = g;
+          px[i + 2] = g;
+          px[i + 3] = (255 * d.clamp(0.0, 1.0)).round();
+        }
+      }
+    }
+    return Texture2D.fromPixels(px, n, n);
+  }
+
+  static double _hash(int x, int y) {
+    var h = (x * 374761393 + y * 668265263) & 0x7fffffff;
+    h = ((h ^ (h >> 13)) * 1274126177) & 0x7fffffff;
+    return ((h ^ (h >> 16)) & 0xffff) / 65535.0;
+  }
+
+  static double _noise(double x, double y) {
+    final xi = x.floor(), yi = y.floor();
+    final fx = x - xi, fy = y - yi;
+    final sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    final a = _hash(xi, yi), b = _hash(xi + 1, yi), c = _hash(xi, yi + 1), d = _hash(xi + 1, yi + 1);
+    return lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
+  }
+
+  static double _fbm(double x, double y, int octaves) {
+    var sum = 0.0, amp = 0.5, f = 1.0, norm = 0.0;
+    for (var o = 0; o < octaves; o++) {
+      sum += amp * _noise(x * f, y * f);
+      norm += amp;
+      amp *= 0.5;
+      f *= 2.03;
+    }
+    return sum / norm;
   }
 
   /// A glowing spark of [size] in linear HDR [color] times [glow].

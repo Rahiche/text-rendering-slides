@@ -12,6 +12,7 @@ import 'city.dart';
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'life.dart';
+import 'physics.dart';
 import 'script_alley.dart' show ScriptAlley;
 import 'site.dart';
 import 'sky.dart';
@@ -42,6 +43,8 @@ class World3D {
       await _warmUpFonts();
     }
     stage.value = 'city';
+    await Physics.ensureReady();
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(Physics.selfTest());
     sky.init();
     site.init();
     typing.init();
@@ -83,7 +86,9 @@ class World3D {
     }
     sky.update(m.t, dt);
     city.update(sky, m.t);
-    site.fx.begin();
+    site.fx
+      ..night = sky.night
+      ..begin();
     site.camera.setFrom(director.camera.position);
     site.update(m, dt, night: sky.night);
     city.gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t));

@@ -155,6 +155,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.23.0"
+  flutter_scene_rapier:
+    dependency: "direct main"
+    description:
+      name: flutter_scene_rapier
+      sha256: c5279d5780bd39cc08b6be94e10ce02c5b64d38ea192c14ee4970af01f6e3dfd
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter

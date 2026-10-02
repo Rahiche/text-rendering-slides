@@ -20,6 +20,7 @@ import 'delivery.dart';
 import 'glyph_works.dart';
 import 'kit.dart';
 import 'photo_op.dart';
+import 'physics.dart';
 import 'prop_pool.dart';
 import 'scene_caption.dart';
 import 'script_alley.dart';
@@ -32,6 +33,7 @@ import 'site_kern.dart';
 import 'site_lights.dart';
 import 'site_plan.dart';
 import 'site_props.dart';
+import 'site_wreck.dart';
 import 'verdict.dart';
 
 /// The name being built in the plaza.
@@ -118,8 +120,11 @@ class Site3D {
   int _lettersMade = 0;
   bool _lettersReady = false;
   List<_Fall>? _falls;
-  List<int>? _landOrder;
   _Swing? _swing;
+
+  /// The wreck in real physics (see [Wreck]).
+  final physics = Physics();
+  late final wreck = Wreck(physics, _placeBrick);
   int _finalized = 0;
 
   /// Per letter: how far right of its place its settled bricks were last
@@ -326,8 +331,8 @@ class Site3D {
     _lettersMade = 0;
     _lettersReady = false;
     _falls = null;
-    _landOrder = null;
     _swing = null;
+    wreck.end();
     _swaps = null;
     _finalized = 0;
     _slid = [];
@@ -997,9 +1002,11 @@ class Site3D {
     final sw = _swing!;
     if (_falls == null) {
       _falls = _planFalls(j, sw);
-      final order = List.generate(_falls!.length, (i) => i)..removeWhere((i) => !_falls![i].ever);
-      order.sort((a, c) => _falls![a].landAt(b).compareTo(_falls![c].landAt(b)));
-      _landOrder = order;
+      final fs = _falls!;
+      wreck.start([
+        for (var i = 0; i < fs.length; i++)
+          if (!fs[i].ever) null else WreckBrick(fs[i].p0, plan.letter[i], (plan.cellX[i] / b).round(), (plan.cellY[i] / b).round(), fs[i].release, fs[i].v0, fs[i].axis * fs[i].spin, hit: fs[i].hit),
+      ], b, sw.ballAt(u), u);
       impactAt = j.phaseStart + pre + sw.firstHit;
       _swaps = [for (final l in plan.letters.letters) sw.passTime((l.col1 + 1 - plan.r.cols / 2) * b) - 0.03];
     }
@@ -1023,17 +1030,20 @@ class Site3D {
     final ball = sw.ballAt(u);
     ballAt.setFrom(ball);
     crane.swingBall(sw.pivotAt(u), ball, t, dt, night: night);
-    // Bricks: under their letter until it's hit, then flying.
+    // Bricks: in the wall (under their letter until it's hit) until the
+    // wreck lets them go, then the physics' (the wreck draws them).
     final falls = _falls!;
     for (var i = 0; i < falls.length; i++) {
       final f = falls[i];
-      final k = plan.letter[i];
-      if (!f.ever || (u < swaps[k] && _plastered(plan, fp, i, done))) {
+      if (!f.ever) {
         _bricks.setInstanceTransform(i, hidden);
         continue;
       }
-      _bricks.setInstanceTransform(i, f.at(u, b, _m, _q));
+      if (wreck.released(i)) continue;
+      final k = plan.letter[i];
+      _bricks.setInstanceTransform(i, u < swaps[k] && _plastered(plan, fp, i, done) ? hidden : _brickM(f.p0.x, f.p0.y, f.p0.z, 1));
     }
+    wreck.update(t, u, dt, sw.ballAt, solidFrom: sw.passTime(-wallWidth / 2 - 1.2) + 0.4);
     _wallHidden = false;
     // The dust each letter turns to bricks under.
     for (var k = 0; k < swaps.length && done >= 0; k++) {
@@ -1051,18 +1061,23 @@ class Site3D {
       final x = sw.ballAt(u).x;
       if (x.abs() < wallWidth / 2 + 0.5) fx.puff(x, wallHeight * 0.4, -0.3, (u - sw.firstHit) % 0.7 / 0.7, 1.2, seed: (u * 3).floor(), n: 4);
     }
-    final order = _landOrder!;
-    for (var n = 0; n < order.length; n += 5) {
-      final i = order[n];
-      final landT = falls[i].release + falls[i].landAt(b);
-      final age = (u - landT) / 0.9;
-      if (age < 0) break;
-      if (age >= 1) continue;
-      final p = falls[i].landPoint(b);
-      fx.puff(p.x, 0.05, p.z, age, 0.55, seed: i, n: 2);
-    }
+    _impactDust(t);
     // Confetti from the celebration still lies about.
     if (j.cutAt == null) fx.confettiShow(u + pre + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+  }
+
+  /// Brick [i] where the physics has it.
+  void _placeBrick(int i, vm.Vector3 t, vm.Quaternion q) {
+    final k = b * 0.96;
+    _bricks.setInstanceTransform(i, setTqs(_m, t.x, t.y, t.z, q, k, k, k));
+  }
+
+  /// Dust where bricks first came down on the ground.
+  void _impactDust(double t) {
+    wreck.impacts.removeWhere((e) => t - e.$1 >= 0.9 || t < e.$1);
+    for (final (at, x, z) in wreck.impacts) {
+      fx.puff(x, 0.05, z, (t - at) / 0.9, 0.5, seed: (x * 31 + z * 17).round(), n: 2);
+    }
   }
 
   /// When (seconds into the wrecking) the ball gets to each of the plan's
@@ -1188,7 +1203,7 @@ class Site3D {
       }
       // It comes to rest on the plaza: not out in the street, nor among
       // the works and its smoking corner at the back left.
-      final fall = _Fall(p, v, release, _axesFor(i), 3 + 6 * rnd(i, 11));
+      final fall = _Fall(p, v, release, _axesFor(i), 3 + 6 * rnd(i, 11), hit: hit);
       final fly = fall.landAt(b) + 0.25;
       final rx = p.x + v.x * fly, rz = p.z + v.z * fly;
       final lx = -14.2 + 2.6 * rnd(i, 12), hx = 14.5 - 2.6 * rnd(i, 13);
@@ -1259,28 +1274,31 @@ class Site3D {
       ..visible = true
       ..place((m) => setTrs(m, truckAt.x, truckAt.y, truckAt.z, yaw: yaw));
     _truckBeacon.emissiveStrength = (t * 2.2) % 1.0 < 0.5 ? 6 : 0.4;
-    if (falls == null) return;
+    if (falls == null || !wreck.active) return;
     // The tub sits behind the cab: −0.85 m along the truck's length.
     final hopper = truckAt + vm.Vector3(-0.85 * math.cos(yaw), 2.2, 0.85 * math.sin(yaw));
+    wreck.releaseAll();
     for (var i = 0; i < falls.length; i++) {
-      final fall = falls[i];
-      if (!fall.ever) {
+      if (!falls[i].ever) {
         _bricks.setInstanceTransform(i, hidden);
         continue;
       }
-      final rest = fall.restPoint(b);
+      // Lying where the physics left it until it's picked up; then out of
+      // the physics, over into the tub.
       final go = len * (0.22 + 0.55 * rnd(i, 13));
       final k = seg(u, go, go + 0.85);
-      if (k <= 0) {
-        _bricks.setInstanceTransform(i, fall.at(99, b, _m, _q));
-      } else if (k >= 1) {
+      if (k <= 0) continue;
+      wreck.pickUp(i);
+      if (k >= 1) {
         _bricks.setInstanceTransform(i, hidden);
-      } else {
-        final p = rest + (hopper - rest) * eio(k) + vm.Vector3(0, 2.4 * math.sin(k * math.pi), 0);
-        _bricks.setInstanceTransform(i, _brickM(p.x, p.y, p.z, 1 - 0.35 * k, k * 6, i));
-        if (k < 0.3 && i % 4 == 0) fx.puff(rest.x, 0.05, rest.z, k / 0.3, 0.35, seed: i, n: 1);
+        continue;
       }
+      final rest = wreck.positionOf(i);
+      final p = rest + (hopper - rest) * eio(k) + vm.Vector3(0, 2.4 * math.sin(k * math.pi), 0);
+      _bricks.setInstanceTransform(i, _brickM(p.x, p.y, p.z, 1 - 0.35 * k, k * 6, i));
+      if (k < 0.3 && i % 4 == 0) fx.puff(rest.x, 0.05, rest.z, k / 0.3, 0.35, seed: i, n: 1);
     }
+    wreck.settle(t, dt);
     _wallHidden = false;
     if (j.cutAt == null) {
       fx.confettiShow(u + _pace.phaseLen(Phase.celebrate) + _pace.phaseLen(Phase.demolish), wallWidth, j.serial, fade: c01(f / 0.3));
@@ -1402,55 +1420,30 @@ class _Swing {
   }
 }
 
-/// One brick's flight after the ball: ballistic, a bounce, then rest.
+/// How one brick comes out of the wall when the ball gets to it: when it's
+/// let go, its velocity and spin then (the wreck's physics takes it from
+/// there), and whether it was in the ball's way.
 class _Fall {
-  _Fall(this.p0, this.v0, this.release, this.axis, this.spin) : ever = true;
+  _Fall(this.p0, this.v0, this.release, this.axis, this.spin, {this.hit = false}) : ever = true;
   _Fall.never()
     : p0 = vm.Vector3.zero(),
       v0 = vm.Vector3.zero(),
       release = 1e9,
       axis = vm.Vector3(0, 1, 0),
       spin = 0,
-      ever = false;
+      ever = false,
+      hit = false;
 
   final vm.Vector3 p0, v0, axis;
   final double release, spin;
-  final bool ever;
+  final bool ever, hit;
   static const g = SiteLayout.g;
 
-  /// Time from release to first touching the ground (y = b/2).
+  /// Time from release to first touching the ground (y = b/2), flying free
+  /// (to aim where the hit sends it).
   double landAt(double b) {
     final y0 = p0.y - b / 2;
     final vy = v0.y;
     return (vy + math.sqrt(vy * vy + 2 * g * math.max(0, y0))) / g;
-  }
-
-  vm.Vector3 landPoint(double b) {
-    final tl = landAt(b);
-    return vm.Vector3(p0.x + v0.x * tl, b / 2, p0.z + v0.z * tl);
-  }
-
-  vm.Vector3 restPoint(double b) {
-    final tl = landAt(b);
-    return vm.Vector3(p0.x + v0.x * tl, b / 2, p0.z + v0.z * tl) + vm.Vector3(v0.x, 0, v0.z) * 0.25;
-  }
-
-  vm.Matrix4 at(double u, double b, vm.Matrix4 out, vm.Quaternion q) {
-    if (!ever) return hidden;
-    final s = b * 0.96;
-    final tau = u - release;
-    if (tau <= 0) return setTqs(out, p0.x, p0.y, p0.z, q..setValues(0, 0, 0, 1), s, s, s);
-    final tl = landAt(b);
-    if (tau < tl) {
-      q.setAxisAngle(axis, spin * tau);
-      return setTqs(out, p0.x + v0.x * tau, p0.y + v0.y * tau - 0.5 * g * tau * tau, p0.z + v0.z * tau, q, s, s, s);
-    }
-    // After landing: one small hop and a slide to rest.
-    final after = tau - tl;
-    final slide = 0.25 * (1 - math.exp(-after * 4));
-    final hop = math.max(0.0, 0.6 * math.sin(math.min(after, 0.35) / 0.35 * math.pi)) * (v0.y.abs() + 1) * 0.15;
-    final ang = spin * tl + spin * 0.3 * (1 - math.exp(-after * 3));
-    q.setAxisAngle(axis, ang);
-    return setTqs(out, p0.x + v0.x * tl + v0.x * slide, b / 2 + hop, p0.z + v0.z * tl + v0.z * slide, q, s, s, s);
   }
 }

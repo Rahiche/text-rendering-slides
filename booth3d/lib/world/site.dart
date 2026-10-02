@@ -1369,13 +1369,14 @@ class Site3D {
         for (var i = 0; i < falls.length; i++)
           if (falls[i].ever) i,
       ]..sort((a, c) => wreck.positionOf(a).x.compareTo(wreck.positionOf(c).x));
-      final load = near.take(40).toList();
+      // (Without physics there's no loader: the rubble just goes at the cut.)
+      final load = Physics.available ? near.take(40).toList() : const <int>[];
       for (final i in load) {
         wreck.pickUp(i);
         _gone[i] = true;
       }
       physics.clock = u;
-      loader.start(physics, load, b, park, bay, _placeBrick, (i) => _bricks.setInstanceTransform(i, hidden));
+      if (Physics.available) loader.start(physics, load, b, park, bay, _placeBrick, (i) => _bricks.setInstanceTransform(i, hidden));
     }
     // The rest of the rubble goes off camera (and whatever's left at the
     // cut to the swept plaza).

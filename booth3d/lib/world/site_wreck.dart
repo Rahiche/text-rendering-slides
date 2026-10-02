@@ -75,10 +75,39 @@ class Wreck {
 
   static const _mortar = PhysicsMaterial(friction: 0.78, restitution: 0.1, density: 1.9);
 
-  bool get active => _pieces.isNotEmpty;
+  bool get active => _pieces.isNotEmpty || _plain.isNotEmpty;
 
   /// Whether brick [i] has been let go (it's the physics' now).
-  bool released(int i) => i < _pieceOf.length && _pieceOf[i] >= 0 && _pieces[_pieceOf[i]].released;
+  bool released(int i) {
+    if (_plain.isNotEmpty) return i < _plain.length && _plain[i] != null && _u >= _plain[i]!.release;
+    return i < _pieceOf.length && _pieceOf[i] >= 0 && _pieces[_pieceOf[i]].released;
+  }
+
+  // Without physics (its backend didn't load): each brick flies and falls
+  // on its own, and lies where it lands.
+  List<WreckBrick?> _plain = const [];
+  double _u = 0;
+  final _q = vm.Quaternion.identity();
+
+  void _plainUpdate(double u) {
+    _u = u;
+    for (var i = 0; i < _plain.length; i++) {
+      final br = _plain[i];
+      if (br == null || u < br.release || _gone.contains(i)) continue;
+      final tau = u - br.release, v = br.velocity;
+      final y0 = br.at.y - _b / 2;
+      final land = (v.y + math.sqrt(v.y * v.y + 2 * 9.81 * math.max(0, y0))) / 9.81;
+      final f = math.min(tau, land), slide = tau > land ? 0.3 * (1 - math.exp(-(tau - land) * 4)) : 0.0;
+      final p = _pos[i]
+        ..setValues(br.at.x + v.x * (f + slide), math.max(_b / 2, br.at.y + v.y * f - 4.905 * f * f), br.at.z + v.z * (f + slide));
+      final spin = br.spin.length;
+      if (spin > 1e-6) _q.setAxisAngle(br.spin / spin, spin * (f + slide * 0.5));
+      _rot[i].setFrom(_q);
+      draw(i, p, _q);
+    }
+  }
+
+  final _gone = <int>{};
 
   /// Where brick [i] is (its place in the wall, or where the physics has
   /// it).
@@ -90,6 +119,12 @@ class Wreck {
   void start(List<WreckBrick?> bricks, double b, vm.Vector3 ballAt, double u) {
     end();
     _b = b;
+    if (!Physics.available) {
+      _plain = bricks;
+      _pos = [for (final br in bricks) br?.at.clone() ?? vm.Vector3.zero()];
+      _rot = [for (var i = 0; i < bricks.length; i++) vm.Quaternion.identity()];
+      return;
+    }
     final w = physics.world;
     physics.clock = u;
     final n = bricks.length;
@@ -197,6 +232,7 @@ class Wreck {
   /// physics, breaks up chunks that landed hard.
   void update(double t, double u, double dt, vm.Vector3 Function(double u) ballAt, {required double solidFrom}) {
     if (!active) return;
+    if (_plain.isNotEmpty) return _plainUpdate(u);
     final w = physics.world;
     _makeSome(u, 80);
     for (final p in _pieces) {
@@ -223,7 +259,7 @@ class Wreck {
   /// Steps the physics without the ball (the cleanup), [beforeStep] moving
   /// anything kinematic.
   void settle(double t, double dt, {void Function(double t)? beforeStep}) {
-    if (!active) return;
+    if (!active || _plain.isNotEmpty) return;
     _now = t;
     physics.advance(dt, beforeStep: beforeStep);
     _breakUp();
@@ -231,6 +267,7 @@ class Wreck {
 
   /// Lets go of everything still standing.
   void releaseAll() {
+    if (_plain.isNotEmpty) return;
     _makeSome(double.infinity, 0);
     final w = physics.world;
     for (final p in _pieces) {
@@ -245,6 +282,10 @@ class Wreck {
   /// Takes brick [i] out of the physics (picked up), from where it lies;
   /// its chunk, if it was in one, comes apart.
   void pickUp(int i) {
+    if (_plain.isNotEmpty) {
+      _gone.add(i);
+      return;
+    }
     final k = i < _pieceOf.length ? _pieceOf[i] : -1;
     if (k < 0) return;
     final p = _pieces[k];
@@ -259,6 +300,8 @@ class Wreck {
 
   void end() {
     physics.reset();
+    _plain = const [];
+    _gone.clear();
     _pieces.clear();
     _unmade.clear();
     _pieceOf = const [];

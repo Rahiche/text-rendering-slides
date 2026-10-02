@@ -21,7 +21,8 @@ rm -rf build/pages
 mkdir -p build/pages
 cp tool/pages/index.html build/pages/index.html
 # Name City, the 3D booth: its own app (booth3d/, flutter_scene, WebGL2).
-(cd booth3d && flutter build web --wasm --release --base-href "${BASE}city/" | grep -E "✓|rror" || true)
+# (Its physics, Rapier, is a WebAssembly module served beside the page.)
+(cd booth3d && flutter build web --wasm --release --base-href "${BASE}city/" --dart-define=FLUTTER_SCENE_RAPIER_WASM_URL=rapier.wasm | grep -E "✓|rror" || true)
 rm -rf build/pages/city
 cp -R booth3d/build/web build/pages/city
 # The conference-stall loop (main.dart routes /booth/ and /workshop/ to it).

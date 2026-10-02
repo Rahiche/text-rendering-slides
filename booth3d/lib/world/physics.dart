@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_scene/physics.dart';
 import 'package:flutter_scene_rapier/flutter_scene_rapier.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -20,9 +21,20 @@ class Physics {
   /// than that is dropped: fast-forward lets the simulation lag behind).
   static const step = 1 / 60.0, maxSteps = 8;
 
-  /// Loads the backend (the web fetches its WebAssembly module); await once
-  /// at start-up.
-  static Future<void> ensureReady() => RapierWorld.ensureInitialized();
+  /// Whether the backend loaded (the web fetches its WebAssembly module,
+  /// served beside the page): without it the wreck falls without physics.
+  static bool available = false;
+
+  /// Loads the backend; await once at start-up. Never throws: if it can't
+  /// load, [available] stays false.
+  static Future<void> ensureReady() async {
+    try {
+      await RapierWorld.ensureInitialized();
+      available = true;
+    } catch (e) {
+      debugPrint('physics unavailable: $e');
+    }
+  }
 
   /// The world, made on first use with the ground in it.
   RapierWorld get world {
@@ -69,6 +81,7 @@ class Physics {
   /// A box dropped from 2 m for a second: where it ends up (for a capture
   /// log, to see the backend works). Leaves no world behind.
   static String selfTest() {
+    if (!available) return 'PHYSICS unavailable';
     final p = Physics();
     final box = StillPose(vm.Vector3(0, 2, 0));
     final h = p.world.createBody(target: box, type: BodyType.dynamic_);

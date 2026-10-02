@@ -90,7 +90,7 @@ class Walk {
         final k = l > 0 ? c01(d / l) : 1.0;
         f.pos.setValues(lerp(a.x, b.x, k), 0, lerp(a.z, b.z, k));
         if (t < end && l > 0.01) {
-          OffDuty.walk(f, t, total / math.max(end - start, 1e-3), seed);
+          OffDuty.walk(f, t, total / math.max(end - start, 1e-3), seed, dist: _along(t), total: total);
           f.yaw = math.atan2(-(b.x - a.x), -(b.z - a.z));
         } else {
           OffDuty.stand(f, t, seed);

@@ -15,6 +15,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'crew.dart';
 import 'crew_breaks.dart' show OffDuty;
 import 'kit.dart';
+import 'motion.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
@@ -1509,7 +1510,7 @@ class GlyphWorks {
     final mv = math.min(0.6, 0.2 * d);
     if (tt < a + mv && (x - prev).abs() > 0.05) {
       p.pos.setValues(lerp(prev, x, seg(tt, a, a + mv)), 0, WorksLayout.workZ);
-      OffDuty.walk(p, t, (x - prev).abs() / mv, seed);
+      OffDuty.walk(p, t, (x - prev).abs() / mv, seed, dist: (x - prev).abs() * seg(tt, a, a + mv), total: (x - prev).abs());
       p.yaw = x > prev ? -math.pi / 2 : math.pi / 2;
       return;
     }
@@ -1617,7 +1618,7 @@ class GlyphWorks {
         OffDuty.listen(p, t, i * 5);
       }
     } else {
-      p.yaw = 0.15 * math.sin(t * 0.4 + i);
+      p.yaw = Idle.facing(t, Manner.of(40 + i * 7), 0.15);
       p.lean = 0.06;
       p.armRoll[0] = p.armRoll[1] = 0.85;
       p.armPitch[0] = p.armPitch[1] = -0.3;

@@ -8,8 +8,8 @@ import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'city_plan.dart';
-import 'crew.dart' show FigurePose;
 import 'figure.dart';
+import 'motion.dart';
 import 'kit.dart';
 import 'script_alley.dart' show AlleyLayout, alleyRules;
 import 'site_geo.dart' show NodePlace;
@@ -493,7 +493,15 @@ class _Person {
   final double speed;
   final double side; // how far left of the route's line (keeping left)
   final double scale;
-  double x = 0, z = 0, heading = 0, stride = 0;
+  double x = 0, z = 0, heading = 0;
+
+  /// The walk's phase (radians, π a step: see [Gait]).
+  double stride = 0;
+
+  /// How fast they're going now (m/s, along the way: speeding up and
+  /// slowing down take a moment), and their way of moving.
+  double vel = 0;
+  late final Manner manner;
   double pause = 0; // seconds left watching
   bool waiting = false;
   int lap = 0;
@@ -758,6 +766,7 @@ class _People {
   void _add(_Person p, int seed) {
     p
       ..index = _all.length
+      ..manner = Manner.of(seed * 7 + 3)
       ..slot = _figures.add(_lookOf(p, seed));
     _all.add(p);
   }
@@ -866,8 +875,9 @@ class _People {
 
   void _walk(_Person p, double t, double dt, BoothModel m, (double, double)? gate) {
     final r = p.route!;
-    if (p.pause > 0) {
-      p.v = 0;
+    if (p.pause > 0 && p.vel < 0.05) {
+      // Stopped to watch for a while.
+      p.vel = p.v = 0;
       p.pause -= dt;
       p.heading = _turn(p.heading, r.alley ? headingTo(p.x < 0 ? -1 : 1, 0) : headingTo(-p.x * 0.6, 2 - p.z), dt);
       return;
@@ -876,7 +886,15 @@ class _People {
     // Round whoever's in the way: a step aside, or (no room) slowing to
     // keep a step behind.
     final cap = _avoidOn ? _avoid(p, dt) : 1.0;
-    var next = p.d + p.dir * p.speed * (onCrossing ? 1.35 : 1) * cap * dt;
+    // Their pace (quicker over a crossing), slowed by whoever's ahead;
+    // slowing to a stop to watch, or at the kerb on red (or at the gate
+    // while the truck goes through); speeding up and slowing down taking a
+    // moment (stopping short for someone in the way, less).
+    var want = p.pause > 0 ? 0.0 : p.speed * (onCrossing ? 1.35 : 1) * cap;
+    final stop = _stopAhead(p, r, t, gate);
+    if (stop < 4) want = math.min(want, math.sqrt(2 * 2.0 * math.max(0.0, stop - 0.03)));
+    p.vel = want > p.vel ? math.min(want, p.vel + 1.3 * dt) : math.max(want, p.vel - (cap < 0.7 ? 6.0 : 2.4) * dt);
+    var next = p.d + p.dir * p.vel * dt;
     // The crossings: wait at the kerb for the walk signal.
     p.waiting = false;
     for (final MapEntry(key: seg, value: avenue) in r.crossing.entries) {
@@ -902,6 +920,7 @@ class _People {
         p.waiting = true;
       }
     }
+    if (p.waiting) p.vel = math.min(p.vel, (next - p.d).abs() / math.max(dt, 1e-6));
     // Watch points: now and then, stop and watch the build for a while.
     for (var k = 0; k < r.watch.length; k++) {
       final w = r.watch[k];
@@ -926,7 +945,7 @@ class _People {
       p.d += r.length;
       p.lap++;
     }
-    p.stride += moved;
+    p.stride += moved / Gait.stepLength(math.max(p.vel, 0.3), p.scale, p.manner) * math.pi;
     final i = r.segmentAt(p.d), n = r.pts.length;
     final a = r.pts[i], b = r.pts[(i + 1) % n];
     final f = (p.d - r.cum[i]) / math.max(r.cum[i + 1] - r.cum[i], 1e-6);
@@ -955,6 +974,22 @@ class _People {
     p.fx = dx / l * p.dir;
     p.fz = dz / l * p.dir;
     if (!p.waiting) p.heading = _turn(p.heading, headingTo(dx * p.dir, dz * p.dir), dt);
+  }
+
+  /// How far along their way [p] has to stop: at a crossing on red, at the
+  /// site gate while the truck goes through (infinity: nowhere near).
+  double _stopAhead(_Person p, _Route r, double t, (double, double)? gate) {
+    var best = double.infinity;
+    for (final MapEntry(key: seg, value: avenue) in r.crossing.entries) {
+      if (avenue ? TrafficLights.walkAve(t) : TrafficLights.walkSide(t)) continue;
+      final ahead = ((p.dir > 0 ? r.cum[seg] : r.cum[seg + 1]) - p.d) * p.dir;
+      if (ahead > 0 && ahead < best) best = ahead;
+    }
+    if (gate != null && identical(r, _front) && p.d <= r.cum[1]) {
+      final ahead = p.dir > 0 ? gate.$1 - r.pts[0].$1 - p.d : p.d - (gate.$2 - r.pts[0].$1);
+      if (ahead > 0 && ahead < best) best = ahead;
+    }
+    return best;
   }
 
   /// Walking round the people ahead of [p]: anyone within a step or two in
@@ -1083,7 +1118,7 @@ class _People {
     final moved = math.sqrt((nx - p.x) * (nx - p.x) + (nz - p.z) * (nz - p.z));
     p.moving = moved > 1e-4;
     if (p.moving) {
-      p.stride += moved;
+      p.stride += moved / Gait.stepLength(1.5, p.scale, p.manner) * math.pi;
       p.heading = _turn(p.heading, headingTo(nx - p.x, nz - p.z), dt);
     } else if (p.job == 1) {
       p.heading = _turn(p.heading, p.guiding ? headingTo(0.8, -0.6) : headingTo(0.2, -1), dt); // faces the street
@@ -1102,6 +1137,7 @@ class _People {
   }
 
   final _fp = FigurePose();
+  final _at = vm.Vector3.zero();
 
   void pose(double t, vm.Vector3 camera, BoothModel m, double night, StreetWork? work) {
     _baton.visible = false;
@@ -1115,42 +1151,61 @@ class _People {
         _figures.hide(p.slot);
         continue;
       }
-      final walking = p.role == _Role.walker ? (p.pause <= 0 && !p.waiting) : p.moving;
+      final speed = p.role == _Role.walker ? p.vel : (p.moving ? 1.5 : 0.0);
+      final amount = smooth(0.0, 0.45, speed);
       final watcher = p.role == _Role.spectator || p.role == _Role.keeper || (p.role == _Role.walker && p.pause > 0);
-      final cheer = cheering && watcher;
+      // A third of those watching the celebration hold their phones up to
+      // take it, the rest cheer.
+      final snap = cheering && watcher && rnd(p.index, 77) < 0.33;
+      final cheer = cheering && watcher && !snap;
       f.rest();
       f.pos.setValues(p.x, 0, p.z);
       f.yaw = p.heading - math.pi / 2;
-      if (walking) {
-        // One step per 0.62 m.
-        final ph = p.stride / 0.62 * math.pi;
-        final sw = math.sin(ph) * 0.55;
-        f
-          ..stride = ph
-          ..lean = 0.04;
-        f.legPitch[0] = sw;
-        f.legPitch[1] = -sw;
-        f.armPitch[0] = -sw * (p.bag ? 0.3 : 0.8);
-        f.armPitch[1] = sw * 0.8;
-        f.armRoll[0] = f.armRoll[1] = 0.1;
-      } else {
-        // Standing about: the weight shifting, a look round.
-        f
-          ..headYaw = 0.35 * math.sin(t * 0.31 + p.phase * 1.7)
-          ..twist = 0.05 * math.sin(t * 0.23 + p.phase)
-          ..bob = -0.012 * (1 + math.sin(t * 0.4 + p.phase));
-        f.legPitch[0] = 0.06 * math.sin(t * 0.4 + p.phase);
-        f.armPitch[0] = f.armPitch[1] = 0.06;
+      if (amount < 1) {
+        // Standing about, never quite still: watching the build (or the
+        // stall, the lights across the road, the alley), now and then a
+        // look away, a hand to the head, a look at the phone.
+        var fidget = 0.5;
+        final r = p.route;
+        if (p.role == _Role.walker && p.waiting) {
+          _at.setValues(p.x + p.fx * 8, 1.6, p.z + p.fz * 8);
+          fidget = 0.9;
+        } else if (p.role == _Role.walker && r != null && r.alley) {
+          _at.setValues(p.x < 0 ? -AlleyLayout.rowX : AlleyLayout.rowX, 1.3, p.z);
+        } else if (p.role == _Role.keeper) {
+          _at.setValues(0, 1.5, p.z);
+          fidget = 0.25;
+        } else if (p.role == _Role.worker) {
+          _at.setValues(0, 2.2, 0);
+          fidget = 0.2;
+        } else {
+          _at.setValues(0, 2.6, 0);
+        }
+        Idle.stand(f, t, p.manner, size: p.scale, at: _at, fidget: cheer || snap ? 0 : fidget, shift: cheer ? 0 : 1);
+      }
+      if (amount > 0) {
+        Gait.walk(f, p.stride, math.max(speed, 0.3), p.manner, size: p.scale, amount: amount);
+        if (p.bag) {
+          // The bag's arm hangs, swinging a little.
+          f.armPitch[0] *= 0.35;
+          f.elbow[0] = lerp(f.elbow[0], 0.12, amount);
+        }
       }
       if (cheer) {
         final jump = math.max(0.0, math.sin(t * 7 + p.phase * 3)) * 0.28;
         f.bob = jump;
         f.armPitch[0] = f.armPitch[1] = 2.75 + 0.25 * math.sin(t * 9 + p.phase);
         f.armRoll[0] = f.armRoll[1] = 0.3;
+      } else if (snap) {
+        // The phone held up in both hands, the build on its screen.
+        f.armPitch[0] = f.armPitch[1] = 1.45 + 0.04 * math.sin(t * 1.7 + p.phase);
+        f.armRoll[0] = f.armRoll[1] = -0.32;
+        f.headPitch -= 0.1;
       }
       if (p.parasol && !cheer) {
         f.armPitch[1] = 0.95;
         f.armRoll[1] = -0.22;
+        f.elbow[1] = double.nan;
       }
       if (p.role == _Role.keeper && !cheer) {
         // Now and then, a hand out over the counter: look at this.

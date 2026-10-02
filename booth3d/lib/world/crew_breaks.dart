@@ -6,6 +6,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'crew.dart';
 import 'figure.dart';
+import 'motion.dart';
 import 'kit.dart';
 import 'shot.dart';
 import 'site_fx.dart';
@@ -505,57 +506,7 @@ class CrewBreaks {
     }
     // Ease out of the work pose at the start and back into it at the end.
     final k = b.who == driver ? 1.0 : eio(seg(t, b.from, b.from + 0.7)) * (1 - eio(seg(t, b.to - 0.6, b.to)));
-    _blend(p, me, k);
-  }
-
-  /// [p] = lerp([p], [q], k), joint by joint.
-  static void _blend(FigurePose p, FigurePose q, double k) {
-    if (k >= 1) {
-      p.pos.setFrom(q.pos);
-      p
-        ..yaw = q.yaw
-        ..lean = q.lean
-        ..bob = q.bob
-        ..hatUp = q.hatUp
-        ..hatSpin = q.hatSpin;
-      for (var s = 0; s < 2; s++) {
-        p.armPitch[s] = q.armPitch[s];
-        p.armRoll[s] = q.armRoll[s];
-        p.legPitch[s] = q.legPitch[s];
-        p.elbow[s] = q.elbow[s];
-        p.knee[s] = q.knee[s];
-      }
-      p
-        ..headYaw = q.headYaw
-        ..headPitch = q.headPitch
-        ..twist = q.twist
-        ..stoop = q.stoop
-        ..stride = q.stride;
-      return;
-    }
-    p.pos.setValues(lerp(p.pos.x, q.pos.x, k), lerp(p.pos.y, q.pos.y, k), lerp(p.pos.z, q.pos.z, k));
-    var dy = (q.yaw - p.yaw) % (2 * math.pi);
-    if (dy > math.pi) dy -= 2 * math.pi;
-    p
-      ..yaw += dy * k
-      ..lean = lerp(p.lean, q.lean, k)
-      ..bob = lerp(p.bob, q.bob, k);
-    for (var s = 0; s < 2; s++) {
-      p.armPitch[s] = lerp(p.armPitch[s], q.armPitch[s], k);
-      p.armRoll[s] = lerp(p.armRoll[s], q.armRoll[s], k);
-      p.legPitch[s] = lerp(p.legPitch[s], q.legPitch[s], k);
-      // (Set joints: the nearer pose's.)
-      if (k >= 0.5) {
-        p.elbow[s] = q.elbow[s];
-        p.knee[s] = q.knee[s];
-      }
-    }
-    p
-      ..headYaw = lerp(p.headYaw, q.headYaw, k)
-      ..headPitch = lerp(p.headPitch, q.headPitch, k)
-      ..twist = lerp(p.twist, q.twist, k)
-      ..stoop = lerp(p.stoop, q.stoop, k);
-    if (k >= 0.5) p.stride = q.stride;
+    p.blendTo(me, k);
   }
 
   /// A break on the platform: a stretch, a look at the city, a word with
@@ -566,7 +517,7 @@ class CrewBreaks {
     if (b.who == driver) {
       // By the truck: a stretch, a look round.
       OffDuty.stand(me, t, b.seed);
-      me.yaw = 2.2 + 0.6 * math.sin(t * 0.35);
+      me.yaw = 2.2 + Idle.facing(t, Manner.of(b.seed), 0.6);
       if ((u % 9) < 4.5) OffDuty.stretch(me, (u % 9) / 4.5, b.seed);
       return;
     }
@@ -580,7 +531,7 @@ class CrewBreaks {
       // Leaning on the back rail, looking out over the park.
       OffDuty.stand(me, t, b.seed);
       me
-        ..yaw = math.pi + 0.3 * math.sin(t * 0.4 + b.seed)
+        ..yaw = math.pi + Idle.facing(t, Manner.of(b.seed), 0.3)
         ..lean = 0.35;
       me.armPitch[0] = me.armPitch[1] = 1.25;
       me.armRoll[0] = me.armRoll[1] = -0.25;
@@ -682,14 +633,14 @@ class CrewBreaks {
     if (t < b.leave || t >= b.home) {
       // On the platform at their rest spot, about to go or just back.
       OffDuty.stand(me, t, b.seed);
-      me.yaw = 0.15 * math.sin(t * 0.5 + b.seed);
+      me.yaw = Idle.facing(t, Manner.of(b.seed), 0.15);
       return;
     }
     if (t >= b.behindAt) {
       // Behind the platform, waiting for it to come down.
       OffDuty.stand(me, t, b.seed);
       me
-        ..yaw = 0.2 * math.sin(t * 0.7 + b.seed)
+        ..yaw = Idle.facing(t, Manner.of(b.seed), 0.2)
         ..lean = -0.12;
       return;
     }
@@ -1045,27 +996,19 @@ class _Follow {
 /// [FigurePose]'s terms (arm pitch 0 down … π up, roll outwards; yaw 0 faces
 /// −z).
 abstract final class OffDuty {
-  /// Standing at ease.
-  static void stand(FigurePose p, double t, int seed) {
-    p.bob = 0.006 * math.sin(t * 1.7 + seed);
-    p.armPitch[0] = 0.1 + 0.04 * math.sin(t * 0.9 + seed);
-    p.armPitch[1] = 0.1;
-    p.armRoll[0] = p.armRoll[1] = 0.12;
+  /// Standing at ease (see [Idle]): breathing, the weight on one foot then
+  /// the other ([shift] of it), a look round ([look] of it).
+  static void stand(FigurePose p, double t, int seed, {double shift = 1, double look = 1}) {
     p.lean = 0.02;
+    Idle.stand(p, t, Manner.of(seed), shift: shift, look: look);
   }
 
-  /// Walking at [speed] (m/s).
-  static void walk(FigurePose p, double t, double speed, int seed) {
-    final ph = t * speed * 4.2 + seed;
-    final sw = math.sin(ph) * 0.5;
-    p.stride = ph;
-    p.legPitch[0] = sw;
-    p.legPitch[1] = -sw;
-    p.armPitch[0] = -sw * 0.7;
-    p.armPitch[1] = sw * 0.7;
-    p.armRoll[0] = p.armRoll[1] = 0.1;
-    p.bob = 0.028 * math.cos(ph * 2).abs();
-    p.lean = 0.06;
+  /// Walking at [speed] (m/s): [dist] metres into a walk [total] long (its
+  /// steps fitted to end with the feet passing), or without them, as if
+  /// walking since the clock started.
+  static void walk(FigurePose p, double t, double speed, int seed, {double? dist, double? total}) {
+    final m = Manner.of(seed), d = dist ?? t * speed;
+    Gait.walk(p, total == null ? Gait.phaseAt(d, speed, 1, m) : Gait.phaseOver(d, total, speed, 1, m), speed, m);
   }
 
   /// Arms overhead, a lean back, a twist ([f] 0..1 through one stretch).
@@ -1087,7 +1030,7 @@ abstract final class OffDuty {
   /// At the vending machine, [u] seconds in: a look, a press, the can
   /// drops, a bend down to the tray for it, back up.
   static void buy(FigurePose p, double u, int seed) {
-    stand(p, u, seed);
+    stand(p, u, seed, shift: 0);
     final press = math.sin(math.pi * c01((u - 0.5) / 0.9));
     p.armPitch[1] = lerp(0.1, 1.5, press);
     p.armRoll[1] = lerp(0.12, -0.15, press);
@@ -1150,7 +1093,9 @@ abstract final class OffDuty {
     p.armPitch[1] = 1.15 + 0.3 * g;
     p.armRoll[1] = 0.3 + 0.25 * math.sin(t * 2.9 + seed);
     p.lean = 0.04 + 0.03 * math.sin(t * 7 + seed);
-    p.yaw += 0.12 * math.sin(t * 1.3 + seed);
+    // Turning to one listener and the other.
+    p.headYaw += 0.14 * math.sin(t * 1.3 + seed);
+    p.twist += 0.08 * math.sin(t * 1.3 + seed - 0.4);
   }
 
   /// Listening, with a nod now and then.
@@ -1177,6 +1122,15 @@ abstract final class OffDuty {
     p.pos.y += 0.19 * down;
     p.legPitch[0] = p.legPitch[1] = 1.45 * down;
     p.lean = lerp(p.lean, -0.05, down);
+    if (down > 0) {
+      // (Off their feet: no weight to shift.)
+      p
+        ..sway *= 1 - down
+        ..hipRoll *= 1 - down;
+      for (var s = 0; s < 2; s++) {
+        p.knee[s] = p.foot[s] = double.nan;
+      }
+    }
   }
 
   /// Looking at a phone: one hand up in front, head down.

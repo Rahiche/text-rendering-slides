@@ -13,6 +13,7 @@ import 'city.dart';
 import 'city_plan.dart' show Plan;
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
+import 'figure_rig.dart' show FigureMotion;
 import 'kit.dart' show lerp;
 import 'life.dart';
 import 'physics.dart';
@@ -97,6 +98,7 @@ class World3D {
     final marks = watch == null ? null : <(String, int)>[];
     void mark(String what) => marks?.add((what, watch!.elapsedMicroseconds));
 
+    FigureMotion.clock = m.t;
     sky.update(m.t, dt);
     city.update(sky, m.t);
     mark('sky+city');

@@ -789,7 +789,8 @@ class Delivery3D implements StreetWork {
     final f = c01((t - t0) / math.max(t1 - t0, 1e-3));
     p.pos.setValues(lerp(a.x, b.x, f), 0, lerp(a.z, b.z, f));
     if (f < 1) {
-      OffDuty.walk(p, t, a.distanceTo(b) / math.max(t1 - t0, 1e-3), 5);
+      final d = a.distanceTo(b);
+      OffDuty.walk(p, t, d / math.max(t1 - t0, 1e-3), 5, dist: d * f, total: d);
       p.yaw = math.atan2(-(b.x - a.x), -(b.z - a.z));
     } else {
       OffDuty.stand(p, t, 5);

@@ -15,6 +15,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'crew.dart';
 import 'crew_breaks.dart' show OffDuty;
 import 'kit.dart';
+import 'motion.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_geo.dart';
@@ -242,7 +243,7 @@ class Verdict3D {
       // a flinch at the first hit.
       f.pos.setFrom(post.last);
       OffDuty.stand(f, t, seed);
-      f.yaw = math.atan2(f.pos.x, f.pos.z) + 0.1 * math.sin(t * 0.5 + i);
+      f.yaw = math.atan2(f.pos.x, f.pos.z) + Idle.facing(t, Manner.of(seed), 0.1);
       if (i == 0) {
         f.armPitch[0] = f.armPitch[1] = 1.0;
         f.armRoll[0] = f.armRoll[1] = -0.75;

@@ -9,60 +9,12 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'figure.dart';
 import 'kit.dart';
+import 'motion.dart';
 import 'site_geo.dart';
 import 'site_kern.dart';
 import 'site_plan.dart';
 
-/// One figure's pose: where it stands, which way it faces (yaw 0 = towards
-/// −z, the camera side), and its joints.
-class FigurePose {
-  final pos = vm.Vector3.zero();
-  double yaw = 0;
-
-  /// Torso pitch forward (radians) and a vertical bob.
-  double lean = 0, bob = 0;
-
-  /// Per side (0 = −x, 1 = +x): arm pitch (0 down, π/2 forward, π up) and
-  /// roll (outwards), leg pitch (forward swing).
-  final armPitch = [0.0, 0.0], armRoll = [0.0, 0.0], legPitch = [0.0, 0.0];
-  bool visible = true;
-  bool clipboard = false;
-
-  /// The hard hat tossed in the air: how high above the head, and its spin.
-  double hatUp = 0, hatSpin = 0;
-
-  /// Optional joints, NaN to have them follow from the rest of the pose
-  /// (see [FigureRig]): per side, the elbow's and the knee's bend (0
-  /// straight; [Crew3D.aim] sets the elbow so the hand reaches).
-  final elbow = [double.nan, double.nan], knee = [double.nan, double.nan];
-
-  /// The head turned (to the left +) and nodded (down +), and the shoulders
-  /// turned against the hips.
-  double headYaw = 0, headPitch = 0, twist = 0;
-
-  /// While walking, the stride's phase (radians; leg 0 is forward at π/2):
-  /// the knees, the feet and the hips follow it. NaN standing.
-  double stride = double.nan;
-
-  /// How much lower the hips go to reach something low (metres: a crouch,
-  /// and a bend forward with it); [Crew3D.aim] sets it.
-  double stoop = 0;
-
-  void rest() {
-    hatUp = 0;
-    hatSpin = 0;
-    elbow[0] = elbow[1] = knee[0] = knee[1] = double.nan;
-    headYaw = headPitch = twist = stoop = 0;
-    stride = double.nan;
-    lean = 0;
-    bob = 0;
-    armPitch[0] = armPitch[1] = 0.08;
-    armRoll[0] = armRoll[1] = 0.12;
-    legPitch[0] = legPitch[1] = 0;
-    clipboard = false;
-    visible = true;
-  }
-}
+export 'figure_rig.dart' show FigurePose;
 
 /// The site crew: six builders (one per stretch of wall, zone colours on
 /// their vests), the foreman with his clipboard, the crane operator in the
@@ -287,6 +239,7 @@ class Crew3D {
     p.armPitch[s] = math.asin((-z1).clamp(-1.0, 1.0));
     p.armRoll[s] = side * math.atan2(x1, -y1);
     p.elbow[s] = FigureRig.bendFor(r.clamp(FigureRig.minReach, FigureRig.maxReach));
+    p.aimed(s, target);
   }
 
   // ── Behaviour ─────────────────────────────────────────────────────────────
@@ -327,17 +280,19 @@ class Crew3D {
     return (false, 0);
   }
 
-  void _gait(FigurePose p, double t, double speed, int seed) {
-    final ph = t * speed * 4.2 + seed;
-    final sw = math.sin(ph) * 0.55;
-    p.stride = ph;
-    p.legPitch[0] = sw;
-    p.legPitch[1] = -sw;
-    p.armPitch[0] = -sw * 0.8;
-    p.armPitch[1] = sw * 0.8;
-    p.armRoll[0] = p.armRoll[1] = 0.1;
-    p.bob = 0.03 * math.cos(ph * 2).abs();
-    p.lean = 0.08;
+  /// Walking (or running) at [speed], [dist] metres into a walk [total]
+  /// long (its steps fitted to end with the feet passing).
+  void _gait(FigurePose p, double dist, double speed, int seed, double total) {
+    final m = Manner.of(seed);
+    Gait.walk(p, Gait.phaseOver(dist, total, speed, 1, m), speed, m);
+  }
+
+  static double _lengthOf(List<vm.Vector3> pts) {
+    var l = 0.0;
+    for (var i = 0; i + 1 < pts.length; i++) {
+      l += pts[i].distanceTo(pts[i + 1]);
+    }
+    return l;
   }
 
   /// Poses everybody for [m]'s current job and draws them.
@@ -387,10 +342,11 @@ class Crew3D {
       final seed = z * 13;
       switch (j.phase) {
         case Phase.intake:
-          final (moving, heading) = _walk(_route(z, w, toWall: true), j.phaseStart + 0.3 + z * 0.18, 3.4, t, p.pos);
+          final route = _route(z, w, toWall: true), start = j.phaseStart + 0.3 + z * 0.18;
+          final (moving, heading) = _walk(route, start, 3.4, t, p.pos);
           p.pos.y = _onDeck(p.pos, w) ? floor : 0;
           if (moving) {
-            _gait(p, t, 3.4, seed);
+            _gait(p, (t - start) * 3.4, 3.4, seed, _lengthOf(route));
             p.yaw = heading;
           } else {
             _idle(p, t, seed);
@@ -409,10 +365,11 @@ class Crew3D {
           final speed = cut ? 5.0 : 3.6;
           // Cut short: from wherever they were on the platform.
           final from = cut && plan != null && j.phase == Phase.demolish && j.phaseStart >= plan.t0 ? _fromCut(z, plan, j.phaseStart) : null;
-          final (moving, heading) = _walk(_route(z, w, toWall: false, from: from), leave, speed, t, p.pos);
+          final route = _route(z, w, toWall: false, from: from);
+          final (moving, heading) = _walk(route, leave, speed, t, p.pos);
           p.pos.y = _onDeck(p.pos, w) ? floor : 0;
           if (moving) {
-            _gait(p, t, speed, seed);
+            _gait(p, (t - leave) * speed, speed, seed, _lengthOf(route));
             p.yaw = heading;
           } else {
             _watch(p, z, j, t, impact, seed, w);
@@ -434,11 +391,13 @@ class Crew3D {
 
   bool _onDeck(vm.Vector3 p, double w) => p.z > SiteLayout.deckZ0 && p.z < SiteLayout.deckZ1 && p.x.abs() < w / 2 + 1.0;
 
-  void _idle(FigurePose p, double t, int seed) {
-    p.yaw = 0.25 * math.sin(t * 0.5 + seed);
-    p.bob = 0.008 * math.sin(t * 2 + seed);
-    p.armPitch[0] = 0.15 + 0.05 * math.sin(t + seed);
-    p.armPitch[1] = 0.12;
+  /// Standing about, facing [face] (yaw; −z by default) give or take a
+  /// turn now and then: breathing, the weight on one foot then the other,
+  /// a look round (see [Idle]).
+  void _idle(FigurePose p, double t, int seed, {double face = 0}) {
+    final m = Manner.of(seed);
+    p.yaw = face + Idle.facing(t, m);
+    Idle.stand(p, t, m);
   }
 
   final _place = CrewPlace(), _cutPlace = CrewPlace();
@@ -458,7 +417,7 @@ class Crew3D {
     final c = plan.crewAt(z, t, _place);
     p.pos.setValues(c.x, floor, c.z);
     if (c.walking) {
-      _gait(p, t, 2.4, seed);
+      _gait(p, c.walked, c.walkSpeed, seed, c.walkLength);
       p.yaw = c.heading;
       return;
     }
@@ -728,9 +687,13 @@ class Crew3D {
       final e = smooth(0, 1, f);
       p.pos.setValues(fx + (_fX[q] - fx) * e, 0, fz + (_fZ[q] - fz) * e);
       if ((_fX[q] - fx).abs() + (_fZ[q] - fz).abs() > 0.06) {
-        _gait(p, t, 2.4, 3);
+        final d = math.sqrt((_fX[q] - fx) * (_fX[q] - fx) + (_fZ[q] - fz) * (_fZ[q] - fz));
+        _gait(p, d * e, d / _fWalk[q], 3, d);
         p.yaw = math.atan2(-(_fX[q] - fx), -(_fZ[q] - fz));
-        p.armPitch[0] = 1.0; // the clipboard under his arm
+        // The clipboard under his arm.
+        p.armPitch[0] = 1.0;
+        p.armRoll[0] = 0.12;
+        p.elbow[0] = double.nan;
         return true;
       }
     }
@@ -811,13 +774,12 @@ class Crew3D {
           p.armRoll[0] = 0.4;
           p.bob = 0.06 * math.max(0, math.sin(beat));
         } else {
-          _idle(p, t, seed);
+          _idle(p, t, seed, face: p.yaw);
           p.armRoll[0] = p.armRoll[1] = 0.9;
           p.armPitch[0] = p.armPitch[1] = -0.3;
         }
       case Phase.cleanup || Phase.intake || Phase.build:
-        _idle(p, t, seed);
-        p.yaw += 0.4 * math.sin(t * 0.7 + seed);
+        _idle(p, t, seed, face: p.yaw);
         if ((z + (t / 4).floor()) % 3 == 0) {
           // Chatting with a gesture.
           p.armPitch[1] = 1.2 + 0.3 * math.sin(t * 5 + seed);
@@ -830,8 +792,7 @@ class Crew3D {
     final p = poses[foreman]..rest();
     p.clipboard = true;
     p.pos.setValues(w / 2 + 0.75, 0, -1.55);
-    p.yaw = math.atan2(-(0 - p.pos.x), -(0.4 - p.pos.z)) * 0.8;
-    _idle(p, t, 3);
+    _idle(p, t, 3, face: math.atan2(-(0 - p.pos.x), -(0.4 - p.pos.z)) * 0.8);
     // Clipboard up, reading.
     p.armPitch[0] = 1.15;
     p.armRoll[0] = -0.15;
@@ -882,6 +843,12 @@ class Crew3D {
     p.armPitch[0] = 0.95 + 0.08 * math.sin(t * 3.1);
     p.armPitch[1] = 0.95 + 0.08 * math.sin(t * 2.3 + 1);
     p.armRoll[0] = p.armRoll[1] = 0.05;
+    // Breathing; a look out of the cab now and then, mostly down at the
+    // hook.
+    final m = Manner.of(71);
+    Idle.breathe(p, t, m);
+    Idle.glance(p, t, m, look: 0.6);
+    p.headPitch += 0.25;
     if (j.phase == Phase.celebrate) {
       p.armPitch[1] = 2.8 + 0.3 * math.sin(t * 8);
       p.armRoll[1] = 0.3;

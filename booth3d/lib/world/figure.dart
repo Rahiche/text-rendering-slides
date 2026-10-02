@@ -4,9 +4,11 @@ import 'dart:typed_data';
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-import 'crew.dart' show FigurePose;
+import 'figure_rig.dart';
 import 'kit.dart';
 import 'site_geo.dart' show setTrs;
+
+export 'figure_rig.dart';
 
 /// Name City's people, drawn: everyone — the crew and the people in the
 /// streets — is the same low-poly human (a torso that narrows to the waist
@@ -19,407 +21,6 @@ import 'site_geo.dart' show setTrs;
 /// (one draw for everybody's heads, one for everybody's forearms…), its
 /// colour per instance, its details (eyes, soles, a vest's opening) in the
 /// geometry. Nothing is allocated per frame.
-
-// ── The skeleton ────────────────────────────────────────────────────────────
-
-/// A figure's skeleton in one pose: the world transform of each part,
-/// worked out from a [FigurePose] (the poses were written for a toy with a
-/// big head and short arms; this reads them for a grown-up).
-///
-/// What the pose leaves unset follows from what it does set:
-/// - Arms: pitch and roll point from the shoulder to the hand. How far the
-///   hand is (the elbow's bend) follows from where it points: near straight
-///   hanging or raised, bent to hold something out, folded to bring a can
-///   to the mouth or a hand to the hat; arms rolled back and out are hands
-///   on hips, rolled in at chest height are folded arms. [FigurePose.elbow]
-///   sets the bend instead ([Crew3D.aim] does, so the hand gets to the
-///   target). The elbow points out and back, or down for a hand at the
-///   face.
-/// - Legs: the feet stay on the ground. A walk ([FigurePose.stride]) bends
-///   the swinging knee, rolls each foot from heel to toe, bobs the hips over
-///   the stance leg and turns the shoulders against the hips; standing, a
-///   negative bob is a crouch (the knees bend), a positive one a jump (they
-///   tuck); both thighs raised forward is sitting, the hips where the toy's
-///   were (on the seat), the shins hanging.
-/// - The head leans back a little to look ahead from a deep bend, and keeps
-///   looking forward as the shoulders swing.
-class FigureRig {
-  /// Measurements (metres) of a figure of size 1, 1.72 m tall: the ankle
-  /// above the sole, the shin and the thigh; the hip joints' spread.
-  static const ankle = 0.08, shin = 0.41, thigh = 0.42, hipX = 0.09;
-
-  /// The hip joints' height standing (the spine's pivot), 0.91 m.
-  static const hip = ankle + shin + thigh;
-
-  /// The shoulder joints (out from the middle, above the hips) and the neck.
-  static const shoulderX = 0.185, shoulderY = 0.5, neckY = 0.555;
-
-  /// The arm: shoulder to elbow, elbow to wrist, wrist to the palm's middle.
-  static const upperArm = 0.29, forearm = 0.25, palm = 0.07;
-  static const lowerArm = forearm + palm;
-
-  /// The mouth (in the head's frame, from the neck).
-  static const mouthY = 0.066, mouthZ = -0.098;
-
-  /// Where the toy's hips were: seated poses put them there (on the seat).
-  static const _toyHip = 0.36;
-
-  /// The root (feet, facing), the pelvis (the legs hang from it), the
-  /// chest (the torso, the arms hang from it) and the head.
-  final root = vm.Matrix4.identity(), pelvis = vm.Matrix4.identity(), chest = vm.Matrix4.identity(), head = vm.Matrix4.identity();
-
-  /// Per side (0 = −x, 1 = +x): the upper arm (from the shoulder), the
-  /// forearm (from the elbow) and the hand (from the wrist), each along its
-  /// −y; the thigh, the shin (along −y) and the foot (from the ankle).
-  final upper = [vm.Matrix4.identity(), vm.Matrix4.identity()], lower = [vm.Matrix4.identity(), vm.Matrix4.identity()];
-  final hand = [vm.Matrix4.identity(), vm.Matrix4.identity()];
-  final thighs = [vm.Matrix4.identity(), vm.Matrix4.identity()], shins = [vm.Matrix4.identity(), vm.Matrix4.identity()];
-  final feet = [vm.Matrix4.identity(), vm.Matrix4.identity()];
-
-  /// Each palm's middle (world).
-  final palms = [vm.Vector3.zero(), vm.Vector3.zero()];
-
-  // Scratch, in the chest's or the pelvis's frame.
-  final _l = vm.Matrix4.identity();
-  final _knee = [0.0, 0.0], _thigh = [0.0, 0.0], _foot = [0.0, 0.0], _ext = [0.0, 0.0];
-
-  /// Poses the skeleton for [p]. [size] scales it (1: 1.72 m); [width] the
-  /// shoulders. Without [arms], only the trunk, the head and the legs.
-  void solve(FigurePose p, {double size = 1, double width = 1, bool arms = true}) {
-    final yaw = p.yaw, bob = p.bob;
-    // Reaching down bends the back as well as the knees.
-    final lean = p.stride.isFinite ? p.lean : math.min(1.25, p.lean + 1.4 * p.stoop);
-    _setYaw(root, p.pos.x, p.pos.y, p.pos.z, yaw);
-    // ── Legs: the hips' height from them.
-    final walking = p.stride.isFinite;
-    var pelvisYaw = 0.0, chestYaw = p.twist, look = 0.0;
-    double hipY;
-    if (walking) {
-      // A grown-up's stride (the toy's swing would slide its feet).
-      final swing = (p.legPitch[0] - p.legPitch[1]) / 2;
-      pelvisYaw = -0.12 * swing;
-      chestYaw += 0.16 * swing;
-      look = -0.85 * 0.16 * swing;
-      for (var s = 0; s < 2; s++) {
-        final psi = p.stride + s * math.pi;
-        _thigh[s] = 0.8 * p.legPitch[s];
-        _knee[s] = p.knee[s].isNaN ? _gaitKnee(psi) : p.knee[s];
-        _foot[s] = _gaitFoot(psi);
-        _ext[s] = _extent(_thigh[s], _knee[s], _foot[s]);
-      }
-      hipY = math.max(_ext[0], _ext[1]) * size;
-    } else {
-      final sit = smooth(0.95, 1.35, math.min(p.legPitch[0], p.legPitch[1]));
-      // A crouch: the thighs come forward and the shins back, the feet
-      // stay under the hips; deeper for a deep bend (a grown-up bending as
-      // low as the toy did squats), and to reach down.
-      final squat = 0.3 * smooth(0.45, 0.9, p.lean) * smooth(0.0, -0.04, bob);
-      final d = (math.max(0.0, -bob) + squat + p.stoop) * (1 - sit) / size;
-      final a = d > 0 ? math.acos(math.max(0.3, 1 - d / (thigh + shin))) : 0.0;
-      final tuck = smooth(0.03, 0.18, bob);
-      for (var s = 0; s < 2; s++) {
-        final th = p.legPitch[s];
-        var k = p.knee[s];
-        if (k.isNaN) k = lerp(0.07 + 0.55 * tuck, th, sit);
-        _thigh[s] = th + a;
-        _knee[s] = k + 2 * a;
-        _foot[s] = -0.35 * tuck;
-        _ext[s] = _extent(_thigh[s], _knee[s], _foot[s]);
-      }
-      hipY = lerp((_ext[0] + _ext[1]) / 2 * size + math.max(0.0, bob), _toyHip + bob, sit);
-    }
-    // Looking ahead from a deep bend; a laugh throws the head back.
-    final nod = p.headPitch - 0.45 * math.max(0.0, lean - 0.35) + 0.4 * math.min(0.0, lean + 0.05);
-    _setYawPitch(_l, 0, hipY, 0, pelvisYaw, 0);
-    pelvis
-      ..setFrom(root)
-      ..multiply(_l);
-    _setYawPitch(_l, 0, hipY, 0, chestYaw, -lean);
-    chest
-      ..setFrom(root)
-      ..multiply(_l);
-    _setYawPitch(_l, 0, neckY * size, 0, p.headYaw + look, -nod);
-    head
-      ..setFrom(chest)
-      ..multiply(_l);
-    for (var s = 0; s < 2; s++) {
-      final side = s == 0 ? -1.0 : 1.0;
-      // Thigh from the hip joint, shin from the knee, the foot level (or as
-      // the walk rolls it).
-      final th = _thigh[s], sh = th - _knee[s];
-      final hx = side * hipX * size;
-      _setPitch(_l, hx, 0, 0, th);
-      thighs[s]
-        ..setFrom(pelvis)
-        ..multiply(_l);
-      final ky = -thigh * size * math.cos(th), kz = -thigh * size * math.sin(th);
-      _setPitch(_l, hx, ky, kz, sh);
-      shins[s]
-        ..setFrom(pelvis)
-        ..multiply(_l);
-      _setPitch(_l, hx, ky - shin * size * math.cos(sh), kz - shin * size * math.sin(sh), _foot[s]);
-      feet[s]
-        ..setFrom(pelvis)
-        ..multiply(_l);
-      if (arms) _arm(p, s, side, size, width);
-    }
-  }
-
-  /// How far below the hip joint the sole's lowest point is (size 1).
-  static double _extent(double th, double knee, double foot) {
-    final c = math.cos(foot), n = math.sin(foot);
-    return thigh * math.cos(th) + shin * math.cos(th - knee) + math.max(ankle * c + 0.055 * n, ankle * c - 0.185 * n);
-  }
-
-  /// The knee's bend at a leg's walk phase [psi] (its thigh swings as
-  /// sin ψ: forward while cos ψ > 0): most early in the swing, straight for
-  /// the heel strike, a give as the weight comes on.
-  static double _gaitKnee(double psi) {
-    final swing = math.max(0.0, math.cos(psi + 0.42));
-    var k = 0.06 + swing * math.sqrt(swing);
-    final w = psi % (2 * math.pi) - math.pi / 2; // since the heel strike
-    if (w > 0 && w < math.pi / 2) k += 0.18 * math.sin(2 * w);
-    return k;
-  }
-
-  /// The foot's pitch (toe up) through the walk: the heel strikes, the foot
-  /// goes flat, the heel lifts, it pushes off the toe, swings through.
-  static const _footKeys = [0.0, -0.25, 1.2, 0.15, 1.571, 0.22, 2.1, 0.0, 3.8, 0.0, 4.712, -0.68, 5.35, -0.45, 2 * math.pi, -0.25];
-
-  static double _gaitFoot(double psi) {
-    final u = psi % (2 * math.pi);
-    for (var i = 0; i + 3 < _footKeys.length; i += 2) {
-      if (u <= _footKeys[i + 2]) return lerp(_footKeys[i + 1], _footKeys[i + 3], smooth(_footKeys[i], _footKeys[i + 2], u));
-    }
-    return _footKeys[1];
-  }
-
-  // ── Arms ────────────────────────────────────────────────────────────────
-
-  /// Arm [s]: where its hand goes, then the elbow between (two bones, the
-  /// elbow towards the pole).
-  void _arm(FigurePose p, int s, double side, double size, double width) {
-    final pitch = p.armPitch[s], roll = p.armRoll[s];
-    final cp = math.cos(pitch), sp = math.sin(pitch), cr = math.cos(roll), sr = math.sin(roll);
-    // Shoulder to hand (chest frame: x out to the right, y up, z back).
-    final dx = side * cp * sr, dy = -cp * cr, dz = -sp;
-    final sx = side * shoulderX * width, sy = shoulderY;
-    double tx, ty, tz, px, py, pz;
-    final bend = p.elbow[s];
-    if (!bend.isNaN) {
-      final r = reachOf(bend);
-      tx = sx + dx * r;
-      ty = sy + dy * r;
-      tz = dz * r;
-      px = side * 0.4;
-      py = -0.45;
-      pz = 0.8;
-    } else {
-      // Out at a natural reach, bent a little more held out in front.
-      final rb = 0.585 - 0.09 * smooth(0.2, 0.9, pitch) * (1 - smooth(2.2, 2.8, pitch));
-      tx = sx + dx * rb;
-      ty = sy + dy * rb;
-      tz = dz * rb;
-      px = side * 0.4;
-      py = -0.45;
-      pz = 0.8;
-      // Close to the body, the hand goes where the toy's did (the two
-      // torsos are much the same): at the face (a can, a cigarette, the
-      // hat), or on the chest or belly.
-      final ox = side * 0.205 + 0.36 * dx, oy = 0.5 + 0.36 * dy, oz = 0.36 * dz;
-      final hy = oy - 0.72, toFace = math.sqrt(ox * ox + hy * hy + oz * oz);
-      final wh = smooth(0.3, 0.16, toFace) * smooth(0.45, 0.8, roll);
-      final ay = oy.clamp(0.155, 0.425);
-      final toBody = math.sqrt(ox * ox + (oy - ay) * (oy - ay) + oz * oz) - 0.155;
-      // (In front of it: hanging at the side, the toy's short arm was
-      // close to its hips too.)
-      final wt = smooth(0.22, 0.08, toBody) * smooth(-0.06, -0.15, oz);
-      final w = math.max(wh, wt);
-      if (w > 0) {
-        final fx = ox * 0.86, fy = 0.685 + hy * 0.86, fz = -0.01 + oz * 0.86;
-        final k = 1 / (wh + wt);
-        tx = lerp(tx, (wh * fx + wt * ox) * k, w);
-        ty = lerp(ty, (wh * fy + wt * oy) * k, w);
-        tz = lerp(tz, (wh * fz + wt * oz) * k, w);
-        px = lerp(px, side * 0.55, wh);
-        py = lerp(py, -0.8, wh);
-        pz = lerp(pz, -0.25, wh);
-      }
-      // Rolled back and out: hands on the hips, elbows out.
-      final wa = smooth(0.45, 0.8, roll) * smooth(0.25, -0.15, pitch);
-      if (wa > 0) {
-        tx = lerp(tx, side * 0.165, wa);
-        ty = lerp(ty, 0.12, wa);
-        tz = lerp(tz, 0.03, wa);
-        px = lerp(px, side, wa);
-        py = lerp(py, -0.05, wa);
-        pz = lerp(pz, 0.35, wa);
-      }
-      // Rolled in at chest height: arms folded.
-      final wf = smooth(-0.4, -0.65, roll) * smooth(0.5, 0.8, pitch) * smooth(1.55, 1.25, pitch);
-      if (wf > 0) {
-        tx = lerp(tx, -side * 0.085, wf);
-        ty = lerp(ty, 0.33, wf);
-        tz = lerp(tz, -0.19, wf);
-        px = lerp(px, side * 0.7, wf);
-        py = lerp(py, -0.7, wf);
-        pz = lerp(pz, 0.1, wf);
-      }
-    }
-    // Two bones: the hand at [r] from the shoulder along d, the elbow off
-    // the line towards the pole.
-    var ex = tx - sx, ey = ty - sy, ez = tz;
-    var r = math.sqrt(ex * ex + ey * ey + ez * ez);
-    if (r < 1e-5) {
-      ex = 0;
-      ey = -1;
-      ez = 0;
-      r = 0.3;
-    } else {
-      ex /= r;
-      ey /= r;
-      ez /= r;
-    }
-    r = r.clamp(0.12, upperArm + lowerArm - 0.002);
-    const a = upperArm, b = lowerArm;
-    final along = (a * a - b * b + r * r) / (2 * r), off = math.sqrt(math.max(0.0, a * a - along * along));
-    // The pole, square to the arm.
-    final pd = px * ex + py * ey + pz * ez;
-    var nx = px - pd * ex, ny = py - pd * ey, nz = pz - pd * ez;
-    var nl = math.sqrt(nx * nx + ny * ny + nz * nz);
-    if (nl < 1e-4) {
-      // Pointing along the pole: the elbow out to the side instead.
-      final qd = side * ex;
-      nx = side - qd * ex;
-      ny = -qd * ey;
-      nz = -qd * ez;
-      nl = math.max(1e-4, math.sqrt(nx * nx + ny * ny + nz * nz));
-    }
-    nx /= nl;
-    ny /= nl;
-    nz /= nl;
-    // Shoulder S, elbow E, palm P (size 1, chest frame).
-    final elx = sx + ex * along + nx * off, ely = sy + ey * along + ny * off, elz = ez * along + nz * off;
-    final pax = sx + ex * r, pay = sy + ey * r, paz = ez * r;
-    // Upper arm: y from the elbow up to the shoulder, z towards the pole
-    // (the back of the elbow), x the hinge.
-    var uyx = (sx - elx) / a, uyy = (sy - ely) / a, uyz = -elz / a;
-    final nd = nx * uyx + ny * uyy + nz * uyz;
-    var uzx = nx - nd * uyx, uzy = ny - nd * uyy, uzz = nz - nd * uyz;
-    final ul = math.sqrt(uzx * uzx + uzy * uzy + uzz * uzz);
-    if (ul > 1e-6) {
-      uzx /= ul;
-      uzy /= ul;
-      uzz /= ul;
-    } else {
-      uzx = 0;
-      uzy = 0;
-      uzz = 1;
-    }
-    final hxx = uyy * uzz - uyz * uzy, hxy = uyz * uzx - uyx * uzz, hxz = uyx * uzy - uyy * uzx;
-    _setBasis(_l, hxx, hxy, hxz, uyx, uyy, uyz, uzx, uzy, uzz, sx * size, sy * size, 0);
-    upper[s]
-      ..setFrom(chest)
-      ..multiply(_l);
-    // Forearm: y from the palm up to the elbow, the same hinge.
-    var lyx = elx - pax, lyy = ely - pay, lyz = elz - paz;
-    final ll = math.max(1e-6, math.sqrt(lyx * lyx + lyy * lyy + lyz * lyz));
-    lyx /= ll;
-    lyy /= ll;
-    lyz /= ll;
-    final lzx = hxy * lyz - hxz * lyy, lzy = hxz * lyx - hxx * lyz, lzz = hxx * lyy - hxy * lyx;
-    _setBasis(_l, hxx, hxy, hxz, lyx, lyy, lyz, lzx, lzy, lzz, elx * size, ely * size, elz * size);
-    lower[s]
-      ..setFrom(chest)
-      ..multiply(_l);
-    final wx = elx - lyx * forearm, wy = ely - lyy * forearm, wz = elz - lyz * forearm;
-    _setBasis(_l, hxx, hxy, hxz, lyx, lyy, lyz, lzx, lzy, lzz, wx * size, wy * size, wz * size);
-    hand[s]
-      ..setFrom(chest)
-      ..multiply(_l);
-    palms[s].setValues(pax * size, pay * size, paz * size);
-    chest.transform3(palms[s]);
-  }
-
-  /// The hand's distance from the shoulder with the elbow bent by [bend].
-  static double reachOf(double bend) => math.sqrt(upperArm * upperArm + lowerArm * lowerArm + 2 * upperArm * lowerArm * math.cos(bend));
-
-  /// The elbow's bend that puts the hand [r] from the shoulder.
-  static double bendFor(double r) {
-    const a = upperArm, b = lowerArm;
-    final c = ((a * a + b * b - r * r) / (2 * a * b)).clamp(-1.0, 1.0);
-    return math.pi - math.acos(c);
-  }
-
-  /// The longest reach, and the shortest.
-  static const maxReach = upperArm + lowerArm - 0.002, minReach = 0.12;
-
-  /// Shoulder [s] (world), as posed by the last [solve].
-  vm.Vector3 shoulder(int s, double size, vm.Vector3 out) => chest.transform3(out..setValues((s == 0 ? -1 : 1) * shoulderX * size, shoulderY * size, 0));
-
-  /// The mouth (world), as posed by the last [solve].
-  vm.Vector3 mouth(double size, vm.Vector3 out) => head.transform3(out..setValues(0, mouthY * size, mouthZ * size));
-
-  // ── Matrices written in place ───────────────────────────────────────────
-
-  static void _setBasis(
-    vm.Matrix4 m,
-    double xx,
-    double xy,
-    double xz,
-    double yx,
-    double yy,
-    double yz,
-    double zx,
-    double zy,
-    double zz,
-    double tx,
-    double ty,
-    double tz,
-  ) {
-    m.storage
-      ..[0] = xx
-      ..[1] = xy
-      ..[2] = xz
-      ..[3] = 0
-      ..[4] = yx
-      ..[5] = yy
-      ..[6] = yz
-      ..[7] = 0
-      ..[8] = zx
-      ..[9] = zy
-      ..[10] = zz
-      ..[11] = 0
-      ..[12] = tx
-      ..[13] = ty
-      ..[14] = tz
-      ..[15] = 1;
-  }
-
-  /// translate · rotateY(yaw).
-  static void _setYaw(vm.Matrix4 m, double x, double y, double z, double yaw) {
-    final c = math.cos(yaw), s = math.sin(yaw);
-    _setBasis(m, c, 0, -s, 0, 1, 0, s, 0, c, x, y, z);
-  }
-
-  /// translate · rotateY(yaw), returned: things that hang.
-  static vm.Matrix4 _yawAt(vm.Matrix4 m, double x, double y, double z, double yaw) {
-    _setYaw(m, x, y, z, yaw);
-    return m;
-  }
-
-  /// translate · rotateX(pitch).
-  static void _setPitch(vm.Matrix4 m, double x, double y, double z, double pitch) {
-    final c = math.cos(pitch), s = math.sin(pitch);
-    _setBasis(m, 1, 0, 0, 0, c, s, 0, -s, c, x, y, z);
-  }
-
-  /// translate · rotateY(yaw) · rotateX(pitch).
-  static void _setYawPitch(vm.Matrix4 m, double x, double y, double z, double yaw, double pitch) {
-    final cb = math.cos(yaw), sb = math.sin(yaw), ca = math.cos(pitch), sa = math.sin(pitch);
-    _setBasis(m, cb, 0, -sb, sb * sa, ca, cb * sa, sb * ca, -sa, cb * ca, x, y, z);
-  }
-}
 
 // ── What they wear ──────────────────────────────────────────────────────────
 
@@ -481,6 +82,9 @@ class _Body {
 
   /// Its number (its head; its arms and legs are 2n, 2n + 1).
   final int n;
+
+  /// What they last showed (see [FigureMotion]).
+  final motion = FigureMotion();
   InstancedMesh? torso, hair;
   int torsoAt = -1, hairAt = -1, hat = -1, cap = -1, vest = -1, stripes = -1, skirt = -1, backpack = -1, bag = -1, board = -1, parasol = -1;
   bool hidden = false;
@@ -488,7 +92,8 @@ class _Body {
 
 /// Everybody's parts in one scene: a draw per part for everybody (about
 /// 1,500 triangles a person), colours per instance. [add] a person, then
-/// [draw] them every frame (or [hide] them).
+/// [draw] them every frame (or [hide] them): what's drawn is smoothed over
+/// the poses' jumps (each person's [FigureMotion], on its clock).
 class Figures {
   Figures._(this.scene) {
     _build();
@@ -626,7 +231,8 @@ class Figures {
     }
     b.hidden = false;
     final size = look.size, g = look.girth * size, r = rig;
-    r.solve(p, size: size, width: look.slim ? 0.92 : 1);
+    p.motion = b.motion;
+    r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
     _put(b.torso!, b.torsoAt, r.chest, g, size, g);
     // Children's heads are big for their size.
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
@@ -658,7 +264,7 @@ class Figures {
     if (b.bag >= 0) {
       // Hanging from the left hand.
       final at = r.palms[0];
-      _put(_bag, b.bag, FigureRig._yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      _put(_bag, b.bag, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
     }
     if (b.board >= 0) {
       if (p.clipboard) {
@@ -673,7 +279,7 @@ class Figures {
     }
     if (b.parasol >= 0) {
       final at = r.palms[1];
-      _put(_parasol, b.parasol, FigureRig._yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      _put(_parasol, b.parasol, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
     }
   }
 

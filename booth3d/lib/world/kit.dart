@@ -10,6 +10,10 @@ import 'package:text_slides/booth/craft/extrude.dart';
 import 'package:text_slides/booth/craft/geometry.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import 'ease.dart';
+
+export 'ease.dart';
+
 /// Shared helpers for the 3D city: colours, materials, meshes, maths.
 
 /// An sRGB colour as a linear RGBA factor (PBR materials work in linear).
@@ -57,26 +61,6 @@ vm.Matrix4 trsQ(vm.Vector3 t, vm.Quaternion q, vm.Vector3 s) => vm.Matrix4.compo
 /// A zero-size transform (hidden instance).
 final hidden = vm.Matrix4.compose(vm.Vector3(0, -1000, 0), vm.Quaternion.identity(), vm.Vector3.zero());
 
-double c01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
-double seg(double t, double a, double b) => c01((t - a) / (b - a));
-double lerp(double a, double b, double t) => a + (b - a) * t;
-double eio(double t) {
-  t = c01(t);
-  return t < 0.5 ? 4 * t * t * t : 1 - math.pow(-2 * t + 2, 3) / 2;
-}
-
-double eo(double t) => 1 - math.pow(1 - c01(t), 3).toDouble();
-
-/// Deterministic pseudo-random in [0, 1).
-double rnd(int a, [int b = 0, int c = 0]) {
-  final v = math.sin(a * 12.9898 + b * 78.233 + c * 37.719 + 0.5) * 43758.5453;
-  return v - v.floorToDouble();
-}
-
-/// Smoothly approaches [target] (frame-rate independent).
-double approach(double v, double target, double dt, double settle) =>
-    target + (v - target) * math.exp(-dt / math.max(settle, 1e-3));
-
 // ── Colour ─────────────────────────────────────────────────────────────────
 
 /// An sRGB colour as a linear RGB vector (for skies, fog, lights).
@@ -92,12 +76,6 @@ vm.Vector3 mix3(vm.Vector3 a, vm.Vector3 b, double t) =>
     vm.Vector3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
 
 vm.Vector4 v4(vm.Vector3 c, [double a = 1]) => vm.Vector4(c.x, c.y, c.z, a);
-
-/// Hermite smoothstep of [x] between [e0] and [e1].
-double smooth(double e0, double e1, double x) {
-  final t = c01((x - e0) / (e1 - e0));
-  return t * t * (3 - 2 * t);
-}
 
 // ── Transforms written in place (per-frame instance updates, no garbage) ──
 

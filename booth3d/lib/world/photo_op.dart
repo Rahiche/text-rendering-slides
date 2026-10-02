@@ -7,6 +7,7 @@ import 'crew.dart';
 import 'crew_breaks.dart' show OffDuty;
 import 'glyph_works.dart';
 import 'kit.dart';
+import 'motion.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
@@ -398,7 +399,7 @@ class PhotoOp {
     // In place, facing the camera.
     f.pos.setFrom(walk.go.last);
     OffDuty.stand(f, t, seed);
-    f.yaw = 0.15 * math.sin(t * 0.6 + seed) * (1 - seg(t, n.ready + _counts[0] - 0.5, n.ready + _counts[0]));
+    f.yaw = Idle.facing(t, Manner.of(seed), 0.15) * (1 - seg(t, n.ready + _counts[0] - 0.5, n.ready + _counts[0]));
     final fl = n.flash;
     if (who == Crew3D.foreman) {
       // Hands on the board's top edge from behind, steadying it (and up

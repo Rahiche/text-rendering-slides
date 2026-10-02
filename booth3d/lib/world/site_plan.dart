@@ -243,9 +243,10 @@ enum CrewMode {
 class CrewPlace {
   double x = 0, z = SiteLayout.crewZ;
 
-  /// Walking there (and which way: yaw, 0 towards −z).
+  /// Walking there (and which way: yaw, 0 towards −z): how far it is, how
+  /// far they've come, and their pace (m/s, on average).
   bool walking = false;
-  double heading = 0;
+  double heading = 0, walkLength = 0, walked = 0, walkSpeed = 1.4;
   CrewMode mode = CrewMode.free;
 
   /// The letter they work on (or kern), or −1.
@@ -1290,9 +1291,13 @@ class BuildPlan {
         ..x = fx + (tx - fx) * e
         ..z = fz + (tz - fz) * e;
       if ((tx - fx).abs() + (tz - fz).abs() > 0.06) {
+        final d = math.sqrt((tx - fx) * (tx - fx) + (tz - fz) * (tz - fz));
         out
           ..walking = true
-          ..heading = math.atan2(-(tx - fx), -(tz - fz));
+          ..heading = math.atan2(-(tx - fx), -(tz - fz))
+          ..walkLength = d
+          ..walked = d * e
+          ..walkSpeed = d / leg.walk;
       }
     }
     return out;

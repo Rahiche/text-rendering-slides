@@ -25,23 +25,24 @@ class PhotoCue {
   double flash = 0;
 }
 
-/// The finale with the Glyph Works' mini name.
+/// The finale with the Glyph Works' mini name: its pixel board.
 ///
-/// As the wall's last letter goes in, two makers lift the tray off its stand
-/// and carry it round to the front of the wall, the third following with the
-/// tripod. A few seconds into the celebration the team gathers in front of
-/// the big name — the six builders, the foreman, the makers — and the makers
-/// and the foreman hold the mini name at chest height. The photographer
-/// counts down (3, 2, 1, a raised hand each), the flash goes, hats fly and
-/// the mini name goes up over their heads. The camera goes back and forth
-/// between the mini name in their hands and the big name with the team in
-/// front, ending on the flash. Then everyone goes back to their places and
-/// the tray goes home to the works, safe before the wrecking ball.
+/// As the wall's last letter goes in, two makers lift the board off its
+/// stand (upright in their hands) and carry it round to the front of the
+/// wall, the third following with the tripod. A few seconds into the
+/// celebration the team gathers in front of the big name — the six
+/// builders, the foreman, the makers — the makers holding the board by its
+/// sides, the foreman steadying its top from behind. The photographer counts
+/// down (3, 2, 1, a raised hand each), the flash goes, hats fly and the
+/// board goes up over their heads. The camera goes back and forth between
+/// the mini name in their hands and the big name with the team in front,
+/// ending on the flash. Then everyone goes back to their places and the
+/// board goes home to the works, safe before the wrecking ball.
 ///
 /// A pure function of scene time, planned once per build: the carry from
 /// the build's end, the photo from the celebration's start. Called off
 /// early (a sample giving way to a visitor's name, or skipped), everyone
-/// turns back from wherever they are: no countdown, no flash, the tray home
+/// turns back from wherever they are: no countdown, no flash, the board home
 /// the way it came (never lifted, it stays on its stand).
 class PhotoOp {
   PhotoOp(this.crew, this.works, this.fx, this.parts);
@@ -53,11 +54,12 @@ class PhotoOp {
 
   final cue = PhotoCue();
 
-  /// The tray's height in the carriers' hands, and raised in the cheer.
-  static const _hold = 0.98, _raised = 1.5;
+  /// The board's bottom edge in the carriers' hands (its sides at their
+  /// waists), and raised in the cheer.
+  static const _hold = 0.85, _raised = 1.45;
 
-  /// Where the tray is held for the photo (its middle), and where the
-  /// tripod stands.
+  /// Where the board is held for the photo (the middle of its bottom edge),
+  /// and where the tripod stands.
   static final _spot = vm.Vector3(0, _hold, -2.75), _tripod = vm.Vector3(-1.55, 0, -6.15);
 
   /// The photo's beats after [_Now.ready] (everyone in place): the
@@ -87,7 +89,7 @@ class PhotoOp {
     return p;
   }
 
-  /// Poses the makers, places the tray and the tripod, and fills [cue], for
+  /// Poses the makers, places the board and the tripod, and fills [cue], for
   /// [j] at [t]. Call before the works' and the crew's updates.
   void update(BoothModel m, Job j, BuildPlan? plan, double t) {
     _t = t;
@@ -95,14 +97,14 @@ class PhotoOp {
       ..count = -1
       ..flash = 0;
     _now = null;
-    if (plan == null || !identical(plan.job, j) || works.trayDone == null) return;
+    if (plan == null || !identical(plan.job, j) || works.boardDone == null) return;
     if (j.phase.index < Phase.build.index) return;
     final p = _plan(plan);
     // The celebration's start: as it happened, or (before) as it will be;
     // and when the demolition came (the finale called off, if it was early).
     if (j.phase == Phase.celebrate) p.celebrate = j.phaseStart;
     if (j.phase.index >= Phase.demolish.index && p.over.isNaN) p.over = j.phaseStart;
-    if (t < math.min(p.lift - 3.5, math.min(p.toTray[0].start, p.toTray[1].start))) return;
+    if (t < math.min(p.lift - 3.5, math.min(p.toBoard[0].start, p.toBoard[1].start))) return;
     final c = j.phase.index >= Phase.celebrate.index && !p.celebrate.isNaN ? p.celebrate : plan.t0 + plan.len + m.pace.phaseLen(Phase.reveal);
     final away = math.min(p.over.isNaN ? double.infinity : p.over, p.backAt(c));
     var now = _cached;
@@ -111,66 +113,69 @@ class PhotoOp {
         p,
         c,
         away,
-        trayLen: works.trayLen,
+        boardW: works.boardWidth,
         watch: {for (var z = 0; z < Crew3D.builders; z++) z: crew.watchSpot(z, p.w), Crew3D.foreman: vm.Vector3(p.w / 2 + 0.75, 0, -1.55)},
       );
     }
     if (t >= now.done) return;
     _now = now;
-    _tray(now, t);
+    _board(now, t);
     _makers(now, t);
     _tripodAt(now, t);
     _cue(now, t);
   }
 
-  // ── The tray ──────────────────────────────────────────────────────────────
+  // ── The board ─────────────────────────────────────────────────────────────
 
-  /// The tray's middle at [t] (null: on its stand), its height, and which
-  /// way its carriers face. The tray itself never turns: the mini name
-  /// always reads to the front (they carry it side by side going out and
-  /// in, one behind the other along the wall).
-  ({double x, double z, double yaw, double y})? _trayAt(_Now n, double t) {
+  /// The board at [t] (null: on its stand): the middle of its bottom edge,
+  /// which way its carriers face, and how far it leans back (as on its
+  /// stand; upright in their hands). The board itself never turns: the mini
+  /// name always reads to the front (they carry it side by side going out
+  /// and in, one behind the other along the wall).
+  ({double x, double z, double yaw, double y, double tilt})? _boardAt(_Now n, double t) {
     final p = n.p;
     if (t < p.lift || t >= n.home) return null;
     if (t < math.min(p.out.end, n.away)) {
       final k = p.out.at(t);
       final up = eio(seg(t, p.lift, p.lift + 0.6));
-      return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(WorksLayout.trayY, _hold, up));
+      return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(WorksLayout.boardY, _hold, up), tilt: WorksLayout.boardTilt * (1 - up));
     }
     if (t < n.away) {
       // Held for the photo, raised in the cheer.
       final f = n.flash;
       final up = eio(seg(t, f + 0.25, f + 0.9)) * (1 - eio(seg(t, f + 2.6, f + 3.2)));
-      return (x: _spot.x, z: _spot.z, yaw: 0.0, y: lerp(_hold, _raised, up) - 0.02 * math.sin(t * 2.2) * (1 - up));
+      return (x: _spot.x, z: _spot.z, yaw: 0.0, y: lerp(_hold, _raised, up) - 0.02 * math.sin(t * 2.2) * (1 - up), tilt: 0.0);
     }
     // (Lifted before [_Now.away], so there's a way back.)
     final back = n.back!;
     final k = back.at(t);
     final down = eio(seg(t, back.end - 0.6, back.end));
-    return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(_hold, WorksLayout.trayY, down));
+    return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(_hold, WorksLayout.boardY, down), tilt: WorksLayout.boardTilt * down);
   }
 
-  void _tray(_Now n, double t) {
-    final k = _trayAt(n, t);
+  void _board(_Now n, double t) {
+    final k = _boardAt(n, t);
     if (k == null) return;
-    works.held = (at: vm.Vector3(k.x, k.y, k.z), yaw: 0.0);
+    works.held = (at: vm.Vector3(k.x, k.y, k.z), yaw: 0.0, tilt: k.tilt);
   }
 
-  /// Where the end of the tray at [side] (−1 left, +1 right, along it) is,
-  /// [inset] in from its tip.
-  vm.Vector3 _end(({double x, double z, double yaw, double y}) k, double side, double inset, vm.Vector3 out) =>
-      out..setValues(k.x + side * (works.trayLen / 2 - inset), k.y, k.z);
+  /// Where the board's side at [side] (−1 left, +1 right) is, [inset] in
+  /// from its edge, a third of the way up.
+  vm.Vector3 _side(({double x, double z, double yaw, double y, double tilt}) k, double side, double inset, vm.Vector3 out) {
+    final up = works.boardHeight * 0.35;
+    return out..setValues(k.x + side * (works.boardWidth / 2 - inset), k.y + up * math.cos(k.tilt), k.z + up * math.sin(k.tilt));
+  }
 
   // ── The makers ────────────────────────────────────────────────────────────
 
   final _a = vm.Vector3.zero(), _b = vm.Vector3.zero();
-  static final _onStand = (x: WorksLayout.tableX, z: WorksLayout.trayZ, yaw: 0.0, y: WorksLayout.trayY);
+  static final _onStand = (x: WorksLayout.boardX, z: WorksLayout.boardZ, yaw: 0.0, y: WorksLayout.boardY, tilt: WorksLayout.boardTilt);
 
   void _makers(_Now n, double t) {
     final p = n.p;
-    final k = _trayAt(n, t);
+    final k = _boardAt(n, t);
     for (var i = 0; i < 2; i++) {
-      final to = p.toTray[i], home = n.toHome[i];
+      final to = p.toBoard[i], home = n.toHome[i];
       if (home == null || t < to.start || t >= home.end) continue;
       works.finaleMakers |= 1 << i;
       final f = crew.poses[Crew3D.makers + i]
@@ -179,25 +184,25 @@ class PhotoOp {
       final side = i == 0 ? -1.0 : 1.0;
       final seed = 40 + i * 7;
       if (t < to.end) {
-        // To their end of the tray on the stand.
+        // To their side of the board on its stand.
         to.pose(f, t, seed);
         continue;
       }
       if (k == null && t >= home.start) {
-        // Home again, to their station.
+        // Home again.
         home.pose(f, t, seed);
         continue;
       }
       if (k == null) {
-        // At the stand, hands on the tray: about to lift it (or just set it
-        // down).
+        // At the stand, hands on the board's sides: about to lift it (or
+        // just set it down).
         to.pose(f, t, seed);
-        _hands(f, _end(_onStand, side, 0.02, _a));
-        f.lean = 0.25;
+        _grip(f, _side(_onStand, side, 0.02, _a));
+        f.lean = 0.2;
         continue;
       }
-      // At their end of the tray, facing where it goes, hands on it.
-      f.pos.setValues(k.x + side * (works.trayLen / 2 + 0.17), 0, k.z);
+      // At their side of the board, facing where it goes, holding it.
+      f.pos.setValues(k.x + side * (works.boardWidth / 2 + 0.17), 0, k.z);
       f.yaw = k.yaw;
       final walking = _moving(n, t);
       if (walking) {
@@ -205,8 +210,18 @@ class PhotoOp {
       } else {
         OffDuty.stand(f, t, seed);
       }
-      _hands(f, _end(k, side, 0.03, _a));
+      _grip(f, _side(k, side, 0.03, _a));
       if (!walking) _cheer(f, t, n.flash, seed, hands: true);
+    }
+  }
+
+  /// Both of [f]'s hands on the board's side at [at], one above the other.
+  void _grip(FigurePose f, vm.Vector3 at) {
+    for (var s = 0; s < 2; s++) {
+      _b
+        ..setFrom(at)
+        ..y += s == 0 ? -0.07 : 0.07;
+      crew.aim(f, s, _b);
     }
   }
 
@@ -227,7 +242,7 @@ class PhotoOp {
   }
 
   /// The cheer after the [flash]: the hat thrown up, a jump and both arms
-  /// up (only the hat, when the hands are on the tray).
+  /// up (only the hat, when the hands are on the board).
   void _cheer(FigurePose f, double t, double flash, int seed, {bool hands = false}) {
     final u = t - flash;
     if (u < 0) return;
@@ -386,12 +401,13 @@ class PhotoOp {
     f.yaw = 0.15 * math.sin(t * 0.6 + seed) * (1 - seg(t, n.ready + _counts[0] - 0.5, n.ready + _counts[0]));
     final fl = n.flash;
     if (who == Crew3D.foreman) {
-      // Hands under the back edge of the tray, behind the letters (and up
+      // Hands on the board's top edge from behind, steadying it (and up
       // with it in the cheer).
-      final k = _trayAt(n, t);
+      final k = _boardAt(n, t);
       if (k != null) {
+        final top = works.boardHeight;
         for (var s = 0; s < 2; s++) {
-          crew.aim(f, s, _b..setValues(k.x + (s == 0 ? -0.16 : 0.16), k.y - 0.03, k.z + 0.14));
+          crew.aim(f, s, _b..setValues(k.x + (s == 0 ? -0.2 : 0.2), k.y + top * math.cos(k.tilt) + 0.01, k.z + top * math.sin(k.tilt) + 0.04));
         }
       }
       _cheer(f, t, fl, seed, hands: true);
@@ -461,8 +477,9 @@ class PhotoOp {
     final close = (u >= 1.5 && u < 2.9) || (u >= 4.1 && u < 5.1);
     final Shot shot;
     if (close) {
-      final back = math.max(1.6, works.trayLen * 1.15);
-      shot = Shot(vm.Vector3(0.14, _hold + 0.46, _spot.z - back), vm.Vector3(0, _hold + 0.18, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
+      // The board left of the middle, clear of the countdown (top right).
+      final back = math.max(1.6, works.boardWidth * 1.35), s = 0.1 * back;
+      shot = Shot(vm.Vector3(0.14 + s, _hold + 0.5, _spot.z - back), vm.Vector3(s, _hold + works.boardHeight * 0.55, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
     } else {
       // From the pavement, a wide lens: the whole name, the team in front.
       final eye = vm.Vector3(0.3, 3.0, -10.0), tg = vm.Vector3(0, h * 0.42 + 0.2, -0.3);
@@ -474,9 +491,9 @@ class PhotoOp {
   }
 }
 
-/// The tray's carry: keys of where its middle is and which way the carriers
-/// face; between keys it moves evenly (turning on the spot the shortest way
-/// first, unless told which way to face: backing in).
+/// The board's carry: keys of where its middle is and which way the
+/// carriers face; between keys it moves evenly (turning on the spot the
+/// shortest way first, unless told which way to face: backing in).
 class _Track {
   _Track(double t, double x, double z, double yaw) {
     _key(t, x, z, yaw);
@@ -532,45 +549,40 @@ class _Track {
   }
 }
 
-/// The finale's plan for one build: when the tray is lifted, the carry out,
-/// the makers' and the photographer's walks there, where everyone stands.
+/// The finale's plan for one build: when the board is lifted, the carry
+/// out, the makers' and the photographer's walks there, where everyone
+/// stands.
 class _Plan {
   _Plan(BuildPlan plan, GlyphWorks works, Crew3D crew) : serial = plan.job.serial, w = plan.width {
     // (As the painting finishes: the reveal's last seconds, as long before
     // the celebration as when it was the booth's.)
     final end = plan.t0 + plan.len + CityPace.reveal - phaseSeconds[Phase.reveal]!;
-    final d = works.trayLen / 2 + 0.17;
-    // To their ends of the tray on the stand (once done with their letters).
+    final d = works.boardWidth / 2 + 0.17;
+    // To their sides of the board on its stand (once done with their
+    // letters, from wherever that left them).
     for (var i = 0; i < 2; i++) {
-      final x = WorksLayout.tableX + (i == 0 ? -1 : 1) * d, gap = WorksLayout.gaps[i];
-      final pts = [
-        vm.Vector3(WorksLayout.stationX[i], 0, WorksLayout.makerZ),
-        vm.Vector3(gap, 0, WorksLayout.makerZ),
-        vm.Vector3(gap, 0, WorksLayout.placeZ),
-        vm.Vector3(x, 0, WorksLayout.placeZ),
-        vm.Vector3(x, 0, WorksLayout.trayZ),
-      ];
-      toTray.add(Walk(pts, math.max(end - 4.6, works.freeAt(i)), 1.8));
+      final side = vm.Vector3(WorksLayout.boardX + (i == 0 ? -1 : 1) * d, 0, WorksLayout.boardZ);
+      toBoard.add(Walk(WorksLayout.route(works.freeSpot(i), side), math.max(end - 4.6, works.freeAt(i)), 1.8));
     }
-    lift = [end - 1.6, works.trayDone! + 0.6, toTray[0].end + 0.15, toTray[1].end + 0.15].reduce(math.max);
+    lift = [end - 1.6, works.boardDone! + 0.6, toBoard[0].end + 0.15, toBoard[1].end + 0.15].reduce(math.max);
     // Out of the front, round the wall's left end, along its front to the
     // middle; then turn to face the camera.
-    xa = math.min(WorksLayout.tableX, -(w / 2 + 3.0));
-    out = _Track(lift, WorksLayout.tableX, WorksLayout.trayZ, 0)
+    xa = math.min(WorksLayout.boardX, -(w / 2 + 3.0));
+    out = _Track(lift, WorksLayout.boardX, WorksLayout.boardZ, 0)
       ..hold(0.6)
-      ..walk(WorksLayout.tableX, 3.0, 1.4)
+      ..walk(WorksLayout.boardX, 3.0, 1.4)
       ..walk(xa, 1.2, 1.75)
       ..walk(xa, -2.6, 1.75)
       ..walk(PhotoOp._spot.x, PhotoOp._spot.z, 1.75)
       ..turn(0)
       ..hold(0.2);
-    // The photographer, with the tripod, after the tray.
+    // The photographer, with the tripod, after the board (out past its
+    // left).
+    home = WorksLayout.homes[2];
     toSpot = Walk(
       [
-        vm.Vector3(WorksLayout.stationX[2], 0, WorksLayout.makerZ),
-        vm.Vector3(WorksLayout.gaps[1], 0, WorksLayout.makerZ),
-        vm.Vector3(WorksLayout.gaps[1], 0, WorksLayout.placeZ),
-        vm.Vector3(WorksLayout.x1 - 0.5, 0, 4.2),
+        ...WorksLayout.route(works.freeSpot(2), WorksLayout.exit.first),
+        WorksLayout.exit.last,
         vm.Vector3(xa + 1.6, 0, 1.0),
         vm.Vector3(xa + 1.6, 0, -4.4),
         vm.Vector3(PhotoOp._tripod.x - 0.4, 0, PhotoOp._tripod.z - 0.5),
@@ -578,7 +590,7 @@ class _Plan {
       math.max(lift + 0.8, works.freeAt(2)),
       1.85,
     );
-    // The crew's places in the photo: the makers at the tray's ends, the
+    // The crew's places in the photo: the makers at the board's sides, the
     // foreman behind its middle, three builders either side (in the order
     // they stand watching, so their ways don't cross).
     final order = List.generate(Crew3D.builders, (z) => z)..sort((a, b) => crew.watchSpot(a, w).x.compareTo(crew.watchSpot(b, w).x));
@@ -592,38 +604,39 @@ class _Plan {
 
   final int serial;
   final double w;
-  final toTray = <Walk>[];
+  final toBoard = <Walk>[];
   late final double lift;
 
   /// Where the carry turns along the wall (left of its end).
   late final double xa;
   late final _Track out;
   late final Walk toSpot;
+
+  /// Where the photographer goes back to, after.
+  late final vm.Vector3 home;
   final slots = <int, vm.Vector3>{};
 
   /// When the celebration started, and when the demolition did (once seen).
   double celebrate = double.nan, over = double.nan;
 
   /// When everyone's in place (the countdown follows): ten seconds into
-  /// the celebration [c], or as soon as the tray and the tripod are there.
+  /// the celebration [c], or as soon as the board and the tripod are there.
   double readyAt(double c) => [c + 10, out.end + 0.8, toSpot.end + 2.0].reduce(math.max);
 
-  /// When the team goes back to their places and the tray home.
+  /// When the team goes back to their places and the board home.
   double backAt(double c) => readyAt(c) + PhotoOp._flash + PhotoOp._cheers;
 }
 
 /// The finale's times for one celebration (starting at [c]; the team going
-/// back at [away]): when everyone's in place, the tray's way home, everyone's
-/// walks there and back. Called off before the photo ([away] early: the
-/// demolition came first), they turn back from wherever they've got to, and
-/// whoever hadn't set out stays put.
+/// back at [away]): when everyone's in place, the board's way home,
+/// everyone's walks there and back. Called off before the photo ([away]
+/// early: the demolition came first), they turn back from wherever they've
+/// got to, and whoever hadn't set out stays put.
 class _Now {
-  _Now(this.p, this.c, this.away, {required double trayLen, required Map<int, vm.Vector3> watch})
-    : ready = p.readyAt(c),
-      calledOff = away < p.backAt(c) - 1e-6 {
+  _Now(this.p, this.c, this.away, {required double boardW, required Map<int, vm.Vector3> watch}) : ready = p.readyAt(c), calledOff = away < p.backAt(c) - 1e-6 {
     // (Never: far off, not infinite, so the easing over it stays a number.)
     flash = away > ready + PhotoOp._flash ? ready + PhotoOp._flash : 1e9;
-    // The tray home: back the way it came from where it got to (in a hurry
+    // The board home: back the way it came from where it got to (in a hurry
     // when called off), backing in at the end. Never lifted, it stays.
     if (away > p.lift) {
       final at = p.out.at(math.min(away, p.out.end));
@@ -644,41 +657,31 @@ class _Now {
       home = away;
     }
     for (var i = 0; i < 2; i++) {
-      final to = p.toTray[i];
+      final to = p.toBoard[i];
       if (away <= to.start) {
         toHome.add(null);
         continue;
       }
-      final x = WorksLayout.tableX + (i == 0 ? -1 : 1) * (trayLen / 2 + 0.17), gap = WorksLayout.gaps[i];
-      toHome.add(
-        Walk(
-          [
-            vm.Vector3(x, 0, WorksLayout.trayZ),
-            vm.Vector3(x, 0, WorksLayout.placeZ),
-            vm.Vector3(gap, 0, WorksLayout.placeZ),
-            vm.Vector3(gap, 0, WorksLayout.makerZ),
-            vm.Vector3(WorksLayout.stationX[i], 0, WorksLayout.makerZ),
-          ],
-          math.max(home, to.end) + 0.2,
-          1.35,
-        ),
-      );
+      final side = vm.Vector3(WorksLayout.boardX + (i == 0 ? -1 : 1) * (boardW / 2 + 0.17), 0, WorksLayout.boardZ);
+      toHome.add(Walk(WorksLayout.route(side, WorksLayout.homes[i]), math.max(home, to.end) + 0.2, 1.35));
     }
-    // The photographer packs up and follows (or turns back on the way).
+    // The photographer packs up and follows (or turns back on the way),
+    // and goes on home.
     final go = p.toSpot;
+    List<vm.Vector3> andHome(List<vm.Vector3> way) => [...way, ...WorksLayout.route(way.last, p.home).skip(1)];
     if (away <= go.start) {
       spotHome = null;
       fold = packed = away;
     } else if (away < go.end) {
-      spotHome = Walk(go.backFrom(away), away + 0.15, 1.5);
+      spotHome = Walk(andHome(go.backFrom(away)), away + 0.15, 1.5);
       fold = packed = away;
     } else {
       fold = calledOff ? away : away - 0.9;
       packed = fold + 0.9;
-      spotHome = Walk(go.pts.reversed.toList(), calledOff ? packed + 0.3 : away + 1.2, 1.5);
+      spotHome = Walk(andHome(go.pts.reversed.toList()), calledOff ? packed + 0.3 : away + 1.2, 1.5);
     }
     // The builders and the foreman: over for the photo (behind the line of
-    // the tray, then forward into place), and back.
+    // the board, then forward into place), and back.
     for (final MapEntry(key: who, value: slot) in p.slots.entries) {
       final from = watch[who]!;
       final start = c + 4.5 + (who == Crew3D.foreman ? 1.2 : 0.18 * who);

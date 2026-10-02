@@ -19,6 +19,7 @@ import 'perf.dart';
 import 'photo_chip.dart';
 import 'quality.dart';
 import 'tuning.dart';
+import 'works_chip.dart';
 import 'world/site_plan.dart' show CityPace;
 import 'world/world.dart';
 
@@ -155,6 +156,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         model.update(step);
         world.update(model, step);
         if (model.pending case final p?) await p;
+        // The Glyph Works' name (its atlas, its pixels) before going on.
+        if (world.site.works.pending case final p?) await p;
       }
       // Let the async letter meshes and the IBL bake catch up, then render.
       for (var i = 0; i < 6; i++) {
@@ -200,6 +203,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
           view,
           BoothOverlay(model: model),
           KernChip(model: model, caption: world.site.kern.caption),
+          WorksChip(model: model, caption: world.site.works.caption),
           PhotoChip(model: model, cue: world.site.photo.cue),
           if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
           const EventBadge(),

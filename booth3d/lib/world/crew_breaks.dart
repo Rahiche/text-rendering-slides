@@ -501,7 +501,11 @@ class CrewBreaks {
   }
 
   void _poseBreak(FigurePose p, _Break b, double t, double floor) {
-    final me = _me..rest();
+    // (Theirs: whatever's in their hands goes with them.)
+    final me = _me
+      ..rest()
+      ..nudgeX = p.nudgeX
+      ..nudgeZ = p.nudgeZ;
     if (b.spot == null) {
       _platformBreak(me, p, b, t);
     } else {

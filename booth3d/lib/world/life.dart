@@ -1159,6 +1159,8 @@ class _People {
       final snap = cheering && watcher && rnd(p.index, 77) < 0.33;
       final cheer = cheering && watcher && !snap;
       f.rest();
+      // (The crowd steers itself: see [_separate].)
+      f.steer = false;
       f.pos.setValues(p.x, 0, p.z);
       f.yaw = p.heading - math.pi / 2;
       if (amount < 1) {

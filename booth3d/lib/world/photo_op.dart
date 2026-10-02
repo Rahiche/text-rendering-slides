@@ -405,24 +405,37 @@ class PhotoOp {
       return;
     }
     // Waiting: a word with the neighbour; for the countdown, a pose each
-    // (a V, both arms up, a thumbs up, arms folded, hands on hips, a wave).
+    // (a V at the chest, hands clasped, a thumbs up, arms folded, hands on
+    // hips, a little wave).
     final strike = t < n.away ? eio(seg(t, n.ready + _counts[0] - 0.6, n.ready + _counts[0])) : 0.0;
     if (strike <= 0) {
       if ((t / 3).floor() % 3 == who % 3) OffDuty.talk(f, t, seed);
       return;
     }
-    final (p0, r0, p1, r1) = switch ((who + n.p.serial) % 6) {
-      0 => (0.1, 0.12, 2.9, 0.28),
-      1 => (2.8, 0.35, 2.8, 0.35),
-      2 => (-0.3, 0.85, 1.55, -0.1),
-      3 => (1.0, -0.75, 1.0, -0.75),
-      4 => (-0.3, 0.85, -0.3, 0.85),
-      _ => (0.1, 0.12, 2.6 + 0.25 * math.sin(t * 9), 0.35),
-    };
-    f.armPitch[0] = lerp(f.armPitch[0], p0, strike);
-    f.armRoll[0] = lerp(f.armRoll[0], r0, strike);
-    f.armPitch[1] = lerp(f.armPitch[1], p1, strike);
-    f.armRoll[1] = lerp(f.armRoll[1], r1, strike);
+    void angles(double p0, double r0, double p1, double r1) {
+      f.armPitch[0] = lerp(f.armPitch[0], p0, strike);
+      f.armRoll[0] = lerp(f.armRoll[0], r0, strike);
+      f.armPitch[1] = lerp(f.armPitch[1], p1, strike);
+      f.armRoll[1] = lerp(f.armRoll[1], r1, strike);
+    }
+
+    switch ((who + n.p.serial) % 6) {
+      case 0:
+        f.handTo(1, 0.2, 0.36, -0.24, strike);
+      case 1:
+        f
+          ..handTo(0, -0.035, 0.1, -0.21, strike)
+          ..handTo(1, 0.035, 0.1, -0.21, strike);
+      case 2:
+        angles(-0.3, 0.85, f.armPitch[1], f.armRoll[1]);
+        f.handTo(1, 0.2, 0.3, -0.3, strike);
+      case 3:
+        angles(0.68, -0.55, 0.68, -0.55);
+      case 4:
+        angles(-0.3, 0.85, -0.3, 0.85);
+      default:
+        f.handTo(1, 0.28, 0.4 + 0.03 * math.sin(t * 9), -0.24, strike);
+    }
   }
 
   /// Where the finale has [who] (a builder or the foreman) at [t], or null

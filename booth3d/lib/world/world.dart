@@ -6,11 +6,11 @@ import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/booth/web_fonts.dart';
 import 'package:text_slides/booth/model.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
+import 'package:vector_math/vector_math.dart' as vm;
 
 import '../perf.dart' show PerfLog;
 import '../tuning.dart';
 import 'city.dart';
-import 'city_plan.dart' show Plan;
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'figure_rig.dart' show FigureMotion;
@@ -122,11 +122,11 @@ class World3D {
       ..night = sky.night
       ..update(m, dt, site);
     site.captionFor(m, director.shotLabel);
-    // The site's people out on the pavement (the new manager's party, the
-    // driver): the crowd walks round them.
+    // The site's people (the crew, the new manager's party on the
+    // pavement, the driver): the crowd walks round them.
     final out = [
       for (final p in site.crew.poses)
-        if (p.visible && (p.pos.z < Plan.plazaZ0 - 0.2 || p.pos.x.abs() > Plan.plazaX + 0.2)) p.pos,
+        if (p.visible && p.pos.y < 0.5) vm.Vector3(p.pos.x + p.nudgeX, 0, p.pos.z + p.nudgeZ),
       ...site.vignettes.kit.walkers,
     ];
     mark('director');

@@ -20,6 +20,7 @@ import 'photo_chip.dart';
 import 'picture_fx.dart';
 import 'quality.dart';
 import 'scene_chip.dart';
+import 'world/figure.dart' show Figures;
 import 'tuning.dart';
 import 'works_chip.dart';
 import 'world/site.dart' show Site3D;
@@ -191,6 +192,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
     }
     out
       ..log(world.life.overlapReport())
+      ..log(Figures.of(world.scene).overlapReport())
       ..finish();
   }
 

@@ -88,6 +88,14 @@ class _Body {
   InstancedMesh? torso, hair;
   int torsoAt = -1, hairAt = -1, hat = -1, cap = -1, vest = -1, stripes = -1, skirt = -1, backpack = -1, bag = -1, board = -1, parasol = -1;
   bool hidden = false;
+
+  /// Where they were drawn in the last frame (feet, without the nudge),
+  /// how wide, which way they faced, whether walking or steering; when.
+  double x = 0, y = 0, z = 0, r = 0.25, yaw = 0, seen = double.nan;
+  bool walking = false, steer = true;
+
+  /// Their nudge (see [FigurePose.nudgeX]), and where it's heading.
+  double nx = 0, nz = 0, tx = 0, tz = 0;
 }
 
 /// Everybody's parts in one scene: a draw per part for everybody (about
@@ -229,8 +237,24 @@ class Figures {
       hide(n);
       return;
     }
+    final now = FigureMotion.clock;
+    if (now != _frameAt) _nudge(now);
     b.hidden = false;
     final size = look.size, g = look.girth * size, r = rig;
+    // Out of the way of whoever was in it.
+    p
+      ..nudgeX = p.steer && _nudgeOn ? b.nx : 0
+      ..nudgeZ = p.steer && _nudgeOn ? b.nz : 0;
+    if (b.seen != now) _seen.add(n);
+    b
+      ..x = p.pos.x
+      ..y = p.pos.y
+      ..z = p.pos.z
+      ..r = 0.24 * size * math.sqrt(look.girth)
+      ..yaw = p.yaw
+      ..walking = p.stride.isFinite
+      ..steer = p.steer
+      ..seen = now;
     p.motion = b.motion;
     r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
     _put(b.torso!, b.torsoAt, r.chest, g, size, g);
@@ -280,6 +304,157 @@ class Figures {
     if (b.parasol >= 0) {
       final at = r.palms[1];
       _put(_parasol, b.parasol, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+    }
+  }
+
+  // ── Out of each other's way ───────────────────────────────────────────────
+
+  /// Who was drawn in the frame at [_frameAt].
+  final _seen = <int>[];
+  double _frameAt = double.nan;
+
+  /// Capture runs count people still walking into each other (the ones
+  /// that steer): frames, pairs overlapping (summed), the deepest.
+  int _frames = 0, _bumps = 0;
+  double _deepest = 0, _deepestAt = 0;
+  String _deepestWho = '';
+
+  /// The worst moments (each a second or more apart): (depth, when, who).
+  final _worst = <(double, double, String)>[];
+
+  String overlapReport() =>
+      'FIGURES overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm at t=${_deepestAt.toStringAsFixed(1)} ($_deepestWho)\n'
+      '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}';
+
+  static const _counting = String.fromEnvironment('BOOTH3D_TIMES') != '';
+
+  /// (BOOTH3D_NUDGE=0: nobody steers round anybody, to compare.)
+  static const _nudgeOn = String.fromEnvironment('BOOTH3D_NUDGE', defaultValue: '1') != '0';
+
+  /// Each person's nudge for this frame, from where everyone was drawn in
+  /// the last: a walker eases sideways round whoever's in their way (to
+  /// the side they're already on; two coming at each other keep left),
+  /// then whoever's still touching is eased apart (a few rounds of it, so a
+  /// close crowd sorts itself out: between two who steer, half each;
+  /// someone standing gives way less to someone walking). People who don't
+  /// steer ([FigurePose.steer] false) are only walked round. Nobody goes
+  /// more than 0.6 m out of their way, and it comes and goes over a moment.
+  void _nudge(double now) {
+    final dt = (now - _frameAt).isFinite ? (now - _frameAt).clamp(0.0, 0.1) : 0.0;
+    final k = 1 - math.exp(-dt / 0.09);
+    final seen = _seen;
+    // Where each wants to be pushed to (from where they are, raw).
+    for (final i in seen) {
+      final a = _bodies[i];
+      a
+        ..tx = 0
+        ..tz = 0;
+      if (!a.steer || !a.walking) continue;
+      final fx = -math.sin(a.yaw), fz = -math.cos(a.yaw);
+      for (final j in seen) {
+        if (j == i) continue;
+        final b = _bodies[j];
+        final dx = b.x - a.x, dz = b.z - a.z;
+        if (dx.abs() > 2.0 || dz.abs() > 2.0 || (b.y - a.y).abs() > 0.5) continue;
+        final minD = a.r + b.r + 0.06;
+        // In their way (ahead, behind or alongside): off their line,
+        // sideways.
+        final l = -dx * fz + dz * fx, f = dx * fx + dz * fz;
+        if (l.abs() >= minD || f.abs() > minD + 1.1) continue;
+        final w = smooth(minD + 1.1, minD * 0.5, f.abs());
+        final share = b.steer && b.walking ? 0.5 : 1.0;
+        final meeting = b.walking && fx * -math.sin(b.yaw) + fz * -math.cos(b.yaw) < -0.3;
+        final side = l.abs() > 0.01 ? -l.sign : (meeting ? -1.0 : (i < j ? 1.0 : -1.0));
+        final need = (minD - l.abs()) * share * w * side;
+        a
+          ..tx += -fz * need
+          ..tz += fx * need;
+      }
+    }
+    // Still touching: apart, a few rounds.
+    for (var round = 0; round < 3; round++) {
+      for (var p = 0; p < seen.length; p++) {
+        final a = _bodies[seen[p]];
+        for (var q = p + 1; q < seen.length; q++) {
+          final b = _bodies[seen[q]];
+          if (!a.steer && !b.steer) continue;
+          var dx = b.x + b.tx - a.x - a.tx, dz = b.z + b.tz - a.z - a.tz;
+          if (dx.abs() > 0.8 || dz.abs() > 0.8 || (b.y - a.y).abs() > 0.5) continue;
+          final minD = a.r + b.r + 0.04, d = math.sqrt(dx * dx + dz * dz);
+          if (d >= minD) continue;
+          if (d > 1e-4) {
+            dx /= d;
+            dz /= d;
+          } else {
+            dx = 1;
+            dz = 0;
+          }
+          // How much each gives: none if they don't steer; someone standing
+          // a little to someone walking.
+          double give(_Body x, _Body y) => !x.steer ? 0.0 : (!x.walking && y.walking ? 0.25 : 1.0);
+          final ga = give(a, b), gb = give(b, a), sum = ga + gb;
+          if (sum <= 0) continue;
+          final o = minD - d;
+          a
+            ..tx -= dx * o * ga / sum
+            ..tz -= dz * o * ga / sum;
+          b
+            ..tx += dx * o * gb / sum
+            ..tz += dz * o * gb / sum;
+        }
+      }
+    }
+    for (final i in seen) {
+      final a = _bodies[i];
+      if (!a.steer) continue;
+      var tx = a.tx, tz = a.tz;
+      final m = math.sqrt(tx * tx + tz * tz);
+      if (m > 0.6) {
+        tx *= 0.6 / m;
+        tz *= 0.6 / m;
+      }
+      a
+        ..nx += (tx - a.nx) * k
+        ..nz += (tz - a.nz) * k;
+    }
+    if (_counting && seen.isNotEmpty) _count(now);
+    // Whoever wasn't drawn starts afresh.
+    for (final b in _bodies) {
+      if (b.seen != _frameAt) b.nx = b.nz = 0;
+    }
+    seen.clear();
+    _frameAt = now;
+  }
+
+  void _count(double now) {
+    _frames++;
+    for (var p = 0; p < _seen.length; p++) {
+      final a = _bodies[_seen[p]];
+      for (var q = p + 1; q < _seen.length; q++) {
+        final b = _bodies[_seen[q]];
+        if (!a.steer && !b.steer) continue;
+        final on = _nudgeOn ? 1.0 : 0.0;
+        final dx = b.x + (b.nx - a.nx) * on - a.x, dz = b.z + (b.nz - a.nz) * on - a.z;
+        if (dx.abs() > 0.8 || dz.abs() > 0.8 || (b.y - a.y).abs() > 0.5) continue;
+        final d = math.sqrt(dx * dx + dz * dz), minD = a.r + b.r;
+        if (d < minD) {
+          _bumps++;
+          String who(_Body q) => '#${q.n}${q.walking ? ' walking' : ''}${q.steer ? '' : ' (crowd)'} at ${q.x.toStringAsFixed(1)},${q.z.toStringAsFixed(1)}';
+          if (minD - d > _deepest) {
+            _deepest = minD - d;
+            _deepestAt = now;
+            _deepestWho = '${who(a)} + ${who(b)}';
+          }
+          if (minD - d > 0.12) {
+            final near = _worst.indexWhere((w) => (w.$2 - now).abs() < 1.0);
+            if (near < 0) {
+              _worst.add((minD - d, now, '${who(a)} + ${who(b)}'));
+            } else if (_worst[near].$1 < minD - d) {
+              _worst[near] = (minD - d, now, '${who(a)} + ${who(b)}');
+            }
+          }
+        }
+      }
     }
   }
 

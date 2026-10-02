@@ -14,6 +14,15 @@ class FigurePose {
   final pos = vm.Vector3.zero();
   double yaw = 0;
 
+  /// Eased aside from whoever's in the way (metres along x and z, on top of
+  /// [pos]): [Figures] works it out from the frame before; kept from frame
+  /// to frame ([rest] leaves it).
+  double nudgeX = 0, nudgeZ = 0;
+
+  /// Whether it steers round others ([nudgeX]): false for a crowd with its
+  /// own steering (they're still walked round).
+  bool steer = true;
+
   /// Torso pitch forward (radians) and a vertical bob.
   double lean = 0, bob = 0;
 
@@ -124,6 +133,7 @@ class FigurePose {
     bob = 0;
     clipboard = false;
     visible = true;
+    steer = true;
   }
 
   /// [q]'s pose, joint by joint.
@@ -172,6 +182,7 @@ class FigurePose {
     if (near) {
       stride = q.stride;
       clipboard = q.clipboard;
+      steer = q.steer;
     }
   }
 }
@@ -481,7 +492,7 @@ class FigureRig {
   void _place(FigurePose p, double size, double width, bool arms, FigureMotion? motion) {
     final j = joints;
     // The root: the feet, the facing, the lean into a turn.
-    _setYawRollPitch(root, p.pos.x, p.pos.y, p.pos.z, j[jYaw], -j[jBank], 0);
+    _setYawRollPitch(root, p.pos.x + p.nudgeX, p.pos.y, p.pos.z + p.nudgeZ, j[jYaw], -j[jBank], 0);
     final hipY = j[jHipY], hipZ = j[jHipZ], sway = j[jSway], roll = j[jHipRoll], breath = j[jBreath];
     _setYawRollPitch(_l, sway, hipY, hipZ, j[jPelvisYaw], roll, 0);
     pelvis
@@ -828,7 +839,7 @@ class FigureMotion {
   void filter(FigureRig rig, FigurePose p, {required bool arms, required bool commit}) {
     final j = rig.joints;
     final t = clock, dt = t - _t;
-    final dx = p.pos.x - _x, dz = p.pos.z - _z;
+    final px = p.pos.x + p.nudgeX, pz = p.pos.z + p.nudgeZ, dx = px - _x, dz = pz - _z;
     if (_t.isNaN || dt < 0 || dt > 0.3 || dx * dx + dz * dz > 0.64 || (arms && !_arms)) {
       // New, back after a while, or somewhere else: as posed.
       now.fillRange(0, _n, 0);
@@ -838,8 +849,8 @@ class FigureMotion {
           _rate[i] = _off[i] = _offRate[i] = 0;
         }
         _t = t;
-        _x = p.pos.x;
-        _z = p.pos.z;
+        _x = px;
+        _z = pz;
         _shownYaw = j[FigureRig.jYaw];
         _bank = 0;
         _arms = arms;
@@ -893,8 +904,8 @@ class FigureMotion {
     j[FigureRig.jBank] += bank;
     if (commit) {
       _t = t;
-      _x = p.pos.x;
-      _z = p.pos.z;
+      _x = px;
+      _z = pz;
       _shownYaw = yaw;
       _bank = bank;
       _arms = arms;

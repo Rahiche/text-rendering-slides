@@ -43,6 +43,8 @@ import 'v_family.dart';
 import 'v_farm.dart';
 import 'v_forge.dart';
 import 'v_gym.dart';
+import 'v_itemize.dart';
+import 'v_relay.dart';
 import 'v_tofu.dart';
 import 'v_tower.dart';
 import 'v_tram.dart';
@@ -117,6 +119,8 @@ class Site3D {
       BidiWorks(kit),
       GlyphAtlas(kit),
       PixelFarm(kit),
+      TextRelay(kit),
+      ItemizeWorks(kit),
     ],
   );
 

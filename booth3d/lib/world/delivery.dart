@@ -159,7 +159,7 @@ class Delivery3D implements StreetWork {
     // The camera follows each load in; not across a kerning close-up.
     final kerns = [
       for (final st in plan.steps)
-        if (st != null) (st.a - 2.0, st.e + 2.0),
+        if (st != null && st.filmed) (st.a - 2.0, st.e + 2.0),
     ];
     bool clashes(double a) => kerns.any((r) => a + 3 > r.$1 && a - 12 < r.$2);
     var earliest = j.startedAt + 11;
@@ -792,13 +792,13 @@ class Delivery3D implements StreetWork {
         // Behind and above, looking ahead along the avenue (a little lead);
         // cut to from whatever was on.
         final eye = vm.Vector3(px + 10.5, 5.0, pz + 2.2), tg = vm.Vector3(px - 7, 1.2, pz + 1.0);
-        out.add(Focus('delivery $n chase', Shot(eye, tg, fov: 48, settle: 0.45, drift: 0.5), priority: 2, cut: true));
+        out.add(Focus('delivery $n chase', Shot(eye, tg, fov: 48, settle: 0.45, drift: 0.5), priority: 2));
         return;
       }
       // Cut to alongside, from inside the plaza: it turns in through the
       // gate and pulls up by the yard.
       final eye = vm.Vector3(5.8, 5.2, -7.6), tg = vm.Vector3(lerp(px, gateX, 0.5), 1.4, lerp(pz, parkZ, 0.4));
-      out.add(Focus('delivery $n', Shot(eye, tg, fov: 44, settle: 1.3, drift: 0.5), priority: 2, cut: true));
+      out.add(Focus('delivery $n', Shot(eye, tg, fov: 44, settle: 1.3, drift: 0.5), priority: 2));
       return;
     }
   }

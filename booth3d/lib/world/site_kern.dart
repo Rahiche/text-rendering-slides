@@ -151,9 +151,10 @@ class Kern3D {
     final strike = tapAt(st);
     final age = (t - strike) / 0.55;
     if (age >= 0 && age < 1) fx.puff(st.pushX + 0.02, st.pushY, 0.05, age, 0.16, seed: st.letter * 17, n: 3, tint: _dust);
-    // The caption: in once the tape is out, out once it's back.
+    // The caption (with the camera on it): in once the tape is out, out
+    // once it's back.
     caption
-      ..show = seg(t, st.tapeB - 0.35, st.tapeB + 0.15) * (1 - seg(t, st.retractB, st.e + 0.35))
+      ..show = st.filmed ? seg(t, st.tapeB - 0.35, st.tapeB + 0.15) * (1 - seg(t, st.retractB, st.e + 0.35)) : 0
       ..left = st.left
       ..right = st.right
       ..em = st.em
@@ -172,9 +173,10 @@ class Kern3D {
     return back > 0 ? lerp(st.gapL, caseX, back * back) : lerp(caseX, st.gapL, eio(seg(t, st.tapeA, st.tapeB)));
   }
 
-  /// A camera close-up of step [st] at [t] and how much of the frame it
-  /// wants (0..1): low, at the builders' height, slightly to the side; on
-  /// the tape while it's measured, widening to take in the push.
+  /// A camera close-up of step [st] at [t] and how much it wants the
+  /// camera (0..1, easing in and out: the director cuts in halfway): low,
+  /// at the builders' height, slightly to the side; on the tape while it's
+  /// measured, widening to take in the push.
   static (vm.Vector3 eye, vm.Vector3 target, double fov, double weight) shot(KernStep st, double t) {
     final ease = st.full ? 1.1 : 0.7;
     final w = seg(t, st.a - ease, st.a + ease * 0.6) * (1 - seg(t, st.retractB - 0.1, st.e + 0.6));
@@ -193,6 +195,6 @@ class Kern3D {
     final a = (st.full ? 0.3 : 0.18) * side - 0.04 * math.sin(t * 0.4);
     final up = st.full ? 0.32 : 0.7;
     final eye = vm.Vector3(tg.x + math.sin(a) * dist, tg.y + up, tg.z - math.cos(a) * dist);
-    return (eye, tg, fov, w * (st.full ? 1.0 : 0.55));
+    return (eye, tg, fov, w);
   }
 }

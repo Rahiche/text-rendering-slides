@@ -21,6 +21,7 @@ import 'glyph_works.dart';
 import 'kit.dart';
 import 'photo_op.dart';
 import 'prop_pool.dart';
+import 'scene_caption.dart';
 import 'shot.dart';
 import 'site_crane.dart';
 import 'site_finish.dart';
@@ -155,6 +156,12 @@ class Site3D {
   /// What the camera should follow this frame (see [Focus]): filled during
   /// [update] by the site, the crew and the deliveries.
   final focus = <Focus>[];
+
+  /// The lower third for the shots without one of their own.
+  final caption = SceneCaption();
+
+  /// Which of BOOTH3D_LOOK's views to take (capture mode sets it per frame).
+  static int lookIndex = 0;
   final ballAt = vm.Vector3.zero();
   final truckAt = vm.Vector3(-40, 0, -4.5);
 
@@ -582,13 +589,46 @@ class Site3D {
     works.focus(focus, t);
     breaks.focus(focus, t);
     // Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
-    // the camera (with capture mode, to check a spot from a fixed eye).
+    // the camera (with capture mode, to check a spot from a fixed eye);
+    // several views split by '|' are taken in turn, one per captured frame.
     const look = String.fromEnvironment('BOOTH3D_LOOK');
     if (look.isNotEmpty) {
-      final v = look.split(',').map(double.parse).toList();
+      final views = look.split('|');
+      final v = views[math.min(lookIndex, views.length - 1)].split(',').map(double.parse).toList();
       focus.add(
-        Focus('look', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9, cut: true),
+        Focus('look $lookIndex', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9),
       );
+    }
+  }
+
+  /// What [caption] says, for [shot] (the director's name for what's on
+  /// screen): the bricks arriving, the finish, the next name's plans, the
+  /// demolition and the cleanup.
+  void captionFor(BoothModel m, String shot) {
+    final j = m.job, plan = _plan, t = m.t;
+    if (j == null || plan == null) {
+      caption.update(t, null);
+      return;
+    }
+    final close = shot.startsWith('finish') ? finish.closeUpAt(shot.substring(7)) : null;
+    if (shot.startsWith('delivery')) {
+      caption.update(t, 'delivery ${shot.split(' ')[1]}', kick: '資材搬入 · DELIVERY', line: '${plan.total} bricks', note: 'one for each pixel of “${j.name}”');
+    } else if (close case final s?) {
+      if (s.plaster) {
+        caption.update(t, shot, kick: '左官 · PLASTER', line: 'Anti-aliasing', note: 'the jagged pixel edges, smoothed over');
+      } else {
+        final hue = _hues[plan.letters.letters[s.letter].glyph % _hues.length];
+        final hex = (hue.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase();
+        caption.update(t, shot, kick: '塗装 · PAINT', line: '#$hex', note: "the letter's fill, from the top down", swatch: hue);
+      }
+    } else if (shot.startsWith('verdict')) {
+      caption.update(t, 'verdict', kick: '次の建物 · NEXT BUILD', line: m.upcoming, note: "the new manager's blueprint");
+    } else if (shot.startsWith('director demolish')) {
+      caption.update(t, 'demolish', kick: '解体 · DEMOLITION', line: 'Making way', note: 'for “${m.upcoming}”, next in line');
+    } else if (shot.startsWith('director cleanup')) {
+      caption.update(t, 'cleanup', kick: '片付け · CLEANUP', line: '${plan.total} bricks recycled', note: 'back to the yard for the next name');
+    } else {
+      caption.update(t, null);
     }
   }
 
@@ -682,11 +722,12 @@ class Site3D {
     }
     // The kerning close-ups.
     for (final st in plan.steps) {
-      if (st == null || t < st.a - 1.2 || t > st.e + 0.7) continue;
+      if (st == null || !st.filmed || t < st.a - 1.2 || t > st.e + 0.7) continue;
       final (eye, target, fov, w) = Kern3D.shot(st, t);
-      if (w <= 0) continue;
+      // (Cut in halfway through the ease in, out halfway through the out.)
+      if (w < 0.5) continue;
       final shot = Shot(eye, target, fov: fov, settle: st.full ? 1.2 : 1.7, drift: 0.5);
-      focus.add(Focus('kern ${st.letter}', shot, priority: 3, weight: w));
+      focus.add(Focus('kern ${st.letter}', shot, priority: 3));
     }
     return at == null ? -1 : at.$2;
   }
@@ -1129,7 +1170,16 @@ class Site3D {
         release = pass + 0.12 + (below ? 0.5 + 1.1 * rnd(i, 7) : 0.05 + 0.35 * rnd(i, 7)) + (wallHeight - p.y) * 0.03;
         v = vm.Vector3(-1.2 * rnd(i, 8) - 0.3, 0.8 * rnd(i, 9), (rnd(i, 10) - 0.5) * 2.0);
       }
-      out.add(_Fall(p, v, release, _axesFor(i), 3 + 6 * rnd(i, 11)));
+      // It comes to rest on the plaza: not out in the street, nor among
+      // the works and its smoking corner at the back left.
+      final fall = _Fall(p, v, release, _axesFor(i), 3 + 6 * rnd(i, 11));
+      final fly = fall.landAt(b) + 0.25;
+      final rx = p.x + v.x * fly, rz = p.z + v.z * fly;
+      final lx = -14.2 + 2.6 * rnd(i, 12), hx = 14.5 - 2.6 * rnd(i, 13);
+      if (rx < lx || rx > hx) v.x = ((rx < lx ? lx : hx) - p.x) / fly;
+      final lz = -7.6 + 1.5 * rnd(i, 14), hz = 1.6 - 1.2 * rnd(i, 15);
+      if (rz < lz || rz > hz) v.z = ((rz < lz ? lz : hz) - p.z) / fly;
+      out.add(fall);
     }
     return out;
   }

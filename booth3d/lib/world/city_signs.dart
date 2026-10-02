@@ -157,6 +157,9 @@ class CitySigns {
       for (final px in [-w / 2 + 0.3, w / 2 - 0.3]) {
         steel(vm.Vector3(0.12, 0.62 + h * 0.75, 0.12), vm.Vector3(px, (0.62 + h * 0.75) / 2, 0.45));
       }
+      // Its back, on the rack: from behind, a sign's back (not the word in
+      // mirror writing).
+      steel(vm.Vector3(w, h + 0.3, 0.08), vm.Vector3(0, 0.64 + h / 2, 0.56));
       final letters = MeshData(positions: m.positions, vertexCount: m.vertexCount, normals: m.normals, texCoords: m.uvs, indices: m.indices);
       _batch.add(_habits[k % _habits.length], _onSwatch(letters, color).transformed(root * vm.Matrix4.translation(vm.Vector3(0, 0.64, 0))));
     }

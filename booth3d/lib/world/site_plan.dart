@@ -251,6 +251,9 @@ class KernStep {
   final int letter;
   final bool full;
 
+  /// Whether the camera comes in for it (and its caption shows).
+  bool filmed = false;
+
   /// The pair and the font's kerning for it (em).
   late final String left, right;
   late final double em;
@@ -1089,6 +1092,14 @@ class BuildPlan {
             return st;
           }(),
     ];
+    // The camera films every pair the font kerns, and the first that's only
+    // checked, if there's time to follow it (once is enough to see one).
+    var checked = false;
+    for (final st in steps) {
+      if (st == null) continue;
+      st.filmed = st.full || (!checked && st.e - st.a >= 3.0);
+      if (st.filmed && !st.full) checked = true;
+    }
   }
 
   // ── Who's needed where ────────────────────────────────────────────────────

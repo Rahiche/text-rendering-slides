@@ -464,12 +464,12 @@ class PhotoOp {
     // nothing on the avenue gets between.)
     if (t < n.ready - 0.4) {
       final shot = Shot(vm.Vector3(-5.6, 2.4, -8.6), vm.Vector3(-0.6, 0.95, -2.4), fov: 46, settle: 1.6, drift: 0.6);
-      out.add(Focus('photo gather', shot, priority: 2, cut: true));
+      out.add(Focus('photo gather', shot, priority: 2));
       return;
     }
     if (t >= f + 0.4) {
       final tg = vm.Vector3(0, math.max(2.4, h * 0.5), -0.6);
-      out.add(Focus('photo cheer', Shot(vm.Vector3(0.7, 0.95, -8.3), tg, fov: 52, settle: 1.6, drift: 0.8), priority: 2, cut: true));
+      out.add(Focus('photo cheer', Shot(vm.Vector3(0.7, 0.95, -8.3), tg, fov: 52, settle: 1.6, drift: 0.8), priority: 2));
       return;
     }
     // Back and forth: wide, close, wide, close, wide for the flash.

@@ -84,9 +84,8 @@ class FigureRig {
   final _knee = [0.0, 0.0], _thigh = [0.0, 0.0], _foot = [0.0, 0.0], _ext = [0.0, 0.0];
 
   /// Poses the skeleton for [p]. [size] scales it (1: 1.72 m); [width] the
-  /// shoulders; [cab]: sits with the legs out (a cramped seat). Without
-  /// [arms], only the trunk, the head and the legs.
-  void solve(FigurePose p, {double size = 1, double width = 1, bool cab = false, bool arms = true}) {
+  /// shoulders. Without [arms], only the trunk, the head and the legs.
+  void solve(FigurePose p, {double size = 1, double width = 1, bool arms = true}) {
     final yaw = p.yaw, bob = p.bob;
     // Reaching down bends the back as well as the knees.
     final lean = p.stride.isFinite ? p.lean : math.min(1.25, p.lean + 1.4 * p.stoop);
@@ -121,7 +120,7 @@ class FigureRig {
       for (var s = 0; s < 2; s++) {
         final th = p.legPitch[s];
         var k = p.knee[s];
-        if (k.isNaN) k = lerp(0.07 + 0.55 * tuck, cab ? math.max(0.0, th - 1.15) : th, sit);
+        if (k.isNaN) k = lerp(0.07 + 0.55 * tuck, th, sit);
         _thigh[s] = th + a;
         _knee[s] = k + 2 * a;
         _foot[s] = -0.35 * tuck;
@@ -436,9 +435,6 @@ class FigureLook {
   double size = 1, girth = 1;
   bool slim = false;
 
-  /// Sits with the legs out when seated (the crane's cramped cab).
-  bool cab = false;
-
   vm.Vector4 skin = _white, hairColor = _white;
   Hair hair = Hair.short;
 
@@ -630,7 +626,7 @@ class Figures {
     }
     b.hidden = false;
     final size = look.size, g = look.girth * size, r = rig;
-    r.solve(p, size: size, width: look.slim ? 0.92 : 1, cab: look.cab);
+    r.solve(p, size: size, width: look.slim ? 0.92 : 1);
     _put(b.torso!, b.torsoAt, r.chest, g, size, g);
     // Children's heads are big for their size.
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;

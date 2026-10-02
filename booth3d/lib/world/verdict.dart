@@ -481,8 +481,8 @@ class Verdict3D {
   // ── The camera ────────────────────────────────────────────────────────────
 
   /// The camera's requests (priority 2, cuts): following the party in, the
-  /// unrolling, over the foreman's shoulder at the blueprint, the crew's
-  /// reaction as the manager points at the wall, the crane taking the ball.
+  /// unrolling, past the foreman at the blueprint, the crew's reaction as
+  /// the manager points at the wall, the crane taking the ball.
   void focus(List<Focus> out, double t) {
     final p = _p;
     if (p == null) return;
@@ -500,10 +500,10 @@ class Verdict3D {
       id = 'verdict unroll';
       shot = Shot(vm.Vector3(p.x + 0.9, 1.45, p.z - 4.0), vm.Vector3(p.x + 0.35, 0.95, p.z), fov: 42, settle: 1.4, drift: 0.4);
     } else if (u < _point) {
-      // Over the foreman's shoulder: the next name, readable.
-      final f = p.crew[Crew3D.foreman]!.go.last;
+      // At eye height past the foreman (on the left, his clipboard clear of
+      // it): the next name, readable, the planners over it.
       id = 'verdict read';
-      shot = Shot(vm.Vector3(f.x + 0.45, 1.95, f.z - 1.1), vm.Vector3(p.x + 0.05, _top - _h / 2 + 0.04, p.z), fov: 34, settle: 1.2, drift: 0.3);
+      shot = Shot(vm.Vector3(p.x + 0.1, 1.55, p.z - 3.4), vm.Vector3(p.x - 0.05, 0.95, p.z), fov: 38, settle: 1.2, drift: 0.3);
     } else if (u < _disperse - 0.2) {
       // From low at the left front: the manager pointing up at the name
       // towering over them, the crew looking up at it.
@@ -515,7 +515,7 @@ class Verdict3D {
       id = 'verdict ball';
       shot = Shot(vm.Vector3(b.x - 6.6, 2.4, b.z - 7.6), vm.Vector3(b.x - 1.2, 3.2, b.z), fov: 48, settle: 1.6, drift: 0.5);
     }
-    out.add(Focus(id, shot, priority: 2, cut: true));
+    out.add(Focus(id, shot, priority: 2));
   }
 
   /// How far the site gate should be open for the party at [t].
@@ -559,7 +559,7 @@ class _Plan {
       ..add((leave[0].at(1), leave[2].at(2)));
     // The crew round the blueprint's right front (the side they come
     // from: nobody crosses in front of it), in two staggered rows nearest
-    // first; the foreman at its left front, the camera behind him.
+    // first; the foreman at its left front, the camera past him.
     final order = List.generate(Crew3D.builders, (z0) => z0)..sort((a, b) => figures.watchSpot(a, w).x.compareTo(figures.watchSpot(b, w).x));
     const arc = [(28.0, 1.9), (34.0, 2.7), (52.0, 1.9), (56.0, 2.7), (76.0, 1.9), (78.0, 2.7)];
     for (var r = 0; r < Crew3D.builders; r++) {

@@ -471,7 +471,7 @@ class GlyphWorks {
     final journey = _journey;
     final busy = [
       for (final st in plan.steps)
-        if (st != null) (st.a - 1.5, st.e + 1.0),
+        if (st != null && st.filmed) (st.a - 1.5, st.e + 1.0),
       for (final (a, e) in busyCam) (a - 2.0, e + 2.0),
       if (journey != null)
         for (final (a, e, _) in journey.stretches) (a - 2.0, e + 2.0),
@@ -610,13 +610,18 @@ class GlyphWorks {
   /// board.
   static const _dwell = [3.2, 3.6, 4.2, 4.0, 4.2, 4.6, 4.0];
 
+  /// The longest the camera stays with the letter in one go, and how long
+  /// it's away on the site in between.
+  static const _stretch = 12.0, _away = 5.0;
+
   /// One letter's whole life in the works, followed by the camera: the
   /// first letter (its big one goes up first), from the moment the camera's
   /// free once the build is under way (after the delivery's shot), step by
   /// step at [_dwell] each. A kerning close-up (or another shot) takes the
-  /// camera away: the letter waits at the end of its step, and the camera
-  /// comes back for the next. Faster, down to 60 %, if it wouldn't land
-  /// before the build ends; none if it still wouldn't.
+  /// camera away, and so does the site every [_stretch] seconds or so: the
+  /// letter waits at the end of its step, and the camera comes back for the
+  /// next. Faster, down to 60 %, if it wouldn't land before the build ends;
+  /// none if it still wouldn't.
   void _planJourney(BuildPlan plan, List<(double, double)> busyCam, WorksName name) {
     _journey = null;
     if (name.letters.isEmpty) return;
@@ -627,7 +632,7 @@ class GlyphWorks {
     final fallback = l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0;
     final busy = [
       for (final st in plan.steps)
-        if (st != null) (st.a - 1.0, st.e + 0.6),
+        if (st != null && st.filmed) (st.a - 1.0, st.e + 0.6),
       for (final (a, e) in busyCam) (a - 0.3, e + 0.3),
     ]..sort((x, y) => x.$1.compareTo(y.$1));
     // The first moment ≥ [t] with [len] seconds free of them.
@@ -648,18 +653,21 @@ class GlyphWorks {
     final deadline = plan.t0 + plan.len - 1.0;
     for (var pace = 1.0; pace > 0.55; pace -= 0.1) {
       final jn = _Journey(k);
-      // The works' front first (1.8 s), then the steps; back after a cut
+      // The whole works first (1.8 s), then the steps; back after a cut
       // away, 0.4 s before the next.
       var from = clear(plan.t0 + 3.0, 1.8 + _dwell[0] * pace);
       var t = from + 1.8;
       var opening = true;
       for (var i = 0; i < 7; i++) {
         final d = (_dwell[i] + (i == 2 && fallback ? 1.0 : 0)) * pace;
-        if (clear(t, d) > t + 1e-6) {
+        // After a long look, back to the site for a few seconds (the two
+        // stories cut together).
+        final long = t - from > _stretch;
+        if (long || clear(t, d) > t + 1e-6) {
           // Away: this stretch ends with the step before; the letter waits.
           jn.stretches.add((from, t + 0.5, opening));
           opening = false;
-          from = clear(t, 0.4 + d);
+          from = clear(long ? t + 0.5 + _away : t, 0.4 + d);
           t = from + 0.4;
         }
         jn.at[i] = t;
@@ -679,7 +687,7 @@ class GlyphWorks {
   /// then the move in).
   static const _lead = 2.4;
 
-  /// The camera's request at [t] (priority 2, a cut): the works' front for a
+  /// The camera's request at [t] (priority 2, a cut): the whole works for a
   /// moment, then in on the step, following the letter down the line. Fills
   /// [caption] while it's on a step.
   void focus(List<Focus> out, double t) {
@@ -694,13 +702,13 @@ class GlyphWorks {
         final step = st.stepAt(t).clamp(0, 6);
         final Shot shot;
         if (opening && u < 1.8) {
-          shot = Shot(vm.Vector3(WorksLayout.cx + 0.9, 2.5, WorksLayout.z0 - 5.4), vm.Vector3(WorksLayout.cx - 0.3, 1.25, 6.0), fov: 54, settle: 0.6, drift: 0.4);
+          shot = _front;
         } else {
           shot = _stepShot(step, 0.2 * seg(t, jn.stretches.first.$1, jn.at[7]));
           _caption(name, jn.k, step, t, seg(u, opening ? 1.7 : 0.2, opening ? 2.3 : 0.6) * (1 - seg(t, e - 0.5, e)));
           caption.journey = true;
         }
-        out.add(Focus('works journey ${a.toStringAsFixed(1)}', shot, priority: 2, cut: true));
+        out.add(Focus('works journey ${a.toStringAsFixed(1)}', shot, priority: 2));
         return;
       }
     }
@@ -713,18 +721,21 @@ class GlyphWorks {
       final drift = 0.2 * seg(u, 1.5, c.to - c.from);
       final Shot shot;
       if (u < 1.8) {
-        // The whole works, its sign over the open front, the board inside
-        // (from over the heads of whoever's about in front).
-        shot = Shot(vm.Vector3(WorksLayout.cx + 0.9, 2.5, WorksLayout.z0 - 5.4), vm.Vector3(WorksLayout.cx - 0.3, 1.25, 6.0), fov: 54, settle: 0.6, drift: 0.4);
+        shot = _front;
       } else {
         shot = _stepShot(step, drift);
         _caption(name, c.k, step, t, seg(u, 1.7, 2.3) * (1 - seg(t, c.to - 0.5, c.to)));
         caption.journey = false;
       }
-      out.add(Focus('works ${c.from.toStringAsFixed(1)}', shot, priority: 2, cut: true));
+      out.add(Focus('works ${c.from.toStringAsFixed(1)}', shot, priority: 2));
       return;
     }
   }
+
+  /// The works to begin a visit: from just inside its front right corner,
+  /// under its sign, down the whole line (whoever's about in front of it,
+  /// on a break or on the way to one, is behind the camera).
+  static final _front = Shot(vm.Vector3(-9.2, 2.6, 3.4), vm.Vector3(-13.8, 0.9, 6.4), fov: 56, settle: 0.6, drift: 0.4);
 
   /// In on step [step] through the open front (clear of the smoking corner
   /// in front, past the board's left for the rasterizer).
@@ -737,8 +748,8 @@ class GlyphWorks {
       3 => Shot(vm.Vector3(-12.8 - drift, 1.72, 4.15), vm.Vector3(-12.95, 0.92, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
       4 => Shot(vm.Vector3(-11.65 - drift, 1.75, 4.2), vm.Vector3(-11.8, 0.85, z + 0.15), fov: 44, settle: 1.3, drift: 0.3),
       5 => Shot(vm.Vector3(-11.25 + drift, 1.75, 4.15), vm.Vector3(-10.8, 0.85, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
-      // The board, the pixels set in.
-      _ => Shot(vm.Vector3(-10.0 + drift, 1.62, 3.0), vm.Vector3(-9.72, 0.62, WorksLayout.boardZ + 0.2), fov: 44, settle: 1.3, drift: 0.3),
+      // The board, the pixels set in (and the letter's tile, held up).
+      _ => Shot(vm.Vector3(-10.3 + drift, 1.7, 2.85), vm.Vector3(-9.8, 1.05, WorksLayout.boardZ + 0.08), fov: 54, settle: 1.3, drift: 0.3),
     };
   }
 
@@ -1516,7 +1527,7 @@ class GlyphWorks {
       case 1:
         // A hand on the decoder, watching the bytes go in.
         _p.setValues(-15.1, WorksLayout.beltY + 0.36, WorksLayout.beltZ + 0.12);
-        crew.aim(p, 1, _p);
+        crew.aim(p, 1, _p, maxStoop: _bench);
         p.lean = 0.18;
       case 2 || 3:
         // The tile up to the cases, the sort out of one, onto the stick.
@@ -1530,14 +1541,14 @@ class GlyphWorks {
         final at = node.globalTransform.getTranslation();
         for (var h = 0; h < 2; h++) {
           _p.setValues(at.x + (h == 0 ? -0.06 : 0.06), at.y, at.z + 0.04);
-          crew.aim(p, h, _p);
+          crew.aim(p, h, _p, maxStoop: _bench);
         }
         p.yaw = (-(at.x - p.pos.x) * 0.6).clamp(-0.5, 0.5);
       case 4:
         // Turning the bender's crank.
         final c = t * 7;
         _p.setValues(WorksLayout.stepX[4] + 0.44, WorksLayout.beltY + 0.32 + 0.09 * math.sin(c), WorksLayout.beltZ + 0.16 - 0.09 * math.cos(c));
-        crew.aim(p, 1, _p);
+        crew.aim(p, 1, _p, maxStoop: _bench);
         p.lean = 0.22;
         p.armRoll[0] = 0.85;
         p.armPitch[0] = -0.3;
@@ -1549,12 +1560,12 @@ class GlyphWorks {
           for (var h = 0; h < 2; h++) {
             _p.setValues(h == 0 ? -0.18 : 0.18, 0.25, -0.05);
             m.transform3(_p);
-            crew.aim(p, h, _p);
+            crew.aim(p, h, _p, maxStoop: _bench);
           }
           p.lean = 0.3;
         } else {
           _p.setValues(WorksLayout.stepX[5] + 0.42, WorksLayout.beltY + 0.2, WorksLayout.beltZ + 0.12);
-          crew.aim(p, 1, _p);
+          crew.aim(p, 1, _p, maxStoop: _bench);
           p.lean = 0.15;
           p.armRoll[0] = 0.85;
           p.armPitch[0] = -0.3;
@@ -1583,10 +1594,14 @@ class GlyphWorks {
     s.toHome = Walk(back, s.at[7] + 0.3, Walk.lengthOf(back) / math.max(0.5, s.homeAt - s.at[7] - 0.3));
   }
 
+  /// How low a maker crouches to reach along the belt (a little: they lean
+  /// over it, rather than duck under the bench).
+  static const _bench = 0.12;
+
   /// Arm [s] of [p] towards [at], by [k] (0: as it was).
   void _reach(FigurePose p, int s, vm.Vector3 at, double k) {
     final pitch = p.armPitch[s], roll = p.armRoll[s];
-    crew.aim(p, s, at);
+    crew.aim(p, s, at, maxStoop: _bench);
     p.armPitch[s] = lerp(pitch, p.armPitch[s], k);
     p.armRoll[s] = lerp(roll, p.armRoll[s], k);
   }

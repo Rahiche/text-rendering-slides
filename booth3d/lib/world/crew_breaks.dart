@@ -916,7 +916,7 @@ class CrewBreaks {
     // Not near a kerning close-up (its camera wins).
     final kerns = [
       for (final st in plan.steps)
-        if (st != null) (st.a - 2.0, st.e + 1.5),
+        if (st != null && st.filmed) (st.a - 2.0, st.e + 1.5),
     ];
     // When the camera is taken (the delivery's shots, with a margin, and
     // the kerning steps), in order.
@@ -966,33 +966,36 @@ class CrewBreaks {
     if (out.any((f) => f.priority >= 2)) return;
     for (final f in _follows) {
       if (t < f.from || t >= f.to) continue;
+      // (The camera cuts in a moment after the plan's start, out a moment
+      // before its end.)
+      if (t < f.from + 0.7 || t >= f.to - 0.8) return;
       final b = f.b;
       final p = _fp..rest();
       final (walking, heading) = _place(b, t, p);
-      final weight = seg(t, f.from, f.from + 1.4) * (1 - seg(t, f.to - 1.6, f.to));
       // Close up at the spot (blending in as they arrive).
       final at = eio(seg(t, b.arrive - 1.2, b.arrive + 0.6));
       final hx = -math.sin(walking ? heading : 0), hz = -math.cos(walking ? heading : 0);
       final followEye = vm.Vector3(p.pos.x - hx * 6.0, 4.6, p.pos.z - hz * 6.0);
       final followTg = vm.Vector3(p.pos.x + hx * 2.6, 0.8, p.pos.z + hz * 2.6);
-      final (closeEye, closeTg) = _closeShot(b);
+      final (closeEye, closeTg, closeFov) = _closeShot(b);
       final eye = followEye + (closeEye - followEye) * at;
       final tg = followTg + (closeTg - followTg) * at;
-      out.add(Focus('break ${b.who} ${f.from.round()}', Shot(eye, tg, fov: lerp(42, 36, at), settle: 1.5, drift: 0.6), priority: 1, weight: weight));
+      out.add(Focus('break ${b.who} ${f.from.round()}', Shot(eye, tg, fov: lerp(42, closeFov, at), settle: 1.5, drift: 0.6), priority: 1));
       return;
     }
   }
 
-  /// A three-quarter look at [b]'s spot, from the open side.
-  (vm.Vector3, vm.Vector3) _closeShot(_Break b) {
+  /// A look at [b]'s spot: eye, target and lens.
+  (vm.Vector3, vm.Vector3, double) _closeShot(_Break b) {
     switch (b.spot!.group) {
       case 0:
-        // From over the front fence (the truck, if it's there, on the left).
-        return (vm.Vector3(14.9, 5.2, -11.8), vm.Vector3(15.8, 1.0, -4.8));
+        // The machines' lit fronts from the plaza, the can bin beside them.
+        return (vm.Vector3(11.8, 2.4, -7.8), vm.Vector3(16.0, 1.2, -5.4), 42);
       case 1:
-        return (vm.Vector3(-11.6, 3.2, -0.6), vm.Vector3(-15.0, 0.95, 3.0));
+        // From high over the way to it: the ashtray, the crate, its sign.
+        return (vm.Vector3(-14.2, 5.5, -1.8), vm.Vector3(-16.1, 0.9, 2.5), 38);
       default:
-        return (vm.Vector3(-14.8, 2.6, -2.8), vm.Vector3(-18.1, 0.8, 0.0));
+        return (vm.Vector3(-14.8, 2.6, -2.8), vm.Vector3(-18.1, 0.8, 0.0), 36);
     }
   }
 }

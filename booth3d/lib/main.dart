@@ -17,9 +17,12 @@ import 'kern_chip.dart';
 import 'loading.dart';
 import 'perf.dart';
 import 'photo_chip.dart';
+import 'picture_fx.dart';
 import 'quality.dart';
+import 'scene_chip.dart';
 import 'tuning.dart';
 import 'works_chip.dart';
+import 'world/site.dart' show Site3D;
 import 'world/site_plan.dart' show CityPace;
 import 'world/world.dart';
 
@@ -150,11 +153,20 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       model.submit(n);
     }
     final targets = _times.split(',').map((s) => double.parse(s.trim())).toList()..sort();
-    for (final target in targets) {
+    // The shot list: every cut (or new shot glided to), as it happens.
+    final d = world.director;
+    var shot = '', cuts = 0;
+    for (final (i, target) in targets.indexed) {
+      Site3D.lookIndex = i;
       while (model.t < target) {
         final step = math.min(1 / 30, target - model.t + 1e-9);
         model.update(step);
         world.update(model, step);
+        if (d.shotLabel != shot || d.cuts != cuts) {
+          out.log('SHOT ${model.t.toStringAsFixed(2)} ${d.cuts != cuts ? 'cut  ' : 'glide'} ${model.job?.phase.name ?? '-'} · ${d.shotLabel}');
+          shot = d.shotLabel;
+          cuts = d.cuts;
+        }
         if (model.pending case final p?) await p;
         // The Glyph Works' name (its atlas, its pixels) before going on.
         if (world.site.works.pending case final p?) await p;
@@ -170,12 +182,12 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       final png = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       final j = model.job;
-      // Whole seconds as t0020; fractions keep a decimal (t0020.5).
-      final stamp = target == target.roundToDouble() ? target.toStringAsFixed(0).padLeft(4, '0') : target.toStringAsFixed(1).padLeft(6, '0');
+      // Whole seconds as t0020; fractions keep two decimals (t0020.50).
+      final stamp = target == target.roundToDouble() ? target.toStringAsFixed(0).padLeft(4, '0') : target.toStringAsFixed(2).padLeft(7, '0');
       final name = 't${stamp}_${j?.phase.name ?? 'none'}.png';
       out
         ..save(name, png!.buffer.asUint8List())
-        ..log('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)})');
+        ..log('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)} · ${world.director.shotLabel})');
     }
     out.finish();
   }
@@ -201,10 +213,12 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         fit: StackFit.expand,
         children: [
           view,
+          PictureFx(model: model),
           BoothOverlay(model: model),
           KernChip(model: model, caption: world.site.kern.caption),
           WorksChip(model: model, caption: world.site.works.caption),
           PhotoChip(model: model, cue: world.site.photo.cue),
+          SceneChip(model: model, caption: world.site.caption),
           if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
           const EventBadge(),
         ],

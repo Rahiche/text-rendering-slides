@@ -21,7 +21,7 @@ kept on disk.
 | app | what | build |
 | --- | --- | --- |
 | **Name Factory · 名前工場** | 2D: the glyph factory rasterizes the name into bricks, a crane and builders lay them, a wrecking ball, recycling. Ctrl+Shift+M switches to the **Name Workshop · 名前工房**: one character at a time, each in a different craft (calligraphy, welding, neon, casting, 3D printing, carving, carpentry, bricks, embroidery, laser, concrete, blocks, kintsugi, stencil, light bulbs, topiary). | `tool/build_booth_macos.sh` |
-| **Name City · 名前の街** | 3D (flutter_scene, Flutter 3.47+): the name as a wall of brick pixels in a city of glyph towers; the smooth letters rise through it; fireworks; physics-y demolition. | `booth3d/tool/build_macos.sh` |
+| **Name City · 名前の街** | 3D (flutter_scene, Flutter 3.47+): a crew builds the name letter by letter as a wall of brick pixels — the truck brings the bricks, they kern each pair by hand, plaster the jagged edges smooth (anti-aliasing) and paint the letters — while the Glyph Works next door takes the same name from UTF-8 bytes to pixels; then a team photo, the next name's blueprint, the wrecking ball and the cleanup. Cut together like a broadcast: the two stories intercut, close-ups, captions. | `booth3d/tool/build_macos.sh` |
 
 Web previews: `/booth/` and `/workshop/` on the site.
 
@@ -35,6 +35,10 @@ Frames at chosen scene times, without waiting in real time:
 tool/booth_capture.sh --times 10,60,120 --names "田中太郎" [--mode craft] [--crafts neon]
 booth3d/tool/capture.sh --times 10,60,120 --names "田中太郎"
 ```
+
+Name City's capture log lists every shot as it's cut to (`SHOT <t> cut|glide <phase> · <shot>`),
+and `--define "BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz,fov|…"` pins the camera (a view per captured frame)
+to try a framing.
 
 Name City keeps itself smooth on a fanless laptop running all day: the 3D view
 renders at 1.5× the 1600×900 design canvas (never finer than the screen shows),

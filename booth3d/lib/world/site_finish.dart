@@ -1138,8 +1138,9 @@ class Finish3D {
 
   List<_CloseUp>? _shots;
 
-  /// The close-ups (priority 3, cuts): the plasterer's float smoothing a
-  /// jagged edge, then a roller turning a band colourful.
+  /// The close-ups (priority 3): the plasterer's float smoothing a jagged
+  /// edge — the whole letter first, pushing in on the steps filling in —
+  /// then a roller turning a letter colourful, the painter below it.
   void focus(List<Focus> out) {
     final p = _plan, j = _job, shots = _shots;
     if (!_on || p == null || j == null || shots == null || j.phase != Phase.reveal) return;
@@ -1149,23 +1150,37 @@ class Finish3D {
       final unit = s.unit, plasterer = s.plaster;
       final start = plasterer ? unit.plaster : unit.paint;
       final front = p.frontAt(unit, math.min(u, start + unit.run / p.v), plaster: plasterer);
+      final mid = (unit.y0 + unit.y1) / 2, tall = unit.y1 - unit.y0;
       final Shot shot;
       if (plasterer) {
-        // Down the jagged edge with the float: a little outside the edge
-        // and above the work, the smooth plaster above, the steps still to
-        // go below, the float on its pole coming in from the plasterer.
+        // The whole letter, pushing in on the edge being smoothed: the
+        // plaster above the float, the steps still to go below it.
+        final k = eio(seg(u, s.from + 0.3, s.to));
         final x = _edgeX(p, unit, front - 0.1, s.side);
-        final tg = vm.Vector3(lerp(x, unit.cx, 0.45), front - 0.3, _face0);
-        shot = Shot(vm.Vector3(tg.x + s.side * 0.6, tg.y + 0.7, tg.z - 5.2), tg, fov: 32, settle: 0.5, drift: 0.2);
+        final whole = vm.Vector3(unit.cx, mid, _face0);
+        final tg = whole + (vm.Vector3(lerp(x, unit.cx, 0.4), front - 0.25, _face0) - whole) * k;
+        final back = lerp(math.max(6.5, tall * 1.5 + 1.6), 5.6, k);
+        shot = Shot(vm.Vector3(tg.x + s.side * lerp(1.3, 0.7, k), tg.y + lerp(0.3, 0.6, k), _face0 - back), tg, fov: lerp(40, 34, k), settle: 0.6, drift: 0.2);
       } else {
-        // The roller on the band, the colour going on.
+        // Looking up from eye height: the colour going on, the painter on
+        // the pole under it, the rest of the letter still bare.
         final side = unit.cx < 0 ? 1.0 : -1.0;
-        final tg = vm.Vector3(unit.cx, front, _face0);
-        shot = Shot(vm.Vector3(tg.x + side * 1.5, tg.y + 0.9, tg.z - 5.2), tg, fov: 32, settle: 0.5, drift: 0.25);
+        final tg = vm.Vector3(unit.cx, lerp(front, mid, 0.45), _face0);
+        shot = Shot(vm.Vector3(tg.x + side * 1.8, 1.6, _face0 - math.max(6.2, tall * 1.45 + 1.4)), tg, fov: 40, settle: 0.6, drift: 0.25);
       }
-      out.add(Focus('finish ${s.from.toStringAsFixed(1)}', shot, priority: 3, cut: true));
+      out.add(Focus('finish ${s.from.toStringAsFixed(1)}', shot, priority: 3));
       return;
     }
+  }
+
+  /// The close-up from [from] seconds into the reveal (as its focus names
+  /// it), if there is one: whether it's the plaster's, and its letter (the
+  /// plan's).
+  ({bool plaster, int letter})? closeUpAt(String from) {
+    for (final s in _shots ?? const <_CloseUp>[]) {
+      if (s.from.toStringAsFixed(1) == from) return (plaster: s.plaster, letter: s.unit.letter);
+    }
+    return null;
   }
 
   /// Picks the close-ups: the plasterer on the jaggiest edge of an early

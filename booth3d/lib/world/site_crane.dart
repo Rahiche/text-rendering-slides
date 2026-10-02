@@ -102,10 +102,10 @@ class Crane3D {
     // A slewing ring under the turntable.
     _slew.add(Node(name: 'slewing ring', mesh: Mesh(CylinderGeometry(bottomRadius: 0.75, topRadius: 0.75, height: 0.3, radialSegments: 20), dark), localTransform: trs(vm.Vector3(0, -0.4, 0))));
     // The operator's cab: a frame with glass all round, at the side of the
-    // mast head, looking down the jib.
+    // mast head, looking down the jib (tall enough to sit up in).
     final cabFrame = MeshBatch();
-    const cw = 1.25, ch = 1.25, cd = 1.25;
-    final c0 = vm.Vector3(-0.95, -1.45, 1.2); // cab floor centre
+    const cw = 1.25, ch = 1.7, cd = 1.25;
+    final c0 = vm.Vector3(-0.95, -1.9, 1.2); // cab floor centre
     for (final sx in [-1, 1]) {
       for (final sz in [-1, 1]) {
         final p = c0 + vm.Vector3(sx * cw / 2, 0, sz * cd / 2);
@@ -224,7 +224,7 @@ class Crane3D {
       _ball.place((m) => setTrs(m, rest.x, rest.y, rest.z));
     }
     // The operator's seat (world): in the cab, facing down the jib.
-    const sx = -0.8, sy = -1.33, sz = 1.0;
+    const sx = -0.8, sy = -1.78, sz = 1.0;
     seat.setValues(mx + sx * c + sz * s, jibY + sy, mz - sx * s + sz * c);
     seatYaw = slew + math.pi / 2;
     // The beacons blink, brighter at night.

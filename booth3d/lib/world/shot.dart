@@ -13,24 +13,17 @@ class Shot {
 /// kerning close-up, a builder on a coffee break, the delivery driver.
 ///
 /// Requests are made afresh every frame (into [Site3D.focus]); the
-/// director frames the most important one over its own rotation of shots.
-/// Someone typing at the booth still wins over all of them.
+/// director cuts to the most important one (and back after it), holding
+/// every shot a moment at least. Someone typing at the booth still wins
+/// over all of them.
 class Focus {
-  Focus(this.id, this.shot, {this.priority = 1, this.weight = 1, this.cut = false});
+  Focus(this.id, this.shot, {this.priority = 1});
 
   /// Who or what is followed ('kern 2', 'break 4', 'delivery'): a new id
-  /// starts a new request (for [cut]).
+  /// is a new shot (a cut, unless it's framed much as the last).
   final String id;
   final Shot shot;
 
   /// Higher wins: 3 the kerning close-up, 2 a delivery, 1 a break.
   final int priority;
-
-  /// 0..1: how much of the frame is this request's (ease it in and out;
-  /// ignored when [cut]).
-  final double weight;
-
-  /// Cut to it when it starts (and back when it ends) instead of gliding:
-  /// for a subject across the city from the wall.
-  final bool cut;
 }

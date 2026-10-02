@@ -13,12 +13,18 @@ import 'site_plan.dart';
 /// shot of the city while a name comes in, a rotation of framings while the
 /// wall goes up (the whole name, the builders up close, the crane's view,
 /// the site from afar, a low hero angle), straight on for the reveal, low
-/// and looking up for the fireworks, a dramatic low three-quarter for the
-/// wrecking ball (with a shake when it hits), and following the truck.
+/// and looking up for the fireworks; the wrecking ball brought round, its
+/// hit from along the wall (with a shake), the crowd watching, the wreck;
+/// the truck taking the rubble away.
 ///
-/// The camera glides between framings on critically damped springs, drifts
-/// a little like it's hand-held, and is kept out of the wall, the crane and
-/// the ground. The name stays readable while it's built and celebrated.
+/// In between, the world's requests ([Site3D.focus]): the kerning, the
+/// Glyph Works, a break, the delivery, the finish, the photo, the new
+/// manager. Edited like a broadcast: a new shot is a cut (a glide if it's
+/// framed much as the last one), every shot holds a couple of seconds at
+/// least, and a request right after another cuts straight to it. Within a
+/// shot the camera follows on critically damped springs, drifts a little
+/// like it's hand-held, and is kept out of the wall, the crane and the
+/// ground. The name stays readable while it's built and celebrated.
 class Director {
   PerspectiveCamera camera = PerspectiveCamera(position: vm.Vector3(0, 12, -34), target: vm.Vector3(0, 3, 0));
 
@@ -27,8 +33,33 @@ class Director {
   final _fov = _Spring(42);
   Job? _job;
   int _jobs = 0;
-  String? _focus;
-  bool _focusWasCut = false;
+
+  /// The shot on screen: its name (the focus request's id, else the
+  /// director's own framing), when it was cut to, and its framing last
+  /// frame (held a moment longer when the next comes too soon).
+  String _label = '';
+  double _since = -1e9;
+  Shot? _held;
+
+  /// The director's own framing this frame.
+  String _kind = '';
+
+  /// What the camera is on (for capture logs).
+  String get shotLabel => _label;
+
+  /// Cuts so far (for capture logs: the shot list).
+  int cuts = 0;
+
+  /// Every shot is held at least this long: no flash frames between two
+  /// requests.
+  static const minHold = 2.0;
+
+  /// A request that just ended keeps the camera on its last framing this
+  /// long, in case another comes straight after; when one was last on, and
+  /// in which phase.
+  static const bridge = 1.6;
+  double _focusAt = -1e9;
+  Phase? _focusPhase;
 
   /// How much the camera should care about the typed letters (0..1).
   double typingWeight = 0;
@@ -39,33 +70,52 @@ class Director {
   void update(BoothModel m, double dt, Site3D site) {
     final j = m.job;
     final t = m.t;
+    // A new name: cut to its establishing shot.
+    final newJob = !identical(j, _job);
+    if (newJob) {
+      _job = j;
+      _jobs++;
+    }
+    var cut = newJob && _jobs > 1 && j != null;
     var shot = _keepInFront(_shot(j, t, site));
-    // Something worth following (kerning close up, a break, the driver).
+    var label = 'director $_kind';
+    // Something worth following (kerning close up, a break, the driver):
+    // the most important request has the camera.
     Focus? f;
     for (final r in site.focus) {
       if (f == null || r.priority > f.priority) f = r;
     }
-    var cutTo = false;
-    if (f != null && f.cut) {
+    final phase = j?.phase;
+    if (f != null) {
       shot = _keepInFront(f.shot);
-      cutTo = f.id != _focus;
-    } else if (f != null) {
-      shot = _blend(shot, _keepInFront(f.shot), eio(f.weight.clamp(0.0, 1.0)));
+      label = f.id;
+      _focusAt = t;
+      _focusPhase = phase;
+    } else if (!cut && _held != null && t - _focusAt < bridge && phase == _focusPhase && !_label.startsWith('director')) {
+      // A request just ended: stay on its last framing a moment, in case
+      // another comes straight after (a cut from one to the next, no
+      // filler between).
+      shot = _held!;
+      label = _label;
     }
-    // Back from a cut-to request: cut back too.
-    final cutBack = f?.id != _focus && _focusWasCut;
-    _focus = f?.id;
-    _focusWasCut = f?.cut ?? false;
+    if (label != _label || cut) {
+      if (!cut && t - _since < minHold && _held != null && !label.startsWith('look')) {
+        // Too soon after the last cut: hold that shot a moment longer.
+        shot = _held!;
+      } else {
+        // Something else: cut to it, unless it's framed much as the camera
+        // already is (then glide: no jump cut).
+        // (A capture's pinned views always cut.)
+        cut = cut || _far(shot) || label.startsWith('look');
+        _label = label;
+        _since = t;
+      }
+    }
+    _held = shot;
+    if (cut) cuts++;
     // Someone is typing: make sure their letters (dropping in at the front
     // of the plaza, just above the input on screen) are in the picture.
     if (typingWeight > 0.001 && j != null) shot = _blend(shot, _keepInFront(_typingShot(j, t, site)), eio(typingWeight));
-    var cut = cutTo || cutBack;
-    if (!identical(j, _job)) {
-      _job = j;
-      _jobs++;
-      // A new name: cut to the establishing shot rather than glide there.
-      cut = _jobs > 1 && j != null;
-    }
     final settle = shot.settle;
     if (cut) {
       _eye.snap(shot.eye);
@@ -100,13 +150,26 @@ class Director {
     camera = PerspectiveCamera(position: eye, target: target, fovRadiansY: _fov.value * math.pi / 180, fovNear: 0.2, fovFar: 900);
   }
 
+  /// Whether [s] frames something other than the camera does now: it
+  /// looks another way, or at something else, or from somewhere else.
+  bool _far(Shot s) {
+    final e = _eye.value, tg = _target.value;
+    final look = tg - e, next = s.target - s.eye;
+    if (look.length < 1e-6 || next.length < 1e-6) return true;
+    final d = math.max(look.length, 1.0);
+    final turn = look.normalized().dot(next.normalized());
+    return turn < 0.94 || (s.target - tg).length > 0.3 * d || (s.eye - e).length > 0.4 * d;
+  }
+
   /// Keeps the camera above ground, out of the wall and its platform, the
   /// crane's mast and the brick yard.
   void _avoid(vm.Vector3 eye, Site3D site) {
     eye.y = math.max(eye.y, 0.9);
     final w = site.wallWidth, h = site.wallHeight;
-    if (eye.x.abs() < w / 2 + 1.6 && eye.z > -1.6 && eye.z < SiteLayout.deckZ1 + 0.8 && eye.y < h + 2.5) {
-      eye.z = -1.6;
+    const front = -1.6, back = SiteLayout.deckZ1 + 0.8;
+    if (eye.x.abs() < w / 2 + 1.6 && eye.z > front && eye.z < back && eye.y < h + 2.5) {
+      // Out by the nearer side (behind the platform for the works' shots).
+      eye.z = eye.z - front < back - eye.z ? front : back;
     }
     final dx = eye.x - SiteLayout.mastX, dz = eye.z - SiteLayout.mastZ;
     final r = math.sqrt(dx * dx + dz * dz);
@@ -147,9 +210,13 @@ class Director {
 
   Shot _shot(Job? j, double t, Site3D site) {
     final w = site.wallWidth, h = site.wallHeight;
-    if (j == null) return _establish(t, 0, 0);
+    if (j == null) {
+      _kind = 'idle';
+      return _establish(t, 0, 0);
+    }
     final since = j.since(t);
     final u = j.progress(t);
+    _kind = j.phase.name;
     switch (j.phase) {
       case Phase.intake:
         return _establish(t, since, j.serial);
@@ -165,6 +232,7 @@ class Director {
           // Low, looking up at the name, the 完成！ sign and the fireworks;
           // by day (when fireworks are faint) a second, closer pass.
           final second = since >= 7.5;
+          _kind = second ? 'celebrate close' : 'celebrate low';
           final f = second ? eio((since - 7.5) / 6.5) : eio(since / 7.5);
           final tg = vm.Vector3(0, (h + 3) * (second ? 0.4 : 0.44), 0);
           final r = math.max(fit(w, h, 42) * (second ? 0.95 : 1.02), (h + 3.4) * 1.18 / (2 * math.tan(21 * math.pi / 180)));
@@ -172,23 +240,42 @@ class Director {
           return Shot(orbit(tg, a, r, second ? 4.2 : 3.2), tg, fov: 42, settle: 2.0);
         }
         // Wider, at night: fireworks over the city.
+        _kind = 'celebrate night';
         final tg = vm.Vector3(1.0, h * 0.6 + 2.4, 1.5);
         final r = fit(w, h, 46) * 1.32;
         return Shot(orbit(tg, lerp(0.22, 0.36, seg(since, 7.5, 14)), r, 2.4), tg, fov: 46, settle: 2.6, drift: 1.4);
       case Phase.demolish:
-        // Low and to the left: the ball comes swinging from the right, the
-        // bricks fly towards us. (From when the wrecking starts: after the
-        // new manager's visit, which the site films.)
+        // From when the wrecking starts (after the new manager's visit,
+        // which the site films): the ball brought round to the right of the
+        // wall; let go, it comes in past us and smashes along the name; the
+        // crew watching the dust; the wide on the wreck as it swings on.
         final since = t - site.wreckAt, len = site.wreckLen;
         final release = len * 0.26;
+        final hit = (site.impactAt ?? site.wreckAt + release + 1) - site.wreckAt;
         final fr = fit(w, h, 46);
         if (since < release - 0.2) {
           // The ball comes down on the right: frame it with the wall.
+          _kind = 'demolish ball';
           final ball = site.ballAt;
           final tg = vm.Vector3(lerp(w * 0.1, ball.x, 0.4), lerp(h * 0.5, math.min(ball.y, h + 6), 0.42), 0);
           return Shot(orbit(tg, -0.5, fr * 0.9, 3.2 - tg.y + 1.0), tg, fov: 48, settle: 1.6, drift: 0.8);
         }
-        // Low three-quarters: the ball swings towards us, bricks fly past.
+        if (since < hit + 2.0) {
+          // Low at the right end, looking along the name: the ball swings
+          // in past us and the letters burst one after the other away from
+          // us.
+          _kind = 'demolish impact';
+          final tg = vm.Vector3(w * 0.12, h * 0.38, 0);
+          return Shot(vm.Vector3(w / 2 + 0.6, 1.5, -5.6), tg, fov: 50, settle: 1.0, drift: 0.9);
+        }
+        if (since < hit + 4.4) {
+          // The crew and the manager's party at the front right, watching.
+          _kind = 'demolish watch';
+          final tg = vm.Vector3(w / 2 + 2.7, 1.45, -2.6);
+          return Shot(vm.Vector3(w / 2 - 1.8, 1.6, -7.4), tg, fov: 40, settle: 1.2, drift: 0.6);
+        }
+        // Low three-quarters on the wreck: the ball swinging on, the rubble.
+        _kind = 'demolish low';
         final tg = vm.Vector3(w * 0.02, h * 0.42, 0);
         return Shot(
           orbit(tg, -0.6 - 0.1 * seg(since, release, len), fr * lerp(0.74, 0.86, seg(since, release, len)), 2.6 - tg.y + 0.6),
@@ -198,14 +285,29 @@ class Director {
           drift: 1.2,
         );
       case Phase.cleanup:
-        // Follow the truck as it loads and drives off, then settle on the
-        // empty, swept plaza with the crane (lit at night).
+        // The truck comes in and backs up to the rubble; the bricks go
+        // into it; then up over the swept plaza, ready for the next name.
         final truck = site.truckAt;
-        final tx = truck.x.clamp(-w / 2 - 12, w / 2 + 2);
-        final end = seg(u, 0.8, 1);
-        final tg = vm.Vector3(lerp(tx * 0.6 - 1.5, 3, end), lerp(1.4, 2.5, end), lerp(-2.5, 0.5, end));
-        final eye = vm.Vector3(tg.x - lerp(5, 2, end), lerp(6.5, 9.5, end), lerp(-17, -24, end));
-        return Shot(eye, tg, fov: 44, settle: 2.4);
+        if (u < 0.3) {
+          _kind = 'cleanup truck';
+          final tx = truck.x.clamp(-w / 2 - 12, w / 2 + 2);
+          final tg = vm.Vector3(tx * 0.6 - 1.5, 1.4, -2.5);
+          return Shot(vm.Vector3(tg.x - 5, 6.5, -17), tg, fov: 44, settle: 1.6);
+        }
+        final park = -w / 2 - 2.6;
+        if (u < 0.72) {
+          // From the front right of it, the rubble beyond: the bricks
+          // arcing over into its tub.
+          _kind = 'cleanup load';
+          final k = seg(u, 0.3, 0.72);
+          final tg = vm.Vector3(park + 1.6, 1.7, -4.2);
+          return Shot(vm.Vector3(park + lerp(6.2, 5.4, k), lerp(2.6, 3.0, k), -11.2), tg, fov: 42, settle: 1.4, drift: 0.7);
+        }
+        // Rising over the empty plaza (the crane lit at night).
+        _kind = 'cleanup clear';
+        final k = eio(seg(u, 0.72, 1));
+        final tg = vm.Vector3(2.5, lerp(1.6, 2.6, k), lerp(-1, 1.5, k));
+        return Shot(vm.Vector3(lerp(-3.5, 0.5, k), lerp(4.5, 10.5, k), -17.2), tg, fov: 46, settle: 1.6, drift: 0.8);
     }
   }
 
@@ -251,6 +353,7 @@ class Director {
     final k = since / 13 - n;
     final order = [0, 1, 2, 0, 3, 4, 1, 0, 2, 3];
     final kind = order[(n + j.serial) % order.length];
+    _kind = 'build ${const ['name', 'builders', 'crane', 'afar', 'left'][kind]} $n';
     final fitR = fit(w, h, 40);
     switch (kind) {
       case 1:

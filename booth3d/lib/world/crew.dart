@@ -193,8 +193,7 @@ class Crew3D {
         l
           ..top = lin(const Color(0xFFFF8A3D))
           ..hardHat = lin(const Color(0xFFFFD43B))
-          ..gloves = rgbHex(0xE9E4D6)
-          ..cab = true;
+          ..gloves = rgbHex(0xE9E4D6);
       case driver:
         l
           ..top = lin(const Color(0xFF2B4C7E))
@@ -240,8 +239,10 @@ class Crew3D {
   final _sh = vm.Vector3.zero(), _d = vm.Vector3.zero();
 
   /// Points arm [s] of [p] at [target] (world) and bends its elbow so the
-  /// hand gets there (when it's in reach).
-  void aim(FigurePose p, int s, vm.Vector3 target) => _aim(p, s, target);
+  /// hand gets there (when it's in reach); crouching no lower than
+  /// [maxStoop] for it (at a workbench, say: they lean over it instead of
+  /// going under it).
+  void aim(FigurePose p, int s, vm.Vector3 target, {double maxStoop = 0.7}) => _aim(p, s, target, maxStoop: maxStoop);
 
   /// Where builder [z] watches from, beside a wall [w] wide (the front right).
   vm.Vector3 watchSpot(int z, double w) => _watchSpot(z, w);
@@ -259,13 +260,13 @@ class Crew3D {
 
   /// Points arm [s] of [p] at [target] (world): crouching and bending to
   /// it if it's low and near but out of reach.
-  void _aim(FigurePose p, int s, vm.Vector3 target) {
+  void _aim(FigurePose p, int s, vm.Vector3 target, {double maxStoop = 0.7}) {
     // The shoulder as the figure stands, and the chest's turn.
     var r = _reach(p, s, target);
     // (Something low in front: not a corner held up at the side.)
     final hx = target.x - p.pos.x, hz = target.z - p.pos.z, ahead = -math.sin(p.yaw) * hx - math.cos(p.yaw) * hz;
-    if (r > FigureRig.maxReach && target.y < _sh.y && hx * hx + hz * hz < 1.0 && ahead > 0.2) {
-      var lo = p.stoop, hi = p.stoop + 0.7;
+    if (r > FigureRig.maxReach && target.y < _sh.y && hx * hx + hz * hz < 1.0 && ahead > 0.2 && p.stoop < maxStoop) {
+      var lo = p.stoop, hi = math.min(p.stoop + 0.7, maxStoop);
       for (var k = 0; k < 6; k++) {
         p.stoop = (lo + hi) / 2;
         if (_reach(p, s, target) > FigureRig.maxReach) {
@@ -874,7 +875,9 @@ class Crew3D {
     final p = poses[operator]..rest();
     p.pos.setFrom(seat);
     p.yaw = yaw;
-    p.pos.y -= 0.3; // seated
+    // On the seat (its hips a chair's height over the cab floor), the
+    // knees bent: the feet on the floor, inside the cab.
+    p.pos.y += 0.09;
     p.legPitch[0] = p.legPitch[1] = 1.45;
     p.armPitch[0] = 0.95 + 0.08 * math.sin(t * 3.1);
     p.armPitch[1] = 0.95 + 0.08 * math.sin(t * 2.3 + 1);

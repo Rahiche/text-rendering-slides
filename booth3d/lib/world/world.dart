@@ -94,6 +94,7 @@ class World3D {
       ..typingWeight = typing.weight
       ..night = sky.night
       ..update(m, dt, site);
+    site.captionFor(m, director.shotLabel);
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.delivery);
   }
 }

@@ -28,6 +28,15 @@ import 'site_plan.dart';
 class Director {
   PerspectiveCamera camera = PerspectiveCamera(position: vm.Vector3(0, 12, -34), target: vm.Vector3(0, 3, 0));
 
+  /// What the camera keeps out of and never looks through: the city's
+  /// buildings (centre, half extents). Set by the world.
+  List<(vm.Vector3, vm.Vector3)> solids = const [];
+
+  /// How far out from what it looks at the camera is, of the way the shot
+  /// has it (1: all the way): pulled in at once in front of a building in
+  /// the way, let out again slowly once it's clear.
+  double _boom = 1;
+
   final _eye = _Spring3(vm.Vector3(18, 22, -40));
   final _target = _Spring3(vm.Vector3(0, 3, 0));
   final _fov = _Spring(42);
@@ -151,10 +160,50 @@ class Director {
         ..y += k * 0.6 * math.sin(t * 59);
     }
     _avoid(eye, site);
+    final clear = _clearTo(target, eye);
+    _boom = cut ? clear : math.min(clear, approach(_boom, clear, dt, 0.8));
+    if (_boom < 0.999) eye.setFrom(target + (eye - target) * _boom);
     camera = PerspectiveCamera(position: eye, target: target, fovRadiansY: _fov.value * math.pi / 180, fovNear: 0.2, fovFar: 900);
     // Focus on what it looks at; the closer in, the shallower.
     focus = (target - eye).length;
     closeness = smooth(9.5, 5.0, focus) * smooth(54, 40, _fov.value);
+  }
+
+  /// How much of the way from [target] to [eye] is clear of [solids] (half
+  /// a metre round them): 1 if all of it. (A building [target] is in or by
+  /// doesn't count: it's what's looked at.)
+  double _clearTo(vm.Vector3 target, vm.Vector3 eye) {
+    final dx = eye.x - target.x, dy = eye.y - target.y, dz = eye.z - target.z;
+    final len = math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len < 1e-3) return 1;
+    var clear = 1.0;
+    const m = 0.5;
+    for (final (c, h) in solids) {
+      final hx = h.x + m, hy = h.y + m, hz = h.z + m;
+      if ((target.x - c.x).abs() < hx && (target.y - c.y).abs() < hy && (target.z - c.z).abs() < hz) continue;
+      // The segment against the box's slabs.
+      var t0 = 0.0, t1 = 1.0;
+      var hit = true;
+      for (final (o, d, lo, hi) in [(target.x, dx, c.x - hx, c.x + hx), (target.y, dy, c.y - hy, c.y + hy), (target.z, dz, c.z - hz, c.z + hz)]) {
+        if (d.abs() < 1e-9) {
+          if (o < lo || o > hi) {
+            hit = false;
+            break;
+          }
+          continue;
+        }
+        var a = (lo - o) / d, b = (hi - o) / d;
+        if (a > b) (a, b) = (b, a);
+        t0 = math.max(t0, a);
+        t1 = math.min(t1, b);
+        if (t0 > t1) {
+          hit = false;
+          break;
+        }
+      }
+      if (hit) clear = math.min(clear, math.max(0.05, t0 - 0.2 / len));
+    }
+    return clear;
   }
 
   /// Whether [s] frames something other than the camera does now: it

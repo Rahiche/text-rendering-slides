@@ -58,6 +58,7 @@ class World3D {
     site.init();
     typing.init();
     await Future.wait([city.init(), site.alley.init(), site.vignettes.init()]);
+    director.solids = city.towers.solids;
     stage.value = 'people';
     await life.init();
     ready = true;

@@ -28,6 +28,14 @@ class CityTowers {
   /// facing (rotY), usable width.
   final roofs = <({vm.Vector3 at, double rotY, double width})>[];
 
+  /// What a camera mustn't go into or look through: each building's box
+  /// (centre, half extents; a glyph tower's, round its letter).
+  final solids = <(vm.Vector3, vm.Vector3)>[];
+
+  /// Where the Unicode tower (v_tower.dart) stands and the camera that
+  /// visits it comes from: no glyph tower in the way.
+  static final _towerView = (vm.Vector3(33, 0, 92), vm.Vector3(18.5, 0, 69));
+
   final _batch = Batch();
   late final Texture2D _paneBase, _paneGlow, _paneMR, _edges;
 
@@ -201,6 +209,8 @@ class CityTowers {
   /// turned by [rotY]; windows in world scale, a plain roof with a parapet.
   void _box(vm.Vector3 at, double len, double h, double d, {required double rotY, required int seed, required int kind}) {
     final xf = trs(at, rotY: rotY);
+    final across = rotY == 0 ? len : d, along = rotY == 0 ? d : len;
+    solids.add((vm.Vector3(at.x, h / 2 + 0.5, at.z), vm.Vector3(across / 2, h / 2 + 0.5, along / 2)));
     final ou = (rnd(seed, 1) * _cells).floorToDouble() / _cells, ov = (rnd(seed, 2) * _cells).floorToDouble() / _cells;
     _batch.add(_facadeMat(kind, seed), painted(_boxData(len, h, d, ou, ov).transformed(xf), _facadeColor(kind)));
     _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(len * 0.98, 0.5, d * 0.98)), trs(at + vm.Vector3(0, h + 0.25, 0), rotY: rotY), v4(hex3(0x3B4A60))));
@@ -271,7 +281,7 @@ class CityTowers {
       final th = (-1.62 + 3.24 * (i + 0.5) / midN) + (rnd(seed, 1) - 0.5) * 0.12;
       final dist = 88 + 34 * rnd(seed, 2);
       final at = vm.Vector3(math.sin(th) * dist, 0, math.cos(th) * dist + 12);
-      if (at.z < 4) continue;
+      if (at.z < 4 || _inTowerView(at)) continue;
       specs.add((ch: _mid[i % _mid.length], at: at, h: 15 + 12 * rnd(seed, 3), depth: 5 + 4 * rnd(seed, 4), k: seed));
     }
     // The far ring: tall towers, the skyline proper.
@@ -312,13 +322,25 @@ class CityTowers {
           uv[v * 2] = swatch;
         }
       }
-      final xf = trs(s.at, rotY: math.atan2(s.at.x, s.at.z));
+      final yaw = math.atan2(s.at.x, s.at.z), xf = trs(s.at, rotY: yaw);
+      final c = math.cos(yaw).abs(), n = math.sin(yaw).abs(), hw = m.width / 2 + 1.5, hd = s.depth / 2 + 1.5;
+      solids.add((vm.Vector3(s.at.x, m.height / 2, s.at.z), vm.Vector3(c * hw + n * hd, m.height / 2 + 0.6, n * hw + c * hd)));
       final wave = s.k % _waves.length;
       _batch.add(_facadeMat(kind, s.k), painted(glyphData(m, faces, uv).transformed(xf), _facadeColor(kind)));
       _batch.add(_sides[wave], painted(glyphData(m, sides, uv).transformed(xf), v4(mix3(hex3(_facades[kind].$1), lin3(_neon[neon]), 0.55))));
       // A plinth so the letter stands on something.
       _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(m.width + 3, 1.2, s.depth + 3)), xf * vm.Matrix4.translation(vm.Vector3(0, 0.6, 0)), v4(hex3(0x243650))));
     }
+  }
+
+  /// Whether a glyph tower at [at] would stand in the Unicode tower's
+  /// camera's way (within 13 m of its line of sight, or of the tower).
+  static bool _inTowerView(vm.Vector3 at) {
+    final (a, b) = _towerView;
+    final dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz;
+    final f = c01(((at.x - a.x) * dx + (at.z - a.z) * dz) / l2);
+    final px = a.x + dx * f - at.x, pz = a.z + dz * f - at.z;
+    return px * px + pz * pz < 13.0 * 13.0;
   }
 
   TextStyle _towerStyle(String ch) {

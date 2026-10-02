@@ -242,24 +242,14 @@ class PhotoOp {
     }
   }
 
-  /// The cheer after the [flash]: the hat thrown up, a jump and both arms
-  /// up (only the hat, when the hands are on the board).
+  /// The cheer after the [flash]: a happy bounce and a round of applause
+  /// (just the bounce, when the hands are on the board).
   void _cheer(FigurePose f, double t, double flash, int seed, {bool hands = false}) {
     final u = t - flash;
     if (u < 0) return;
-    final h = (u - 0.15 - (seed % 5) * 0.09) / 1.25;
-    if (h > 0 && h < 1) {
-      f.hatUp = 1.9 * 4 * h * (1 - h);
-      f.hatSpin = h * math.pi * 4;
-    }
-    if (hands) return;
-    final beat = t * (2.8 + 0.3 * (seed % 3)) + seed;
-    final jump = math.max(0.0, math.sin(beat)) * (1 - seg(u, 3.0, 3.6));
-    f.bob = 0.2 * jump * jump;
-    f.armPitch[0] = math.pi * 0.85 + 0.2 * math.sin(beat * 2);
-    f.armPitch[1] = math.pi * 0.85 - 0.2 * math.sin(beat * 2 + 1);
-    f.armRoll[0] = 0.35 + 0.25 * math.sin(beat * 2);
-    f.armRoll[1] = 0.35 + 0.25 * math.cos(beat * 2);
+    final k = seg(u, 0.1, 0.35) * (1 - seg(u, 3.0, 3.6)), rate = 2.4 + 0.3 * (seed % 3);
+    f.bob = -0.025 * k * (0.5 + 0.5 * math.sin((t * rate + seed * 0.1) * 2 * math.pi));
+    if (!hands) Idle.clap(f, t, rate, k, seed * 0.1);
   }
 
   // ── The photographer and the tripod ───────────────────────────────────────
@@ -280,9 +270,7 @@ class PhotoOp {
       // Walking there (or home: turned back on the way, if it was called
       // off) with the tripod folded on the shoulder.
       (t < math.min(setUp, n.away) ? go : home).pose(w2, t, 61);
-      w2
-        ..armPitch[1] = 1.9
-        ..armRoll[1] = 0.15;
+      w2.handTo(1, 0.2, 0.52, -0.1);
       OffDuty.hand(w2, 1, _a);
       _b.setValues(_a.x + math.sin(w2.yaw) * 0.6, _a.y + 0.55, _a.z + math.cos(w2.yaw) * 0.6);
       parts.rod(_a, _b, 0.025, _dark);
@@ -318,8 +306,8 @@ class PhotoOp {
         fx.flashes.insert(0, (vm.Vector3(head.x + ax * 0.4, head.y + 0.3, head.z + az * 0.4), _white, 2.4 * math.pow(1 - (t - f) / 0.5, 2).toDouble()));
       }
     }
-    // The photographer: unfolding it, at the viewfinder, counting down with
-    // a raised hand, a thumbs up after.
+    // The photographer: unfolding it, at the viewfinder, counting down on
+    // the fingers of a hand held out, a thumbs up after.
     w2.pos.setValues(head.x - ax * 0.5, 0, head.z - az * 0.5);
     OffDuty.stand(w2, t, 61);
     w2.yaw = aim;
@@ -333,20 +321,18 @@ class PhotoOp {
     crew.aim(w2, 0, _b);
     if (t < f + 0.4) {
       crew.aim(w2, 1, _b);
-      // A raised hand for each number.
+      // A hand held out for each number.
       for (final c in _counts) {
         final k = math.sin(math.pi * seg(t, n.ready + c - 0.15, n.ready + c + 0.55));
         if (k > 0) {
-          w2.armPitch[1] = lerp(w2.armPitch[1], 2.9, k);
-          w2.armRoll[1] = lerp(w2.armRoll[1], 0.2, k);
-          w2.lean = lerp(w2.lean, 0.05, k);
+          w2.handTo(1, 0.3, 0.3, -0.32, k);
+          w2.lean = lerp(w2.lean, 0.1, k);
         }
       }
     } else {
       w2
         ..lean = 0.05
-        ..armPitch[1] = 1.7
-        ..armRoll[1] = -0.1;
+        ..handTo(1, 0.2, 0.28, -0.3);
       _cheer(w2, t, f, 61, hands: true);
     }
   }

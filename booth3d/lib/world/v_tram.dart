@@ -308,8 +308,8 @@ class LineTram extends Vignette {
       }
       pen(g, x, y + 0.04, z, s: s);
     }
-    // The conductor on the platform: watching the boarding, a wave of the
-    // flag for each move up, both arms for the off.
+    // The conductor on the platform: watching the boarding, the flag held
+    // out for each move up and for the off.
     final p = _p..rest();
     p.pos.setValues(_zoneX - 1.9, _platY, _platZ - 0.75);
     final m = Manner.of(130);
@@ -319,8 +319,7 @@ class LineTram extends Vignette {
     for (final mv in [..._moves, _depart]) {
       wave = math.max(wave, smooth(mv - 0.6, mv - 0.3, u) * (1 - smooth(mv + 0.4, mv + 0.8, u)));
     }
-    p.armPitch[1] = lerp(p.armPitch[1], 2.6 + 0.25 * math.sin(t * 9), wave);
-    p.armRoll[1] = lerp(p.armRoll[1], 0.3, wave);
+    p.handTo(1, 0.4, 0.28 + 0.05 * math.sin(t * 9), -0.18, wave);
     draw(_conductor, p);
     pool.end();
   }

@@ -50,7 +50,11 @@ class TofuShop extends Vignette {
   /// The kiosks' middles (x), the tofu shop's; the counters' fronts (z),
   /// where the keepers stand, where the courier stops, the shelves.
   static const _kx = [-4.2, -2.1, 0.0, 2.1], _shopX = 4.6;
-  static const _counterZ = -0.35, _keeperZ = 0.3, _stopZ = -1.15, _shelfZ = 0.9;
+  static const _counterZ = -0.35, _keeperZ = 0.45, _stopZ = -1.15, _shelfZ = 0.9;
+
+  /// Where the courier stands at the tofu shop: up at its counter (the
+  /// crate held out over it).
+  static const _shopZ = -0.66;
 
   static const _fonts = [
     ('Space Grotesk', 'Aa', 0xF2B13A),
@@ -81,7 +85,7 @@ class TofuShop extends Vignette {
   /// to the start.
   static final _back = Walk(
     [
-      vm.Vector3(_shopX - 0.3, 0, _stopZ),
+      vm.Vector3(_shopX - 0.3, 0, _shopZ),
       vm.Vector3(_shopX + 1.6, 0, _stopZ + 0.2),
       vm.Vector3(_shopX + 1.6, 0, 2.1),
       vm.Vector3(-6.2, 0, 2.1),
@@ -294,13 +298,13 @@ class TofuShop extends Vignette {
         Idle.stand(courier, t, Manner.of(101), look: 0.3);
         courier.yaw = math.pi;
       } else {
-        _walkBetween(courier, _kx[k], k < 3 ? _kx[k + 1] : _shopX - 0.3, a + _ask, k < 3 ? _at(k + 1) : _atShop, u);
+        _walkBetween(courier, _kx[k], k < 3 ? _kx[k + 1] : _shopX - 0.3, a + _ask, k < 3 ? _at(k + 1) : _atShop, u, z1: k < 3 ? _stopZ : _shopZ);
       }
     } else if (u < _atShop) {
-      _walkBetween(courier, _kx[3], _shopX - 0.3, _toShop, _atShop, u);
+      _walkBetween(courier, _kx[3], _shopX - 0.3, _toShop, _atShop, u, z1: _shopZ);
     } else if (u < _leave) {
       // The tofu in the crate: turning round to show it (□, 0378).
-      courier.pos.setValues(_shopX - 0.3, 0, _stopZ);
+      courier.pos.setValues(_shopX - 0.3, 0, _shopZ);
       Idle.stand(courier, t, Manner.of(101), look: 0.2);
       courier.yaw = math.pi * (1 - smooth(_show, _show + 0.6, u) * (1 - smooth(_leave - 0.5, _leave, u)));
     } else if (u < _again) {
@@ -331,7 +335,9 @@ class TofuShop extends Vignette {
     }
     // The crate, held in front.
     final fwdX = -math.sin(courier.yaw), fwdZ = -math.cos(courier.yaw);
-    _crate.setValues(courier.pos.x + fwdX * 0.36, 1.0, courier.pos.z + fwdZ * 0.36);
+    // (Held out over the shop's counter for the tofu.)
+    final over = smooth(_atShop - 0.2, _atShop + 0.3, u) * (1 - smooth(_show, _show + 0.4, u));
+    _crate.setValues(courier.pos.x + fwdX * (0.36 + 0.08 * over), 1.0 + 0.2 * over, courier.pos.z + fwdZ * (0.36 + 0.08 * over));
     final cy = courier.yaw;
     pbox(_crate.x, _crate.y - 0.07, _crate.z, 0.3, 0.2, 0.3, Vignette.c(0xB98A5A), yaw: cy);
     final label = second ? _label0628 : _label0378;
@@ -387,7 +393,7 @@ class TofuShop extends Vignette {
     // The tofu maker: lifts a tofu out of the water, turns, sets it in the
     // crate.
     final m = _poses[5]..rest();
-    m.pos.setValues(_shopX + 0.3, 0, _keeperZ + 0.1);
+    m.pos.setValues(_shopX + 0.3, 0, _keeperZ + 0.06);
     Idle.stand(m, t, Manner.of(106), look: 0.6);
     final ts = u - _atShop;
     final tank = _tank..setValues(_shopX + 0.5, 1.2, _counterZ + 0.32);
@@ -398,6 +404,7 @@ class TofuShop extends Vignette {
       tofuY = lerp(1.17, _crate.y + 0.07, over) + 0.25 * lift * (1 - over) + 0.1 * math.sin(math.pi * over);
       tofuZ = lerp(tank.z, _crate.z, over);
       if (ts < 2.2) {
+        m.lean += 0.32 * math.sin(math.pi * c01(ts / 2.2));
         _a.setValues(tofuX - 0.13, tofuY, tofuZ);
         _b.setValues(tofuX + 0.13, tofuY, tofuZ);
         worldPose(m);
@@ -437,10 +444,11 @@ class TofuShop extends Vignette {
     pool.end();
   }
 
-  /// Walks [p] along the stops' line from x [x0] to [x1] over [a]–[b].
-  void _walkBetween(FigurePose p, double x0, double x1, double a, double b, double u) {
-    final f = seg(u, a, b), d = (x1 - x0).abs();
-    p.pos.setValues(lerp(x0, x1, eio(f)), 0, _stopZ);
+  /// Walks [p] along the stops' line from x [x0] to [x1] over [a]–[b] (to
+  /// [z1] off it, at the end).
+  void _walkBetween(FigurePose p, double x0, double x1, double a, double b, double u, {double z1 = _stopZ}) {
+    final f = seg(u, a, b), dz = z1 - _stopZ, d = math.sqrt((x1 - x0) * (x1 - x0) + dz * dz);
+    p.pos.setValues(lerp(x0, x1, eio(f)), 0, lerp(_stopZ, z1, eio(f)));
     if (f <= 0 || f >= 1) {
       Idle.stand(p, u, Manner.of(101));
       p.yaw = math.pi;
@@ -448,7 +456,7 @@ class TofuShop extends Vignette {
     }
     final m = Manner.of(101), speed = d / math.max(b - a, 0.1);
     Gait.walk(p, Gait.phaseOver(d * eio(f), d, speed, 1, m), speed, m);
-    p.yaw = x1 > x0 ? -math.pi / 2 : math.pi / 2;
+    p.yaw = math.atan2(-(x1 - x0), -dz);
   }
 
   /// Keeper [k] ([asked] seconds into an ask, or < 0; [has]: the font has

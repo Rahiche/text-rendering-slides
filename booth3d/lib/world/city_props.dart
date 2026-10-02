@@ -145,8 +145,8 @@ class CityProps {
     // Facing the paths in the park (front = local −Z); none in front of
     // the tofu shop and the forge (vignettes).
     for (var z = Plan.parkZ0 + 5.0; z < Plan.parkZ1; z += 9) {
-      if ((z - 49).abs() > 1) benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
-      if ((z + 4 - 44).abs() > 1) benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
+      if ((z - 49).abs() > 1 && !Plan.inLot(-3.4, z)) benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
+      if ((z + 4 - 44).abs() > 1 && !Plan.inLot(3.4, z + 4)) benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
     }
     // On the plaza's flanks, facing the build.
     for (final s in [-1.0, 1.0]) {

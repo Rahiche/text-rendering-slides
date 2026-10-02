@@ -233,10 +233,8 @@ enum CrewMode {
   /// Holding the tape's case on the new letter.
   holdCase,
 
-  /// Pushing the letter into place (first in line), or pushing the one in
-  /// front (second).
-  push1,
-  push2,
+  /// Pushing the letter into place.
+  push,
 }
 
 /// Where a builder is and what they're doing at one moment.
@@ -282,12 +280,12 @@ class KernStep {
   /// the tape's height [tapeY], with the platform at [deck].
   late final double gapL, gapR, tapeY, deck;
 
-  /// Where the pushers' hands go: the letter's right edge (in place) at
+  /// Where the pusher's hands go: the letter's right edge (in place) at
   /// [pushY].
   late final double pushX, pushY;
 
   /// Who does what (builder ids, −1: nobody).
-  late final int hook, holdCase, push1, push2;
+  late final int hook, holdCase, pusher;
 
   /// Fractions of a full and a quick step at each phase boundary.
   static const _fullAt = [0.0, 0.8, 1.6, 2.8, 3.8, 5.6, 6.1, 6.6, 7.0];
@@ -540,8 +538,9 @@ class BuildPlan {
   /// Height of the pallet's base above the platform when dropping.
   static const dropGap = 2.7;
 
-  /// Seconds from a builder's pile to the wall.
-  static const flight = 0.5;
+  /// Seconds from a builder's pile to the wall: lifted off it and swung up
+  /// in front of them for the first [release] of it, then tossed.
+  static const flight = 0.5, release = 0.45;
 
   /// Seconds for a builder's swing (pile → wall), a handful at a time.
   static const swing = 0.8;
@@ -876,6 +875,17 @@ class BuildPlan {
     );
   }
 
+  /// Where the builder lets brick [i] go, tossing it onto the wall: in front
+  /// of them over the pile, towards its place, at their chest.
+  vm.Vector3 releaseOf(int i, [vm.Vector3? out]) {
+    final lay = layT[i], deck = deckY(lay - flight);
+    pileSlot(pileOf[i], pile[i], deck, _r);
+    final tx = cellX[i] + offsetAt(letter[i], lay);
+    return (out ?? vm.Vector3.zero())..setValues(_r.x + (tx - _r.x) * 0.5, deck + SiteLayout.deckRest + 0.05 + 1.1, SiteLayout.stashZ - 0.16);
+  }
+
+  final _r = vm.Vector3.zero();
+
   /// When the crane pours a batch onto one of builder [z]'s piles on trip
   /// [k] (absolute; the one nearest [t]), or null if none of them is theirs.
   double? dropFor(int z, int k, double t) {
@@ -973,13 +983,21 @@ class BuildPlan {
       return out;
     }
     if (t >= lay - flight) {
-      // From the pile to the wall, over the builder's shoulder.
+      // From the pile to the wall: lifted and swung up in front of the
+      // builder, then tossed in an arc onto its place, turning a quarter
+      // (a cube looks the same).
       final f = (t - (lay - flight)) / flight;
       pileSlot(pileOf[i], pile[i], deckY(lay - flight), _a);
+      releaseOf(i, _h);
+      if (f < release) {
+        final e = eio(f / release);
+        out.pos.setValues(_a.x + (_h.x - _a.x) * e, _a.y + (_h.y - _a.y) * e, _a.z + (_h.z - _a.z) * e);
+        return out;
+      }
+      final g = (f - release) / (1 - release);
       final tx = cellX[i] + offsetAt(letter[i], lay);
-      final e = eio(f);
-      out.pos.setValues(_a.x + (tx - _a.x) * e, _a.y + (cellY[i] - _a.y) * e + (0.5 + b) * math.sin(f * math.pi), _a.z + (0 - _a.z) * e);
-      out.spin = (1 - e) * 3.1;
+      out.pos.setValues(_h.x + (tx - _h.x) * g, _h.y + (cellY[i] - _h.y) * g + (0.22 + 0.5 * b) * 4 * g * (1 - g), _h.z * (1 - g));
+      out.spin = (1 - g) * math.pi / 2;
       return out;
     }
     final drop = t0 + dropRel[i];
@@ -1071,7 +1089,7 @@ class BuildPlan {
           () {
             final st = KernStep._(k, sc.full[k]).._times(at(sc.kernA[k]), at(sc.kernB[k]));
             final p = ls[k - 1], l = ls[k], row = sc.tapeRow[k];
-            final team = teams[k], m = team.length;
+            final team = teams[k];
             st
               ..left = p.text
               ..right = l.text
@@ -1081,8 +1099,8 @@ class BuildPlan {
               ..gapR = (l.edge(-1, row - 1, row + 1) - r.cols / 2) * b
               ..tapeY = sc.tapeY(k)
               ..deck = sc.hKern[k];
-            // The pushers lean on the letter's right edge at hand height.
-            var pr = (((st.deck + 0.8) / b) - 0.5).round().clamp(l.row0, l.row1);
+            // The pusher leans on the letter's right edge at hand height.
+            var pr = (((st.deck + 1.05) / b) - 0.5).round().clamp(l.row0, l.row1);
             for (var d = 0; d <= l.row1 - l.row0; d++) {
               if (pr + d <= l.row1 && l.right[pr + d] >= 0) {
                 pr += d;
@@ -1098,8 +1116,7 @@ class BuildPlan {
               ..pushX = ((l.right[pr] >= 0 ? l.right[pr] : l.col1) + 1 - r.cols / 2) * b
               ..hook = team.first
               ..holdCase = st.full ? team[1] : -1
-              ..push1 = team.last
-              ..push2 = m >= 3 ? team[m - 2] : (st.full ? team.first : -1);
+              ..pusher = team.last;
             return st;
           }(),
     ];
@@ -1150,9 +1167,9 @@ class BuildPlan {
             legs.add(_Leg(at(sc.layB[k]), x, cz, CrewMode.watch, follow: k, letter: k));
             continue;
           }
-          final px1 = st.pushX + 0.42, px2 = st.pushX + 0.42 + 0.5;
-          final pushMode = z == st.push1 ? CrewMode.push1 : (z == st.push2 ? CrewMode.push2 : null);
-          final pushX = z == st.push1 ? px1 : px2;
+          // (The pusher stands back from the edge, arms out to it.)
+          final pushMode = z == st.pusher ? CrewMode.push : null;
+          final pushX = st.pushX + 0.62;
           if (z == st.hook) {
             legs.add(_Leg(st.a, st.gapL - 0.45, kz, CrewMode.hook, letter: k));
             if (pushMode != null) legs.add(_Leg(st.checkB, pushX, kz, pushMode, follow: k, letter: k));

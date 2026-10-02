@@ -37,6 +37,11 @@ class FigurePose {
   /// moves the leg on, its knee and foot are the rig's own again.
   final eased = [double.nan, double.nan];
 
+  /// Per side, standing: the foot moved from where it would be (metres:
+  /// forward, out from the middle line) and lifted off the ground (a step
+  /// to the side, say). The other foot stays put.
+  final footAhead = [0.0, 0.0], footOut = [0.0, 0.0], footLift = [0.0, 0.0];
+
   /// Per side, while [reaching]: where the hand is to be (world), and the
   /// arm's pitch and roll [Crew3D.aim] worked out for it. The hand gets
   /// there even while the rest of the figure is still turning or settling
@@ -56,6 +61,24 @@ class FigurePose {
 
   /// Whether arm [s] is still where it was aimed.
   bool reachingWith(int s) => reaching[s] && armPitch[s] == reachPitch[s] && armRoll[s] == reachRoll[s];
+
+  /// Puts hand [s] at (x, y, z) in the chest's frame (size 1, metres: x to
+  /// the figure's right, y up from the hips, z back; the shoulders are at
+  /// ±0.185, 0.5, 0) by setting the arm's pitch, roll and elbow, [k] (0..1)
+  /// of the way from how it was. (Where the chest is doesn't matter: for
+  /// hands that go with it, clapping, holding a phone up, explaining.)
+  void handTo(int s, double x, double y, double z, [double k = 1]) {
+    if (k <= 0) return;
+    final side = s == 0 ? -1.0 : 1.0;
+    final dx = x - side * FigureRig.shoulderX, dy = y - FigureRig.shoulderY, dz = z;
+    final r = math.max(1e-6, math.sqrt(dx * dx + dy * dy + dz * dz));
+    final pitch = math.asin((-dz / r).clamp(-1.0, 1.0)), roll = side * math.atan2(dx / r, -dy / r);
+    final bend = FigureRig.bendFor(r.clamp(FigureRig.minReach, FigureRig.maxReach));
+    final was = elbow[s].isNaN ? 0.58 : elbow[s];
+    armPitch[s] = armPitch[s] + (pitch - armPitch[s]) * k;
+    armRoll[s] = armRoll[s] + (roll - armRoll[s]) * k;
+    elbow[s] = was + (bend - was) * k;
+  }
 
   /// The head turned (to the left +) and nodded (down +), and the shoulders
   /// turned against the hips.
@@ -88,6 +111,7 @@ class FigurePose {
     hatSpin = 0;
     for (var s = 0; s < 2; s++) {
       elbow[s] = knee[s] = foot[s] = eased[s] = double.nan;
+      footAhead[s] = footOut[s] = footLift[s] = 0;
       reaching[s] = false;
       armPitch[s] = 0.08;
       armRoll[s] = 0.12;
@@ -131,6 +155,9 @@ class FigurePose {
       armPitch[s] = mix(armPitch[s], q.armPitch[s]);
       armRoll[s] = mix(armRoll[s], q.armRoll[s]);
       legPitch[s] = mix(legPitch[s], q.legPitch[s]);
+      footAhead[s] = mix(footAhead[s], q.footAhead[s]);
+      footOut[s] = mix(footOut[s], q.footOut[s]);
+      footLift[s] = mix(footLift[s], q.footLift[s]);
       if (near) {
         elbow[s] = q.elbow[s];
         knee[s] = q.knee[s];
@@ -168,10 +195,13 @@ class FigurePose {
 ///   line), the toes turned out a little: moving or rolling the hips over
 ///   them splays the legs instead of dragging the feet. A walk
 ///   ([FigurePose.stride]) sets the hips' height from the leg that's
-///   longest down (the one bearing the weight); standing, a negative bob is
-///   a crouch (the knees bend), a positive one a jump (they tuck); both
-///   thighs raised forward is sitting, the hips where the toy's were (on
-///   the seat), the shins hanging.
+///   longest down (the one bearing the weight). Standing, each foot is on
+///   the ground where the leg's pitch would put it (or moved, or lifted:
+///   [FigurePose.footAhead] and the like), the hips as high as both feet
+///   down allow (back over the heels, bending forward), the legs reaching
+///   the feet; a negative bob is a crouch (the knees bend), a positive one
+///   a jump (they tuck); both thighs raised forward is sitting, the hips
+///   where the toy's were (on the seat), the shins hanging.
 /// - The head leans back a little to look ahead from a deep bend, keeps
 ///   looking forward as the shoulders swing, and stays level as they tilt.
 ///
@@ -223,7 +253,7 @@ class FigureRig {
   /// Facing (yaw), the hips' height (metres), the pelvis's and the chest's
   /// turn, the lean, the head's nod and turn (on the chest), the hips moved
   /// sideways (metres) and rolled, the chest's tilt, the lean into a turn,
-  /// the breath.
+  /// the breath, the hips moved back (metres).
   static const jYaw = 0,
       jHipY = 1,
       jPelvisYaw = 2,
@@ -235,16 +265,17 @@ class FigureRig {
       jHipRoll = 8,
       jChestTilt = 9,
       jBank = 10,
-      jBreath = 11;
+      jBreath = 11,
+      jHipZ = 12;
 
   /// Per leg, from [jLeg] + 4 × side: the thigh's pitch, the knee's bend,
   /// the foot's pitch, the leg's splay (out from the vertical, towards +x).
-  static const jLeg = 12;
+  static const jLeg = 13;
 
   /// Per arm, from [jArm] + 6 × side: the palm's middle, then where the
   /// elbow points (the chest's frame, size 1).
-  static const jArm = 20;
-  static const channels = 32;
+  static const jArm = 21;
+  static const channels = 33;
 
   /// The last pose, as numbers.
   final joints = Float64List(channels);
@@ -252,6 +283,14 @@ class FigureRig {
   // Scratch.
   final _l = vm.Matrix4.identity();
   final _knee = [0.0, 0.0], _thigh = [0.0, 0.0], _foot = [0.0, 0.0], _ext = [0.0, 0.0], _splay = [0.0, 0.0];
+  final _ahead = [0.0, 0.0], _out = [0.0, 0.0], _ankleY = [0.0, 0.0];
+
+  /// The lowest the hips go in a crouch (size 1).
+  static const _squat = 0.46;
+
+  /// A leg's length (hip joint to ankle, size 1) standing: the knee just
+  /// short of straight.
+  static final _straight = math.sqrt(thigh * thigh + shin * shin + 2 * thigh * shin * math.cos(0.07));
 
   /// Poses the skeleton for [p]. [size] scales it (1: 1.72 m); [width] the
   /// shoulders. Without [arms], only the trunk, the head and the legs.
@@ -267,9 +306,9 @@ class FigureRig {
     final j = joints;
     // Reaching down bends the back as well as the knees.
     final walking = p.stride.isFinite;
-    final lean = walking ? p.lean : math.min(1.25, p.lean + 1.4 * p.stoop);
+    final lean = walking ? p.lean : math.min(1.1, p.lean + 1.2 * p.stoop);
     final roll = p.hipRoll, sr = math.sin(roll), cr = math.cos(roll), sway = p.sway / size;
-    var pelvisYaw = 0.0, chestYaw = p.twist, look = 0.0;
+    var pelvisYaw = 0.0, chestYaw = p.twist, look = 0.0, hipZ = 0.0;
     double hipY;
     if (walking) {
       // The hips turn with the leg going forward, the shoulders against
@@ -292,31 +331,54 @@ class FigureRig {
       }
       hipY += math.max(0.0, p.bob);
     } else {
+      // Standing: each foot on the ground where the pose puts it, the hips
+      // as high as both feet down allow (lower for a crouch, up for a jump:
+      // the feet tucked under), the legs reaching the feet. Bending over,
+      // the hips go back over the heels. Both thighs raised forward is
+      // sitting: the hips where the toy's were (on the seat), the legs as
+      // posed, the shins hanging.
       final sit = smooth(0.95, 1.35, math.min(p.legPitch[0], p.legPitch[1]));
-      // A crouch: the thighs come forward and the shins back, the feet
-      // stay under the hips; deeper for a deep bend (a grown-up bending as
-      // low as the toy did squats), and to reach down.
       final bob = p.bob;
+      // (A grown-up bending as low as the toy did squats a little.)
       final squat = 0.3 * smooth(0.45, 0.9, p.lean) * smooth(0.0, -0.04, bob);
-      final d = (math.max(0.0, -bob) + squat + p.stoop) * (1 - sit) / size;
-      final a = d > 0 ? math.acos(math.max(0.3, 1 - d / (thigh + shin))) : 0.0;
-      final tuck = smooth(0.03, 0.18, bob);
-      var stand = 0.0;
+      final crouch = (math.max(0.0, -bob) + squat + p.stoop) * (1 - sit) / size;
+      final tuck = smooth(0.03, 0.18, bob), up = math.max(0.0, bob) / size;
+      hipZ = 0.12 * smooth(0.2, 0.9, lean) * (1 - sit);
+      var top = double.infinity;
       for (var s = 0; s < 2; s++) {
         final side = s == 0 ? -1.0 : 1.0;
         final th = p.legPitch[s];
         // (A leg eased by a stand, then posed again: the rig's own knee.)
         final own = p.eased[s].isNaN || p.eased[s] == th;
-        var k = own ? p.knee[s] : double.nan;
-        if (k.isNaN) k = lerp(0.07 + 0.55 * tuck, th, sit);
-        _thigh[s] = th + a;
-        _knee[s] = k + 2 * a;
+        final k = own ? p.knee[s] : double.nan;
         _foot[s] = own && !p.foot[s].isNaN ? p.foot[s] : -0.35 * tuck;
-        _splay[s] = _splayFor(side, sway, sr, cr, stance, _thigh[s], _knee[s]) * (1 - sit);
-        _ext[s] = extent(_thigh[s], _knee[s], _foot[s], _splay[s]);
-        stand += (_ext[s] - side * hipX * sr) / 2;
+        // The ankle: ahead of the hip joint (as far as the leg's swing would
+        // have it), out from it.
+        final ahead = thigh * math.sin(th) + shin * math.sin(th - (k.isNaN ? 0.07 : k));
+        _ahead[s] = (ahead + p.footAhead[s] / size + hipZ).clamp(-0.55, 0.55);
+        _out[s] = side * (stance + p.footOut[s] / size) - (sway + side * hipX * cr);
+        _ankleY[s] = ankleOver(_foot[s]).$1;
+        final reach = _straight * _straight - _out[s] * _out[s] - _ahead[s] * _ahead[s];
+        top = math.min(top, _ankleY[s] + math.sqrt(math.max(0.09, reach)) - side * hipX * sr);
       }
-      hipY = lerp(stand * size + math.max(0.0, bob), _toyHip + bob, sit);
+      // (No lower than a deep squat.)
+      final hy = math.max(top - crouch, _squat) + up;
+      for (var s = 0; s < 2; s++) {
+        final side = s == 0 ? -1.0 : 1.0;
+        final dx = _out[s], dy = hy + side * hipX * sr - (_ankleY[s] + p.footLift[s] / size + up + 0.11 * tuck);
+        var (th, knee) = legTo(_ahead[s], math.sqrt(dx * dx + dy * dy));
+        var splay = math.atan2(dx, dy).clamp(-0.5, 0.5);
+        if (sit > 0) {
+          final own = p.eased[s].isNaN || p.eased[s] == p.legPitch[s];
+          th = lerp(th, p.legPitch[s], sit);
+          knee = lerp(knee, own && !p.knee[s].isNaN ? p.knee[s] : p.legPitch[s], sit);
+          splay *= 1 - sit;
+        }
+        _thigh[s] = th;
+        _knee[s] = knee;
+        _splay[s] = splay;
+      }
+      hipY = lerp(hy * size, _toyHip + bob, sit);
     }
     // Looking ahead from a deep bend; a laugh throws the head back.
     final nod = p.headPitch - 0.45 * math.max(0.0, lean - 0.35) + 0.4 * math.min(0.0, lean + 0.05);
@@ -333,6 +395,7 @@ class FigureRig {
     j[jChestTilt] = p.tilt - 0.6 * roll;
     j[jBank] = p.bank;
     j[jBreath] = p.breath;
+    j[jHipZ] = hipZ * size;
     for (var s = 0; s < 2; s++) {
       final o = jLeg + 4 * s;
       j[o] = _thigh[s];
@@ -419,13 +482,13 @@ class FigureRig {
     final j = joints;
     // The root: the feet, the facing, the lean into a turn.
     _setYawRollPitch(root, p.pos.x, p.pos.y, p.pos.z, j[jYaw], -j[jBank], 0);
-    final hipY = j[jHipY], sway = j[jSway], roll = j[jHipRoll], breath = j[jBreath];
-    _setYawRollPitch(_l, sway, hipY, 0, j[jPelvisYaw], roll, 0);
+    final hipY = j[jHipY], hipZ = j[jHipZ], sway = j[jSway], roll = j[jHipRoll], breath = j[jBreath];
+    _setYawRollPitch(_l, sway, hipY, hipZ, j[jPelvisYaw], roll, 0);
     pelvis
       ..setFrom(root)
       ..multiply(_l);
     // The chest: turned, tilted, leant; a breath lifts and opens it.
-    _setYawRollPitch(_l, sway, hipY + 0.004 * breath * size, 0, j[jChestYaw], j[jChestTilt], -j[jLean] + 0.018 * breath);
+    _setYawRollPitch(_l, sway, hipY + 0.004 * breath * size, hipZ, j[jChestYaw], j[jChestTilt], -j[jLean] + 0.018 * breath);
     chest
       ..setFrom(root)
       ..multiply(_l);
@@ -750,7 +813,7 @@ class FigureMotion {
 
   /// How far off where it was going a joint must be to count as a jump.
   static final _jump = Float64List.fromList([
-    0.3, 0.05, 0.15, 0.15, 0.12, 0.15, 0.2, 0.03, 0.06, 0.06, 0.06, 2, // the trunk
+    0.3, 0.05, 0.15, 0.15, 0.12, 0.15, 0.2, 0.03, 0.06, 0.06, 0.06, 2, 0.04, // the trunk
     0.25, 0.35, 0.35, 0.08, 0.25, 0.35, 0.35, 0.08, // the legs
     0.05, 0.05, 0.05, 0.35, 0.35, 0.35, 0.05, 0.05, 0.05, 0.35, 0.35, 0.35, // the arms
   ]);

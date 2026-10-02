@@ -1155,7 +1155,7 @@ class _People {
       final amount = smooth(0.0, 0.45, speed);
       final watcher = p.role == _Role.spectator || p.role == _Role.keeper || (p.role == _Role.walker && p.pause > 0);
       // A third of those watching the celebration hold their phones up to
-      // take it, the rest cheer.
+      // take it, the rest clap.
       final snap = cheering && watcher && rnd(p.index, 77) < 0.33;
       final cheer = cheering && watcher && !snap;
       f.rest();
@@ -1164,7 +1164,7 @@ class _People {
       if (amount < 1) {
         // Standing about, never quite still: watching the build (or the
         // stall, the lights across the road, the alley), now and then a
-        // look away, a hand to the head, a look at the phone.
+        // look away, a look at the watch or the phone.
         var fidget = 0.5;
         final r = p.route;
         if (p.role == _Role.walker && p.waiting) {
@@ -1192,15 +1192,17 @@ class _People {
         }
       }
       if (cheer) {
-        final jump = math.max(0.0, math.sin(t * 7 + p.phase * 3)) * 0.28;
-        f.bob = jump;
-        f.armPitch[0] = f.armPitch[1] = 2.75 + 0.25 * math.sin(t * 9 + p.phase);
-        f.armRoll[0] = f.armRoll[1] = 0.3;
+        // Clapping, a happy bounce with it.
+        final rate = 2.2 + 0.6 * rnd(p.index, 78);
+        f.bob = -0.02 * p.scale * (0.5 + 0.5 * math.sin((t * rate + p.phase) * 2 * math.pi));
+        Idle.clap(f, t, rate, 1, p.phase);
       } else if (snap) {
-        // The phone held up in both hands, the build on its screen.
-        f.armPitch[0] = f.armPitch[1] = 1.45 + 0.04 * math.sin(t * 1.7 + p.phase);
-        f.armRoll[0] = f.armRoll[1] = -0.32;
-        f.headPitch -= 0.1;
+        // The phone held up in both hands in front of the face, the build on
+        // its screen.
+        final d = 0.01 * math.sin(t * 1.7 + p.phase);
+        f.handTo(0, -0.04, 0.62 + d, -0.33);
+        f.handTo(1, 0.04, 0.62 + d, -0.33);
+        f.headPitch -= 0.05;
       }
       if (p.parasol && !cheer) {
         f.armPitch[1] = 0.95;
@@ -1210,15 +1212,18 @@ class _People {
       if (p.role == _Role.keeper && !cheer) {
         // Now and then, a hand out over the counter: look at this.
         final show = math.sin(math.pi * seg((t + p.phase * 3) % 9, 0, 2.4));
-        f.armPitch[1] = lerp(f.armPitch[1], 1.25, show);
-        f.armRoll[1] = lerp(f.armRoll[1], -0.25, show);
+        f.handTo(1, 0.16, 0.26, -0.42, show);
       }
       final guide = p.guiding && !p.moving;
-      if (p.role == _Role.worker) {
-        final wave = guide
-            ? 1.9 + 0.75 * math.sin(t * 4.2)
-            : (p.job == 1 && !p.moving ? 2.2 + 0.5 * math.sin(t * 5 + p.phase) : math.sin(t * 1.3 + p.phase) * 0.15);
-        f.armPitch[1] += wave;
+      if (p.role == _Role.worker && !p.moving) {
+        if (guide) {
+          // Guiding the truck in: the baton swept to and fro, low.
+          f.handTo(1, 0.3 + 0.08 * math.sin(t * 4.2), 0.18, -0.3 + 0.1 * math.cos(t * 4.2));
+        } else if (p.job == 1) {
+          // At the corner, minding the traffic: a hand out, now and then.
+          final out = math.sin(math.pi * seg((t + p.phase * 5) % 7, 0, 2.6));
+          f.handTo(1, 0.36, 0.16, -0.18, out);
+        }
       }
       _figures.draw(p.slot, f);
       if (guide) _batonIn(night);

@@ -44,10 +44,13 @@ class DriverBreak {
 /// scene time. Cans and cigarettes are one instanced draw, speech bubbles
 /// another; the smoke and the embers come from the site's particle pools.
 class CrewBreaks {
-  CrewBreaks(this.scene, this.fx);
+  CrewBreaks(this.scene, this.fx, this.crew);
 
   final Scene scene;
   final Fx3D fx;
+
+  /// (For the hands: on the rail, the machine's buttons, the ashtray.)
+  final Crew3D crew;
 
   /// The driver, among the people on a break (after the six builders).
   static const driver = Crew3D.builders;
@@ -424,7 +427,7 @@ class CrewBreaks {
   // ── Posing ────────────────────────────────────────────────────────────────
 
   final _me = FigurePose();
-  final _tmp = vm.Vector3.zero();
+  final _tmp = vm.Vector3.zero(), _aimAt = vm.Vector3.zero();
   double _t = 0, _night = 0;
 
   /// Starts a frame: the hand-held props and bubbles are re-placed by
@@ -528,14 +531,17 @@ class CrewBreaks {
     if (cycle == 0 || what == 0) {
       OffDuty.stretch(me, f, b.seed + cycle);
     } else if (what == 1) {
-      // Leaning on the back rail, looking out over the park.
-      OffDuty.stand(me, t, b.seed);
+      // Leaning on the back rail, looking out over the park: the hands on
+      // its top.
+      OffDuty.stand(me, t, b.seed, shift: 0.4);
       me
-        ..yaw = math.pi + Idle.facing(t, Manner.of(b.seed), 0.3)
-        ..lean = 0.35;
-      me.armPitch[0] = me.armPitch[1] = 1.25;
-      me.armRoll[0] = me.armRoll[1] = -0.25;
-      me.pos.z += 0.25;
+        ..yaw = math.pi + Idle.facing(t, Manner.of(b.seed), 0.15)
+        ..lean = 0.3;
+      final k = smooth(0, 0.08, f) * (1 - smooth(0.92, 1, f));
+      for (var s = 0; s < 2; s++) {
+        _aimAt.setValues(me.pos.x + (s == 0 ? 0.22 : -0.22), me.pos.y + 1.05, SiteLayout.deckZ1 - 0.03);
+        crew.aimBy(me, s, _aimAt, k);
+      }
     } else {
       OffDuty.stand(me, t, b.seed);
       final n = b.who + (b.who == 0 ? 1 : (b.who == Crew3D.builders - 1 ? -1 : (rnd(b.seed, cycle, 5) < 0.5 ? -1 : 1)));
@@ -701,6 +707,10 @@ class CrewBreaks {
       final u = t - b.buyAt;
       me.yaw = -math.pi / 2;
       OffDuty.buy(me, u, b.seed);
+      // A finger to a button on the front, then a hand down to the tray.
+      final mz = BreakSpots.vendZ[b.machine];
+      crew.aimBy(me, 1, _aimAt..setValues(BreakSpots.vendX - 0.41, 1.12, mz + 0.14), math.sin(math.pi * c01((u - 0.5) / 0.9)));
+      crew.aimBy(me, 1, _aimAt..setValues(BreakSpots.vendX - 0.47, 0.34, mz), math.sin(math.pi * c01((u - 1.9) / 1.4)));
       if (u > 2.0) {
         if (u < 2.75) {
           // In the tray.
@@ -724,12 +734,13 @@ class CrewBreaks {
     // Open it, then a sip every few seconds.
     final sip = u > 1.2 && ((u - 1.2) % 4.6) < 1.5;
     if (company.length > 1 && !sip) _conversation(me, b, company, t, hands: false);
+    var tilt = 0.0;
     if (u < 1.2) {
       OffDuty.hold(me, 1, 0.9);
     } else {
-      OffDuty.drink(me, ((u - 1.2) % 4.6) / 1.5, sip);
+      tilt = OffDuty.drink(me, ((u - 1.2) % 4.6) / 1.5, sip);
     }
-    _can(me, b, t);
+    _can(me, b, t, tilt: tilt);
   }
 
   void _smoke(FigurePose me, _Break b, double t) {
@@ -749,7 +760,10 @@ class CrewBreaks {
     }
     if (left < 1.4) {
       // Stubbing it out in the ashtray.
-      OffDuty.stub(me, 1 - left / 1.4);
+      final f = 1 - left / 1.4;
+      OffDuty.stub(me, f);
+      final a = BreakSpots.ashtray, dx = me.pos.x - a.x, dz = me.pos.z - a.z, d = math.max(0.05, math.sqrt(dx * dx + dz * dz));
+      crew.aimBy(me, 1, _aimAt..setValues(a.x + dx / d * 0.07, 1.0, a.z + dz / d * 0.07), math.sin(math.pi * c01(f)));
       if (left > 0.5) _cigarette(me, b, t, lit: false);
       return;
     }
@@ -795,9 +809,8 @@ class CrewBreaks {
   static final _paper = v4(hex3(0xF4F1EA));
 
   /// A can in [me]'s right hand (or flying from it into the bin).
-  void _can(FigurePose me, _Break b, double t, {vm.Vector3? flyTo, double flyFrom = 0}) {
+  void _can(FigurePose me, _Break b, double t, {vm.Vector3? flyTo, double flyFrom = 0, double tilt = 0}) {
     OffDuty.hand(me, 1, _tmp);
-    var tilt = OffDuty.sipping(me);
     if (flyTo != null) {
       final f = c01((t - flyFrom) / 0.45);
       _tmp.setValues(lerp(_tmp.x, flyTo.x, f), lerp(_tmp.y, 0.82, f) + 0.5 * math.sin(f * math.pi), lerp(_tmp.z, flyTo.z, f));
@@ -1011,87 +1024,73 @@ abstract final class OffDuty {
     Gait.walk(p, total == null ? Gait.phaseAt(d, speed, 1, m) : Gait.phaseOver(d, total, speed, 1, m), speed, m);
   }
 
-  /// Arms overhead, a lean back, a twist ([f] 0..1 through one stretch).
+  /// A stretch: hands on the hips, a lean back, then a twist of the
+  /// shoulders ([f] 0..1 through one).
   static void stretch(FigurePose p, double f, int seed) {
-    final up = math.sin(c01(f / 0.6) * math.pi);
-    p.armPitch[0] = p.armPitch[1] = lerp(0.1, math.pi * 0.97, up);
-    p.armRoll[0] = p.armRoll[1] = lerp(0.12, 0.25, up);
-    p.lean = -0.18 * up;
-    p.bob = 0.03 * up;
-    if (f > 0.6) {
-      // Hands on the hips, a twist.
-      final g = math.sin((f - 0.6) / 0.4 * math.pi);
-      p.armRoll[0] = p.armRoll[1] = 0.85 * g + 0.12 * (1 - g);
-      p.armPitch[0] = p.armPitch[1] = -0.3 * g + 0.1 * (1 - g);
-      p.yaw += (seed.isEven ? 0.5 : -0.5) * g;
+    final k = smooth(0, 0.12, f) * (1 - smooth(0.88, 1, f));
+    for (var s = 0; s < 2; s++) {
+      p.armRoll[s] = lerp(p.armRoll[s], 0.85, k);
+      p.armPitch[s] = lerp(p.armPitch[s], -0.3, k);
     }
+    p.lean = lerp(p.lean, -0.2, math.sin(math.pi * c01(f / 0.55)));
+    if (f > 0.5) p.twist += (seed.isEven ? 0.45 : -0.45) * math.sin((f - 0.5) / 0.5 * math.pi);
   }
 
-  /// At the vending machine, [u] seconds in: a look, a press, the can
-  /// drops, a bend down to the tray for it, back up.
+  /// At the vending machine, [u] seconds in: a look, (a press,) the can
+  /// drops, a bend down to the tray for it, back up. (The hand's the
+  /// break's: on the machine.)
   static void buy(FigurePose p, double u, int seed) {
     stand(p, u, seed, shift: 0);
-    final press = math.sin(math.pi * c01((u - 0.5) / 0.9));
-    p.armPitch[1] = lerp(0.1, 1.5, press);
-    p.armRoll[1] = lerp(0.12, -0.15, press);
     final bend = math.sin(math.pi * c01((u - 1.9) / 1.4));
-    p.lean = lerp(0.02, 0.85, bend);
-    p.bob = -0.1 * bend;
-    p.armPitch[1] = lerp(p.armPitch[1], 0.75, bend);
-    p.legPitch[0] = 0.25 * bend;
+    p.lean = lerp(0.02, 0.6, bend);
+    p.bob = -0.12 * bend;
+    p.legPitch[0] = 0.2 * bend;
     p.legPitch[1] = -0.1 * bend;
   }
 
-  /// Holding something up in hand [s] (forearm-ish forward by [k]).
-  static void hold(FigurePose p, int s, double k) {
-    p.armPitch[s] = lerp(p.armPitch[s], 0.75, k);
-    p.armRoll[s] = lerp(p.armRoll[s], -0.18, k);
-  }
+  /// Holding something in hand [s] in front of the chest ([k] of it).
+  static void hold(FigurePose p, int s, double k) => p.handTo(s, (s == 0 ? -1 : 1) * 0.13, 0.2, -0.27, k);
 
   /// A drink from the can: [f] 0..1 through a sip (when [sip]), else the
-  /// can held at the chest.
-  static void drink(FigurePose p, double f, bool sip) {
+  /// can held at the chest: the hand straight up the front to the mouth.
+  /// Returns how far the can's tipped.
+  static double drink(FigurePose p, double f, bool sip) {
     final up = sip ? math.sin(math.pi * c01(f)) : 0.0;
-    p.armPitch[1] = lerp(0.75, 2.55, up);
-    p.armRoll[1] = lerp(-0.18, 0.95, up);
-    p.lean = lerp(p.lean, -0.2, up);
+    p.handTo(1, lerp(0.13, 0.05, up), lerp(0.2, 0.52, up), lerp(-0.27, -0.17, up));
+    p.lean = lerp(p.lean, -0.1, up);
+    p.headPitch -= 0.2 * up;
+    return 1.9 * smooth(0.4, 1, up);
   }
-
-  /// How far a held can is tipped (for a drink), from the arm's pose.
-  static double sipping(FigurePose p) => c01((p.armPitch[1] - 1.2) / 1.3) * 1.9;
 
   /// Lighting a cigarette, [f] 0..1: both hands cupped at the mouth.
   static void light(FigurePose p, double f) {
     final k = math.sin(math.pi * c01(f));
-    p.armPitch[0] = p.armPitch[1] = lerp(0.1, 2.35, k);
-    p.armRoll[0] = p.armRoll[1] = lerp(0.12, 0.85, k);
+    p.handTo(0, -0.03, 0.53, -0.16, k);
+    p.handTo(1, 0.03, 0.53, -0.16, k);
     p.lean = 0.12 * k;
   }
 
-  /// Smoking, [v] seconds into a 5.2 s cycle: a drag, then the hand down.
+  /// Smoking, [v] seconds into a 5.2 s cycle: a drag (the hand straight up
+  /// to the mouth), then the hand down to the chest.
   static void smoking(FigurePose p, double v) {
     final up = math.sin(math.pi * c01(v / 1.3));
-    p.armPitch[1] = lerp(0.55, 2.45, up);
-    p.armRoll[1] = lerp(0.05, 0.9, up);
+    p.handTo(1, lerp(0.17, 0.035, up), lerp(0.18, 0.54, up), lerp(-0.22, -0.15, up));
     p.lean = lerp(p.lean, -0.1, c01((v - 1.3) / 0.4) * (1 - c01((v - 2.6) / 0.6)));
-    // The other hand in a pocket.
-    p.armPitch[0] = -0.15;
-    p.armRoll[0] = 0.32;
   }
 
-  /// Putting it out in the ashtray, [f] 0..1.
+  /// Putting it out in the ashtray, [f] 0..1: a lean to it (the hand's the
+  /// break's: on the ashtray).
   static void stub(FigurePose p, double f) {
-    final k = math.sin(math.pi * c01(f));
-    p.lean = 0.45 * k;
-    p.armPitch[1] = lerp(0.5, 1.1, k);
-    p.armRoll[1] = lerp(0.05, -0.1, k);
+    p.lean = 0.3 * math.sin(math.pi * c01(f));
   }
 
-  /// Talking: a hand that explains, a nodding head.
+  /// Talking: a hand that explains (the forearm out in front, low), a
+  /// nodding head.
   static void talk(FigurePose p, double t, int seed) {
     final g = math.sin(t * 4.3 + seed);
-    p.armPitch[1] = 1.15 + 0.3 * g;
-    p.armRoll[1] = 0.3 + 0.25 * math.sin(t * 2.9 + seed);
+    p.armPitch[1] = 0.6 + 0.12 * g;
+    p.armRoll[1] = 0.12 + 0.1 * math.sin(t * 2.9 + seed);
+    p.elbow[1] = 1.25 + 0.2 * math.sin(t * 3.7 + seed);
     p.lean = 0.04 + 0.03 * math.sin(t * 7 + seed);
     // Turning to one listener and the other.
     p.headYaw += 0.14 * math.sin(t * 1.3 + seed);

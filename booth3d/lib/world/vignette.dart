@@ -77,6 +77,34 @@ abstract class Vignette {
   /// A point of its own frame in the world.
   vm.Vector3 world(double x, double y, double z) => frame.transform3(vm.Vector3(x, y, z));
 
+  late final _inverse = vm.Matrix4.inverted(frame);
+
+  /// A world point in its own frame (into [out]).
+  vm.Vector3 local(vm.Vector3 w, vm.Vector3 out) => _inverse.transform3(out..setFrom(w));
+
+  /// A building's shell with its ground floor open to the front (−z, its
+  /// face on z = 0): the floor, back and side walls, the upper floors with
+  /// rows of windows, a band over the opening, the roof — [w] wide, [d]
+  /// deep, [h] tall, the opening [open] high (into [b]).
+  void storefront(Batch b, {double w = 12, double d = 9.6, double h = 10, double open = 3.85, int wall = 0xD8D2C4, int trim = 0x2E6DA8}) {
+    final m = pbr(rgb(1, 1, 1), roughness: 0.75);
+    final glass = pbr(rgb(1, 1, 1), roughness: 0.15, metallic: 0.4);
+    final wc = Vignette.c(wall);
+    box(b, m, w, 0.2, d, 0, 0.1, d / 2, Vignette.c(0x9A968E));
+    box(b, m, w, h, 0.3, 0, h / 2, d - 0.15, wc);
+    for (final x in [-w / 2 + 0.15, w / 2 - 0.15]) {
+      box(b, m, 0.3, h, d, x, h / 2, d / 2, wc);
+    }
+    box(b, m, w, h - open, 0.3, 0, (h + open) / 2, 0.15, wc);
+    box(b, m, w + 0.2, 0.25, 0.4, 0, open, 0.1, Vignette.c(trim));
+    for (var y = open + 1.0; y + 1.4 < h; y += 2.6) {
+      for (var k = -((w / 2 - 1.2) / 1.3).floor(); k <= ((w / 2 - 1.2) / 1.3).floor(); k++) {
+        box(b, glass, 0.95, 1.3, 0.05, k * 1.3, y + 0.65, -0.02, Vignette.c(0x9CC4E0));
+      }
+    }
+    box(b, m, w + 0.4, 0.3, d + 0.4, 0, h + 0.1, d / 2, Vignette.c(0x5A6470));
+  }
+
   /// [m] (its own frame) in the world.
   vm.Matrix4 place(vm.Matrix4 m) => frame * m;
 

@@ -257,10 +257,11 @@ class LigatureForge extends Vignette {
     }
     final striking = c > _blows.first - 0.5 && c < _blows.last + 0.25;
     if (striking) {
-      p.lean = 0.25 + 0.1 * (1 - raise);
-      p.armPitch[1] = lerp(1.2, 2.7, raise);
-      p.armRoll[1] = 0.15;
-      p.elbow[1] = lerp(0.35, 1.3, raise);
+      // Short blows: the hammer up to the shoulder, the elbow folding.
+      p.lean = 0.25 + 0.06 * (1 - raise);
+      p.armPitch[1] = lerp(1.05, 1.6, raise);
+      p.armRoll[1] = 0.12;
+      p.elbow[1] = lerp(0.5, 1.45, raise);
       p.headPitch = 0.3;
     }
     worldPose(p);

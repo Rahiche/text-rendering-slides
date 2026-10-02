@@ -194,11 +194,12 @@ class WeightGym extends Vignette {
       clap = math.max(clap, math.sin(math.pi * seg(u, r + _rep * 0.55, r + _rep * 0.85)));
     }
     if (flex > 0.05) {
-      p.armPitch[1] = lerp(p.armPitch[1], 2.6 + 0.2 * math.sin(t * 9), flex);
-      p.armRoll[1] = lerp(p.armRoll[1], 0.35, flex);
+      // A fist pump, chest high.
+      p.handTo(1, 0.22, 0.3 + 0.05 * math.sin(t * 9), -0.24, flex);
     } else if (clap > 0) {
-      p.armPitch[0] = p.armPitch[1] = lerp(0.08, 1.3, clap);
-      p.armRoll[0] = p.armRoll[1] = lerp(0.12, -0.42, clap);
+      final open = 0.03 + 0.12 * (1 - clap), k = math.min(1.0, clap * 3);
+      p.handTo(0, -open, 0.27, -0.3, k);
+      p.handTo(1, open, 0.27, -0.3, k);
     }
     draw(_trainer, p);
     pool.end();

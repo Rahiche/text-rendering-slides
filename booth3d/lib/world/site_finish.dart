@@ -9,6 +9,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'crew.dart';
 import 'crew_breaks.dart' show OffDuty;
 import 'kit.dart';
+import 'motion.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
@@ -748,10 +749,7 @@ class Finish3D {
         f.armPitch[0] = 1.0;
       } else if (who < Crew3D.builders && _u < off + 4.5 && off < p.arrive[who]) {
         // Walking off with their tools.
-        f
-          ..armPitch[1] = 2.05
-          ..armRoll[1] = 0.1
-          ..armPitch[0] = 0.05;
+        _carrying(f);
       }
       return;
     }
@@ -775,14 +773,19 @@ class Finish3D {
       if (f.pos.z > SiteLayout.deckZ0 && f.pos.z < SiteLayout.deckZ1) {
         f.pos.y = (SiteLayout.deckRest + 0.05) * smooth(p.w / 2 + 1.3, p.w / 2 + 1.0, f.pos.x.abs());
       }
-      // The pole on the shoulder, the bucket or the tray in the other hand.
-      f
-        ..armPitch[1] = 2.05
-        ..armRoll[1] = 0.1
-        ..armPitch[0] = 0.05;
+      _carrying(f);
       return;
     }
     _work(p, leg.unit!, f, plasterer, seed);
+  }
+
+  /// The pole held out in front, low, the bucket or the tray in the other
+  /// hand.
+  static void _carrying(FigurePose f) {
+    f
+      ..handTo(1, 0.24, 0.15, -0.22)
+      ..armPitch[0] = 0.05
+      ..elbow[0] = 0.2;
   }
 
   void _work(FinishPlan p, FinishUnit unit, FigurePose f, bool plasterer, int seed) {
@@ -833,13 +836,8 @@ class Finish3D {
     crew.aim(f, 0, _c);
     crew.aim(f, 1, _d);
     f.lean = 0.05 - 0.14 * c01((tool.y - 2.0) / 3.0);
-    // Shuffling sideways with the swing.
-    final dx = p.bodyX(unit, tau + 0.05, plasterer: plasterer) - p.bodyX(unit, tau, plasterer: plasterer);
-    if (dx.abs() > 0.012) {
-      final ph = u * 9 + seed;
-      f.legPitch[0] = 0.28 * math.sin(ph);
-      f.legPitch[1] = -0.28 * math.sin(ph);
-    }
+    // Stepping sideways as they go along.
+    Gait.sideways(f, (f.pos.x - p.bodyX(unit, 0, plasterer: plasterer)) * math.cos(f.yaw));
   }
 
   /// Turns [f] towards (x, z).
@@ -919,15 +917,14 @@ class Finish3D {
       ..lean = 0.1;
     final thumbs = seg(u, at, at + 0.25) * (1 - seg(u, at + 1.1, at + 1.4));
     if (thumbs > 0) {
+      // A thumbs up, a nod.
       f
-        ..armPitch[1] = lerp(f.armPitch[1], 2.75, thumbs)
-        ..armRoll[1] = lerp(f.armRoll[1], 0.25, thumbs)
-        ..lean = lerp(f.lean, -0.08, thumbs);
+        ..handTo(1, 0.2, 0.3, -0.3, thumbs)
+        ..headPitch += 0.15 * math.sin(math.pi * seg(u, at, at + 0.7));
     } else if ((u / 3.1).floor() % 3 == 1) {
-      // Pointing at the work.
-      f
-        ..armPitch[1] = 1.4
-        ..armRoll[1] = -0.3;
+      // Pointing at the work, the hand out low.
+      final k = smooth(0, 0.4, (u / 3.1) % 1.0) * (1 - smooth(0.85, 1, (u / 3.1) % 1.0));
+      f.handTo(1, 0.28, 0.22, -0.4, k);
     }
   }
 
@@ -958,14 +955,14 @@ class Finish3D {
     tools.end();
   }
 
-  /// Builder [z]'s pole (telescoped in) over the shoulder, its head up
-  /// front, and the bucket or the tray in the other hand.
+  /// Builder [z]'s pole (telescoped in) held out in front, its head up,
+  /// and the bucket or the tray in the other hand.
   void _carry(FinishPlan p, int z) {
     final f = crew.poses[z], plasterer = z.isEven;
     OffDuty.hand(f, 1, _a);
     final fx = -math.sin(f.yaw) * 0.8, fz = -math.cos(f.yaw) * 0.8;
-    _b.setValues(_a.x + fx * 1.0, _a.y + 0.6, _a.z + fz * 1.0);
-    _c.setValues(_a.x - fx * 0.55, _a.y - 0.33, _a.z - fz * 0.55);
+    _b.setValues(_a.x + fx * 1.1, _a.y + 0.75, _a.z + fz * 1.1);
+    _c.setValues(_a.x - fx * 0.3, _a.y - 0.2, _a.z - fz * 0.3);
     tools.rod(_c, _b, 0.018, _pole);
     _head(plasterer, _b.x, _b.y + 0.04, _b.z, _colourOf(p, z), 0.6);
     OffDuty.hand(f, 0, _a);

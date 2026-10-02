@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -7,43 +6,40 @@ import 'package:vector_math/vector_math.dart' as vm;
 import '../tuning.dart';
 import 'kit.dart';
 
-/// Day and night over the city, an 8-minute day painted in the talk's
-/// blueprint palette: a cobalt day sky, an amber → coral → pink sunset, a
-/// violet blue hour, a deep navy night with stars, a big moon and the city
-/// glowing, then a pink dawn. A stylised gradient sky drives the background
-/// (with the sun or moon disk) and, without the disk, the image-based light;
-/// the sun (or the moon) is the shadow-casting key light. [night] drives
-/// windows, lamps and neon.
+/// The sky over the city, always by day, in the talk's blueprint palette: a
+/// cobalt sky, white clouds drifting over. The sun goes from mid-morning to
+/// mid-afternoon and back every 8 minutes (never as far as the sunset: the
+/// city's always lit by day, easy to see). A stylised gradient sky drives
+/// the background (with the sun's disk) and, without the disk, the
+/// image-based light; the sun is the shadow-casting key light.
 class Sky3D {
   Sky3D(this.scene);
 
   final Scene scene;
 
-  /// Seconds per day.
+  /// Seconds for the sun to go from the morning to the afternoon and back.
   static const period = 480.0;
 
-  /// The hour of the day at scene time 0 (a bright morning).
-  static const startHour = 8.0;
+  /// The hours it goes between: the morning (at scene time 0) and the
+  /// afternoon.
+  static const startHour = 8.5, endHour = 14.5;
 
-  /// 0 = day … 1 = night (windows, lamps, neon).
+  /// 0 = day … 1 = night (windows, lamps, neon): always 0 now, the sun
+  /// never going down; what lights up after dark stays off.
   double night = 0;
 
-  /// 0 … 1 around sunrise and sunset (golden light).
+  /// 0 … 1 around sunrise and sunset (golden light): 0, as [night].
   double twilight = 0;
 
   /// The hour of the day, 0 … 24.
   double hour = startHour;
 
-  /// Directions towards the sun and the moon.
+  /// The direction towards the sun.
   final sun = vm.Vector3(0, 1, 0);
-  final moon = vm.Vector3(0, 1, 0);
 
   late final GradientSkySource _sky; // background, with the disk
   late final GradientSkySource _ibl; // lighting, no disk
   late final DirectionalLight _light;
-  late final UnlitMaterial _starMat, _moonMat;
-  final _starNode = Node(name: 'stars');
-  final _moon = Node(name: 'moon');
   late final PhysicallyBasedMaterial _cloudMat;
   late final InstancedMesh _clouds;
   final _puffs = <_Puff>[];
@@ -56,12 +52,8 @@ class Sky3D {
   final _iblKeys = <EnvironmentMap>[];
   int _iblKey = -1, _frames = 0;
 
-  /// Hours the lighting is baked for: hourly by day, closer together around
-  /// sunrise and sunset, where the sky changes fastest; one for the night.
-  static const _iblHours = <double>[
-    4.6, 5.0, 5.3, 5.6, 5.85, 6.2, 6.6, 7.3, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, //
-    15.0, 15.6, 16.3, 17.0, 17.45, 17.9, 18.2, 18.5, 18.8, 19.1, 19.45, 19.8,
-  ];
+  /// Hours the lighting is baked for: hourly through the day.
+  static const _iblHours = <double>[8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
 
   void init() {
     _sky = GradientSkySource();
@@ -110,35 +102,7 @@ class Sky3D {
       ..skyColorInfluence = 0.65
       ..sunInScatter = 0.35
       ..sunInScatterExponent = 10;
-    _stars();
-    _moonDisk();
     _cloudBank();
-  }
-
-  /// A big, soft moon (the bloom gives it its glow).
-  void _moonDisk() {
-    _moonMat = UnlitMaterial()..baseColorFactor = vm.Vector4(0, 0, 0, 1);
-    final geo = SphereGeometry(radius: 13, segments: 28, rings: 16).extractMeshData();
-    // Faint maria: darker vertex colours on one side.
-    final colors = Float32List(geo.vertexCount * 4);
-    for (var i = 0; i < geo.vertexCount; i++) {
-      final x = geo.positions[i * 3] / 13, y = geo.positions[i * 3 + 1] / 13;
-      final mare = smooth(0.55, 0.15, (vm.Vector2(x + 0.25, y - 0.2)).length) * 0.22 + smooth(0.4, 0.1, (vm.Vector2(x - 0.3, y + 0.25)).length) * 0.16;
-      final v = 1 - mare;
-      colors
-        ..[i * 4] = v
-        ..[i * 4 + 1] = v * 0.98
-        ..[i * 4 + 2] = v * 0.92
-        ..[i * 4 + 3] = 1;
-    }
-    _moon.mesh = Mesh(
-      MeshGeometry.fromMeshData(MeshData(positions: geo.positions, vertexCount: geo.vertexCount, normals: geo.normals, texCoords: geo.texCoords, colors: colors, indices: geo.indices)),
-      _moonMat,
-    );
-    _moon
-      ..castsShadows = false
-      ..lightChannelMask = 0x01;
-    scene.add(_moon);
   }
 
   /// (Re)binds the sky to the lighting; a fresh binding bakes at once (used
@@ -182,14 +146,13 @@ class Sky3D {
       if (_iblKeys.length < _iblHours.length) return;
       scene.skyEnvironment = null;
     }
-    // The nearest key, round the clock (the night key covers the night).
+    // The nearest key.
     var best = 0;
     var bestD = 99.0;
     for (var k = 0; k < _iblHours.length; k++) {
       final d = (hour - _iblHours[k]).abs();
-      final dd = math.min(d, 24 - d);
-      if (dd < bestD) {
-        bestD = dd;
+      if (d < bestD) {
+        bestD = d;
         best = k;
       }
     }
@@ -197,28 +160,6 @@ class Sky3D {
       _iblKey = best;
       scene.environment = _iblKeys[best];
     }
-  }
-
-  void _stars() {
-    _starMat = UnlitMaterial()..baseColorFactor = vm.Vector4(0, 0, 0, 1);
-    final stars = InstancedMesh(geometry: IcosphereGeometry(radius: 1, subdivisions: 0), material: _starMat);
-    const tints = [0xFFFFFF, 0xE3F2FF, 0xFFE2B0, 0xC9DEFF, 0xFFD0E8];
-    for (var i = 0; i < 520; i++) {
-      final a = rnd(i, 1) * math.pi * 2;
-      // More stars low in the sky, where the camera mostly looks.
-      final e = math.asin(0.04 + 0.92 * math.pow(rnd(i, 2), 1.6));
-      final d = vm.Vector3(math.cos(a) * math.cos(e), math.sin(e), math.sin(a) * math.cos(e));
-      final big = rnd(i, 3);
-      final size = 0.5 + 1.7 * big * big * big;
-      final k = 0.35 + 0.65 * rnd(i, 4) + 1.6 * big * big;
-      stars.addInstance(trs(d * 620, s: vm.Vector3.all(size)), color: v4(hex3(tints[i % tints.length], k)));
-    }
-    scene.add(
-      _starNode
-        ..castsShadows = false
-        ..lightChannelMask = 0x01
-        ..addComponent(InstancedMeshComponent(stars)),
-    );
   }
 
   void _cloudBank() {
@@ -269,33 +210,27 @@ class Sky3D {
       _bakedAt = t;
     }
 
-    hour = (startHour + 24 * t / period) % 24;
+    hour = hourAt(t);
     if (Tuning.iblKeys) _followKeys();
     _sunAt(hour, sun);
-    _moonAt(hour, moon);
     final look = _Look.at(hour);
     final y = sun.y;
     night = 1 - smooth(-0.17, 0.10, y);
     twilight = 1 - smooth(0.04, 0.32, y.abs());
 
-    // Background sky (with the sun, or at night the moon, as its disk).
-    final moonUp = night > 0.5;
+    // Background sky, with the sun's disk.
     _sky
       ..zenithColor = look.zenith
       ..horizonColor = look.horizon
       ..groundColor = look.ground
-      ..sunDirection = moonUp ? moon : sun
-      ..sunSharpness = moonUp ? 4000 : 2600
-      ..sunColor = moonUp ? hex3(0xC9D8FF, 0.32 * smooth(0.5, 0.9, night)) : look.disk;
+      ..sunDirection = sun
+      ..sunSharpness = 2600
+      ..sunColor = look.disk;
     if (!keyed) _iblAt(look, sun);
 
-    // Key light: the sun (kept a little above the horizon at twilight so
-    // the last light rakes across the plaza), then the moon.
-    final lowSun = vm.Vector3(sun.x, math.max(sun.y, 0.07), sun.z)..normalize();
-    final m = smooth(0.55, 0.9, night);
-    final dir = (lowSun * (1 - m) + moon * m)..normalize();
+    // Key light: the sun.
     _light
-      ..direction = -dir
+      ..direction = -sun
       ..color = look.light
       ..intensity = look.lightPower;
 
@@ -312,15 +247,6 @@ class Sky3D {
       ..contrast = lerp(1.08, 1.05, night)
       ..temperature = 0.06 * twilight - 0.04 * night;
 
-    // Stars and the moon come out after dusk.
-    final starK = 3.2 * smooth(0.55, 0.95, night);
-    _starMat.baseColorFactor = vm.Vector4(starK, starK, starK, 1);
-    _starNode.visible = starK > 0.01;
-    final moonK = 4.2 * smooth(0.45, 0.9, night);
-    _moonMat.baseColorFactor = vm.Vector4(moonK, moonK * 0.98, moonK * 0.9, 1);
-    _moon.localTransform = vm.Matrix4.translation(moon * 560);
-    _moon.visible = moonK > 0.01;
-
     // Clouds drift west → east, catching the sky's colour.
     _cloudMat.emissiveFactor = v4(mix3(look.horizon, look.zenith, 0.35));
     _cloudMat.emissiveStrength = lerp(0.35, 0.8, night);
@@ -334,6 +260,10 @@ class Sky3D {
     });
   }
 
+  /// The hour at scene time [t]: from [startHour] to [endHour] and back,
+  /// easing at each end.
+  static double hourAt(double t) => (startHour + endHour) / 2 - (endHour - startHour) / 2 * math.cos(2 * math.pi * t / period);
+
   /// The sun's path: rises in the east-south-east, high in the south (behind
   /// the camera, lighting the wall's face) at noon, sets in the
   /// west-south-west.
@@ -346,17 +276,6 @@ class Sky3D {
       ..x = ax / l * math.cos(e)
       ..y = math.sin(e)
       ..z = az / l * math.cos(e);
-  }
-
-  /// A big moon low over the city (north-north-east), drifting slowly.
-  static void _moonAt(double hour, vm.Vector3 out) {
-    final n = ((hour - 18 + 24) % 24) / 12; // 0 at dusk … 1 at dawn
-    final az = (0.42 - 0.5 * n) * 1.0; // radians east of north
-    final el = (0.17 + 0.16 * math.sin(n * math.pi)) * 1.0;
-    out
-      ..x = math.sin(az) * math.cos(el)
-      ..y = math.sin(el)
-      ..z = math.cos(az) * math.cos(el);
   }
 }
 
@@ -373,33 +292,12 @@ class _Look {
   final double lightPower, ambient, exposure, fog;
 
   static final _keys = <(double, _Look)>[
-    (0.0, _night),
-    (4.6, _Look(hex3(0x050F27), hex3(0x18295A), hex3(0x050B16), vm.Vector3.zero(), hex3(0x9DB8FF), 0.32, 3.4, 1.55, 0.0045)),
-    (5.3, _Look(hex3(0x131E4C), hex3(0x3E447F), hex3(0x0A1024), hex3(0xFF9E9A, 3), hex3(0xB7A6FF), 0.25, 2.2, 1.4, 0.0045)),
-    (5.85, _Look(hex3(0x22377E), hex3(0xB58BA6), hex3(0x121A35), hex3(0xFF9E7A, 9), hex3(0xFFA894), 0.9, 1.4, 1.2, 0.004)),
     (6.6, _Look(hex3(0x3466B4), hex3(0xFFC98C), hex3(0x16243F), hex3(0xFFC66D, 14), hex3(0xFFC98C), 2.3, 1.15, 1.08, 0.0035)),
     (8.0, _Look(hex3(0x2A6CCB), hex3(0x9AD3FF), hex3(0x152842), hex3(0xFFF4DC, 16), hex3(0xFFF0D8), 3.5, 1.0, 1.0, 0.003)),
     (12.0, _Look(hex3(0x2063C9), hex3(0x90CEFF), hex3(0x152842), hex3(0xFFFBF0, 16), hex3(0xFFF8EE), 3.9, 1.0, 1.0, 0.003)),
     (15.6, _Look(hex3(0x2763C3), hex3(0x9FD1F9), hex3(0x152842), hex3(0xFFF0D8, 16), hex3(0xFFEFD6), 3.6, 1.0, 1.0, 0.003)),
     (17.0, _Look(hex3(0x3457A8), hex3(0xFFCF8A), hex3(0x1A2440), hex3(0xFFC66D, 16), hex3(0xFFC27A), 3.0, 1.05, 1.03, 0.0034)),
-    (17.9, _Look(hex3(0x273077), hex3(0xEE8E78), hex3(0x1A1C38), hex3(0xFF9E7A, 14), hex3(0xFF9A72), 1.8, 1.25, 1.1, 0.0038)),
-    (18.5, _Look(hex3(0x172360), hex3(0x7E5A9C), hex3(0x120F2A), hex3(0xFF8F7A, 7), hex3(0xE59AA6), 0.5, 1.6, 1.25, 0.0042)),
-    (19.1, _Look(hex3(0x0C1846), hex3(0x3F4392), hex3(0x0A0E24), hex3(0xC39BFF, 1.5), hex3(0x9DA6FF), 0.22, 2.4, 1.45, 0.0045)),
-    (19.8, _night),
-    (24.0, _night),
   ];
-
-  static final _night = _Look(
-    hex3(0x030916),
-    hex3(0x0E2048),
-    hex3(0x040A15),
-    vm.Vector3.zero(),
-    hex3(0x9DB8FF),
-    0.34,
-    3.6,
-    1.6,
-    0.0045,
-  );
 
   static _Look at(double hour) {
     var i = 0;

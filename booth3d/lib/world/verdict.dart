@@ -252,10 +252,10 @@ class Verdict3D {
       }
       final hit = t - (_impact ?? double.infinity);
       if (hit > -0.2 && hit < 1.2) {
+        // A flinch: back from it, a hand up in front.
         final k = math.sin(math.pi * c01((hit + 0.2) / 1.4));
-        f.lean = -0.2 * k;
-        f.armPitch[0] = lerp(f.armPitch[0], 2.4, k);
-        f.armRoll[0] = lerp(f.armRoll[0], 0.5, k);
+        f.lean = -0.15 * k;
+        f.handTo(0, -0.14, 0.3, -0.28, k);
       }
       return;
     }
@@ -272,14 +272,10 @@ class Verdict3D {
         // Presenting it: a word to the crew, a hand that explains.
         OffDuty.talk(f, t, seed);
       } else {
-        // "This has to make way": turning to the wall, pointing up at it.
+        // "This has to make way": turning to the wall, pointing at it.
         final k = eio(seg(u, _point, _point + 0.6));
         f.yaw = lerp(toCrew, math.pi + 0.2, k);
-        _b.setValues(p.x - 1.0, 3.6, 0);
-        final pitch = f.armPitch[1], roll = f.armRoll[1];
-        crew.aim(f, 1, _b);
-        f.armPitch[1] = lerp(pitch, f.armPitch[1], k);
-        f.armRoll[1] = lerp(roll, f.armRoll[1], k);
+        crew.point(f, 1, _b..setValues(p.x - 1.0, 3.6, 0), k);
         f.armPitch[0] = 0.15;
       }
       return;
@@ -310,8 +306,7 @@ class Verdict3D {
       parts.box(_a.x, _a.y - 0.1, _a.z, 0.3, 0.22, 0.07, _suit, yaw: f.yaw);
       return;
     }
-    f.armPitch[1] = 1.85;
-    f.armRoll[1] = 0.1;
+    f.handTo(1, 0.2, 0.42, -0.2);
     OffDuty.hand(f, 1, _a);
     final bx = math.sin(f.yaw), bz = math.cos(f.yaw);
     _b.setValues(_a.x + bx * 0.55, _a.y + 0.38, _a.z + bz * 0.55);
@@ -418,11 +413,8 @@ class Verdict3D {
     if (p == null) return;
     final t = _t, u = t - p.d;
     if (who == Crew3D.operator) {
-      final k = math.sin(math.pi * seg(u, _signal + 0.4, _signal + 1.6));
-      if (k > 0) {
-        f.armPitch[1] = lerp(f.armPitch[1], 2.8 + 0.3 * math.sin(t * 9), k);
-        f.armRoll[1] = lerp(f.armRoll[1], 0.3, k);
-      }
+      // A nod back from the cab.
+      f.headPitch += 0.2 * math.sin(math.pi * 2 * seg(u, _signal + 0.4, _signal + 1.2)).abs();
       return;
     }
     final walk = p.crew[who];
@@ -455,15 +447,17 @@ class Verdict3D {
         } else {
           OffDuty.listen(f, t, seed);
         }
-      } else {
-        // Up at the wall: a hand to the hat, a whistle.
-        f.armPitch[1] = lerp(0.1, who.isEven ? 2.5 : 0.1, up);
-        f.armRoll[1] = lerp(0.12, 0.6, up);
+      } else if (who.isEven) {
+        // Up at the wall: hands on the hips.
+        for (var s = 0; s < 2; s++) {
+          f.armPitch[s] = lerp(f.armPitch[s], -0.3, up);
+          f.armRoll[s] = lerp(f.armRoll[s], 0.85, up);
+        }
       }
       return;
     }
-    // The foreman: his clipboard up, reading; then two nods, and both arms
-    // over his head towards the crane.
+    // The foreman: his clipboard up, reading; then two nods, and a beckon
+    // to the crane.
     f.clipboard = true;
     f.armPitch[0] = 1.15;
     f.armRoll[0] = -0.15;
@@ -472,10 +466,8 @@ class Verdict3D {
     final wave = seg(u, _signal, _signal + 0.3) * (1 - seg(u, _disperse - 0.2, _disperse));
     if (wave > 0) {
       f.yaw = lerp(f.yaw, math.atan2(-(13 - f.pos.x), -(4.3 - f.pos.z)), wave);
-      f.lean = -0.12 * wave;
-      final s = math.sin(t * 8);
-      f.armPitch[1] = lerp(0.1, 2.75 + 0.25 * s, wave);
-      f.armRoll[1] = lerp(0.12, 0.3 + 0.3 * s, wave);
+      f.headPitch -= 0.3 * wave;
+      f.handTo(1, 0.24, 0.28, -0.3 - 0.08 * math.sin(t * 7), wave);
     }
   }
 

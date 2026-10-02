@@ -79,7 +79,7 @@ class Site3D {
   late final fx = Fx3D(scene);
   late final lights = SiteLights(scene);
   late final props = SiteProps(scene);
-  late final breaks = CrewBreaks(scene, fx);
+  late final breaks = CrewBreaks(scene, fx, crew);
   late final delivery = Delivery3D(scene, crew, breaks);
 
   /// Small moving props of the works and the scenes round the finished
@@ -701,12 +701,15 @@ class Site3D {
 
   /// Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
   /// the camera (with capture mode, to check a spot from a fixed eye);
-  /// several views split by '|' are taken in turn, one per captured frame.
+  /// several views split by '|' are taken in turn, one per captured frame
+  /// ('-': not pinned).
   void _pin() {
     const look = String.fromEnvironment('BOOTH3D_LOOK');
     if (look.isEmpty) return;
-    final views = look.split('|');
-    final v = views[math.min(lookIndex, views.length - 1)].split(',').map(double.parse).toList();
+    final views = look.split('|'), view = views[math.min(lookIndex, views.length - 1)];
+    // ('-': this frame, the director's own shot.)
+    if (view == '-') return;
+    final v = view.split(',').map(double.parse).toList();
     focus.add(
       Focus('look $lookIndex', Shot(vm.Vector3(v[0], v[1], v[2]), vm.Vector3(v[3], v[4], v[5]), fov: v.length > 6 ? v[6] : 40, settle: 0.3), priority: 9),
     );

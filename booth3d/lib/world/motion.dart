@@ -147,6 +147,21 @@ abstract final class Gait {
     }
   }
 
+  /// Stepping sideways (standing, facing on): [dist] metres moved to the
+  /// right so far (negative, to the left), a step [step] long: each foot in
+  /// turn lifted and set down further on while the other stays put.
+  static void sideways(FigurePose p, double dist, {double step = 0.3}) {
+    final u = dist / step;
+    for (var s = 0; s < 2; s++) {
+      // Planted for half the cycle (falling back as the body goes on),
+      // then swung on ahead of it.
+      final ph = _frac(u + (s == 1 ? 0.0 : 0.5));
+      final r = ph < 0.5 ? lerp(-step / 4, step / 4, smooth(0, 0.5, ph)) : lerp(step / 4, -step / 4, (ph - 0.5) / 0.5);
+      p.footOut[s] += s == 1 ? r : -r;
+      if (ph < 0.5) p.footLift[s] = math.max(p.footLift[s], 0.05 * math.sin(math.pi * ph / 0.5));
+    }
+  }
+
   static double _hermite(double x, double y0, double m0, double y1, double m1) {
     final x2 = x * x, x3 = x2 * x;
     return (2 * x3 - 3 * x2 + 1) * y0 + (x3 - 2 * x2 + x) * m0 + (-2 * x3 + 3 * x2) * y1 + (x3 - x2) * m1;
@@ -392,16 +407,15 @@ abstract final class Idle {
   }
 
   /// Now and then, something to do with the hands (in [m]'s habits): a
-  /// hand to the head, a look at the watch, arms folded, hands on the hips
-  /// or behind the back, rubbing them, the phone.
+  /// look at the watch, hands on the hips, arms folded, the phone.
   static void fiddle(FigurePose p, double t, Manner m, double amount) {
     final seed = m.seed;
     final span = 11 + 7 * m.restless;
     final tf = t / span + seed * 0.29, i = tf.floor(), u = (tf - i) * span;
     if (rnd(seed, i, 11) > amount * (0.45 + 0.4 * m.restless)) return;
-    final kind = (rnd(seed, i, 12) * 7).floor();
+    final kind = (rnd(seed, i, 12) * 4).floor();
     // How long it lasts, and how far into it we are (in and out ~0.5 s).
-    final len = const [2.2, 2.4, 5.5, 7.0, 5.0, 1.8, 4.5][kind], start = 0.5 + (span - len - 1) * rnd(seed, i, 13);
+    final len = const [2.4, 5.5, 7.0, 4.5][kind], start = 0.5 + (span - len - 1) * rnd(seed, i, 13);
     final k = smooth(start, start + 0.5, u) * (1 - smooth(start + len - 0.5, start + len, u));
     if (k <= 0) return;
     void arm(int s, double pitch, double roll) {
@@ -411,37 +425,31 @@ abstract final class Idle {
 
     switch (kind) {
       case 0:
-        // A scratch of the head.
-        arm(1, 2.75, 0.62);
-        p.headPitch += 0.12 * k;
-        p.headYaw -= 0.1 * k;
-      case 1:
-        // The time.
-        arm(0, 1.3, -0.5);
+        // The time: the wrist up in front, a look at it.
+        p.handTo(0, -0.03, 0.36, -0.3, k);
         p.headPitch += 0.42 * k;
-        p.headYaw += 0.22 * k;
-      case 2:
+        p.headYaw += 0.15 * k;
+      case 1:
         // Hands on the hips.
         arm(0, -0.3, 0.9);
         arm(1, -0.3, 0.9);
-      case 3:
+      case 2:
         // Arms folded.
         arm(0, 0.68, -0.55);
         arm(1, 0.68, -0.55);
-      case 4:
-        // Hands behind the back.
-        arm(0, -0.38, -0.22);
-        arm(1, -0.38, -0.22);
-        p.lean -= 0.03 * k;
-      case 5:
-        // Rubbing the hands.
-        arm(0, 0.72, -0.38);
-        arm(1, 0.72 + 0.05 * math.sin(t * 9), -0.38);
       default:
-        // The phone.
-        arm(1, 1.0, -0.35);
-        arm(0, 0.85, -0.42);
+        // The phone, held in front, a look down at it.
+        p.handTo(1, 0.05, 0.34, -0.29, k);
+        p.handTo(0, -0.03, 0.32, -0.28, k);
         p.headPitch += 0.45 * k;
     }
+  }
+
+  /// Clapping in front of the chest, [rate] claps a second ([k] of it).
+  static void clap(FigurePose p, double t, double rate, [double k = 1, double phase = 0]) {
+    if (k <= 0) return;
+    final c = 0.5 + 0.5 * math.cos((t * rate + phase) * 2 * math.pi), open = 0.025 + 0.1 * c * c;
+    p.handTo(0, -open, 0.27, -0.3, k);
+    p.handTo(1, open, 0.27, -0.3, k);
   }
 }

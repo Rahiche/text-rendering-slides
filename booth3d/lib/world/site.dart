@@ -43,8 +43,11 @@ import 'v_family.dart';
 import 'v_farm.dart';
 import 'v_forge.dart';
 import 'v_gym.dart';
+import 'v_hyphen.dart';
 import 'v_itemize.dart';
+import 'v_locale.dart';
 import 'v_relay.dart';
+import 'v_ruby.dart';
 import 'v_tofu.dart';
 import 'v_tower.dart';
 import 'v_tram.dart';
@@ -121,6 +124,9 @@ class Site3D {
       PixelFarm(kit),
       TextRelay(kit),
       ItemizeWorks(kit),
+      LocaleOffice(kit),
+      RubyCable(kit),
+      HyphenMill(kit),
     ],
   );
 

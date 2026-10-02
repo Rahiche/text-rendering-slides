@@ -73,3 +73,11 @@ flutter:
     - family: NotoKufiArabic
       fonts:
         - asset: assets/fonts/NotoKufiArabic.ttf
+    # The locale office (v_locale.dart): the same code points in their
+    # Japanese and Chinese forms (subsets of Noto Sans JP and SC).
+    - family: CaseJP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-case.ttf
+    - family: CaseSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-case.ttf

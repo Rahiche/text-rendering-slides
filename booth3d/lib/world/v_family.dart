@@ -197,9 +197,11 @@ class ZwjFamily extends Vignette {
       }
     }
     // The sign over them: 1 grapheme while they're joined, 4 apart.
+    // (Only while the camera's here: from anywhere else it's a board's
+    // blank back.)
     final flip = apart > 0.5;
-    _joined.visible = !flip;
-    _apartSign.visible = flip;
+    _joined.visible = !flip && visited;
+    _apartSign.visible = flip && visited;
     final n = flip ? _apartSign : _joined;
     final pop = 1 - 0.25 * math.sin(math.pi * (apart < 0.5 ? apart * 2 : (1 - apart) * 2)).abs();
     _m

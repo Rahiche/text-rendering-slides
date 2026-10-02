@@ -45,6 +45,9 @@ abstract class Vignette {
   /// Where it stands (local to world).
   vm.Matrix4 get frame;
 
+  /// Whether the camera's visiting it now (set every frame).
+  bool visited = false;
+
   Future<void> init();
 
   /// Poses it [u] seconds into a turn (scene time [t], [night] 0 day … 1).
@@ -370,7 +373,9 @@ class Vignettes {
         final o = v.frame.storage, dx = o[12] - camera.x, dz = o[14] - camera.z;
         d2 = dx * dx + dz * dz;
       }
-      v.detail.visible = visited || d2 < 40 * 40;
+      v
+        ..visited = visited
+        ..detail.visible = visited || d2 < 40 * 40;
       if (!visited && d2 > 75 * 75) continue;
       final u = visited ? t - on.$2 : (t + 7.3 * i) % v.loop;
       v.pose(u, t, night);

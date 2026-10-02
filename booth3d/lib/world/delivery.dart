@@ -49,20 +49,24 @@ class Delivery3D implements StreetWork {
   static const _bedTop = 1.05;
 
   final _truck = Node(name: 'delivery truck');
+
+  /// Its sprung body (dips as it brakes, leans in turns) and its wheels
+  /// (rolling; the front pair steers): node, axle x, side z.
+  final _body = Node(name: 'delivery truck body');
+  final _wheels = <(Node, double, double)>[];
+  static const _wheelR = 0.38;
   late final InstancedMesh _parts; // the crane, the door, the slings
   late final UnlitMaterial _lampMat, _blinkMat;
 
   // ── The truck ─────────────────────────────────────────────────────────────
 
   void init() {
-    // Body, cab, bed and wheels: one vertex-coloured mesh (truck-local: x
-    // forward, y up, z to its left).
+    // Body, cab and bed: one vertex-coloured mesh (truck-local: x forward,
+    // y up, z to its left); the wheels after.
     final white = v4(hex3(0xF4F1EA)), navy = v4(hex3(0x2B4C7E)), dark = v4(hex3(0x1B2233));
     final glass = v4(hex3(0x1A2C46)), steel = v4(hex3(0x8A96A6)), wood = v4(hex3(0x8F6A44)), yellow = v4(hex3(0xFFC23D));
     MeshData box(double x, double y, double z, double w, double h, double d, vm.Vector4 c) =>
         part(CuboidGeometry(vm.Vector3(w, h, d)), vm.Matrix4.translation(vm.Vector3(x, y, z)), c);
-    MeshData wheel(double x, double z, double r, double w, vm.Vector4 c) =>
-        part(CylinderGeometry(bottomRadius: r, topRadius: r, height: w, radialSegments: 14), trs(vm.Vector3(x, 0.38, z), rotX: math.pi / 2), c);
     final body = merged([
       box(0, 0.62, 0, 5.3, 0.22, 0.9, dark), // chassis
       box(2.76, 0.62, 0, 0.12, 0.28, 2.06, dark), // bumper
@@ -77,19 +81,33 @@ class Delivery3D implements StreetWork {
       box(-1.03, 0.99, 0, 3.55, 0.12, 2.1, wood), // bed
       for (final z in [-1.05, 1.05]) box(-1.03, 0.82, z, 3.55, 0.26, 0.05, steel), // folded side gates
       box(0.4, 0.55, -0.72, 0.6, 0.32, 0.3, steel), // fuel tank
-      for (final x in [1.95, -1.45, -2.15])
-        for (final z in [-0.86, 0.86]) wheel(x, z, 0.38, 0.28, dark),
-      for (final x in [1.95, -1.45, -2.15])
-        for (final z in [-0.87, 0.87]) wheel(x, z, 0.17, 0.3, steel),
       for (final z in [-0.86, 0.86]) box(-1.8, 0.86, z, 1.5, 0.05, 0.4, dark), // mudguards
     ]);
-    _truck.add(Node(name: 'truck body', mesh: Mesh(body, pbr(rgb(1, 1, 1), roughness: 0.5, metallic: 0.1))));
+    final paint = pbr(rgb(1, 1, 1), roughness: 0.5, metallic: 0.1);
+    _body.add(Node(name: 'truck body', mesh: Mesh(body, paint)));
+    _truck.add(_body);
+    // The wheels (axle along z): tyre, hub, and nuts on the outside so you
+    // see them turn.
+    MeshGeometry wheelOf(double side) => merged([
+      part(CylinderGeometry(bottomRadius: _wheelR, topRadius: _wheelR, height: 0.28, radialSegments: 16), trs(vm.Vector3.zero(), rotX: math.pi / 2), dark),
+      part(CylinderGeometry(bottomRadius: 0.17, topRadius: 0.17, height: 0.3, radialSegments: 8), trs(vm.Vector3.zero(), rotX: math.pi / 2), steel),
+      for (var k = 0; k < 5; k++)
+        part(CuboidGeometry(vm.Vector3.all(0.045)), vm.Matrix4.translation(vm.Vector3(0.1 * math.cos(k * 2 * math.pi / 5), 0.1 * math.sin(k * 2 * math.pi / 5), side * 0.16)), steel),
+    ]);
+    final wheels = {-1.0: wheelOf(-1), 1.0: wheelOf(1)};
+    for (final x in [1.95, -1.45, -2.15]) {
+      for (final z in [-0.86, 0.86]) {
+        final w = Node(name: 'delivery wheel', mesh: Mesh(wheels[z.sign]!, paint), localTransform: trs(vm.Vector3(x, _wheelR, z)));
+        _wheels.add((w, x, z));
+        _truck.add(w);
+      }
+    }
     // Lamps: head and tail lights (lit at night), the hazards and the roof
     // beacon (blinking while it works).
     _lampMat = UnlitMaterial()..baseColorFactor = vm.Vector4(1, 1, 1, 1);
     _blinkMat = UnlitMaterial()..baseColorFactor = vm.Vector4(1, 1, 1, 1);
     final head = vm.Vector4(1, 0.95, 0.8, 1), tail = vm.Vector4(1, 0.1, 0.1, 1), hazard = vm.Vector4(1, 0.55, 0.1, 1);
-    _truck
+    _body
       ..add(
         Node(
           name: 'truck lamps',
@@ -114,8 +132,8 @@ class Delivery3D implements StreetWork {
             _blinkMat,
           ),
         )..castsShadows = false,
-      )
-      ..visible = false;
+      );
+    _truck.visible = false;
     scene.add(_truck);
     // The crane's moving parts, the driver's door and the slings: unit cubes.
     _parts = InstancedMesh(geometry: CuboidGeometry(vm.Vector3.all(1)), material: pbr(rgb(1, 1, 1), roughness: 0.45, metallic: 0.1));
@@ -306,6 +324,11 @@ class Delivery3D implements StreetWork {
   double _pt = double.nan;
   final _pPos = vm.Vector3.zero();
   double _pYaw = 0;
+
+  /// How far it has rolled (signed: back is negative; for the wheels), its
+  /// front wheels' steering (−1 full left … 1 full right), and its body's
+  /// pitch (nose down +) and lean (left +).
+  double _pOdo = 0, _pSteer = 0, _pPitch = 0, _pLean = 0;
   bool _pShown = false;
   _Run? _pRun;
 
@@ -315,6 +338,7 @@ class Delivery3D implements StreetWork {
     _pt = t;
     _pShown = false;
     _pRun = null;
+    _pOdo = _pSteer = _pPitch = _pLean = 0;
     for (final r in _runs) {
       if (t < r.arrive - _approachTime || t > r.depart + 25) continue;
       _pRun = r;
@@ -323,6 +347,9 @@ class Delivery3D implements StreetWork {
       } else if (t < r.depart) {
         _pPos.setValues(gateX, 0, parkZ);
         _pYaw = -math.pi / 2;
+        // Rocking to rest on its springs.
+        final since = t - r.arrive;
+        _pPitch = 0.007 * math.exp(-since * 3) * math.cos(since * 10);
       } else {
         _leaving(t - r.depart);
       }
@@ -351,6 +378,14 @@ class Delivery3D implements StreetWork {
     } else {
       r = _l3 + _l2 + _db + _v1 * (tau - _t3 - _t2 - _tb);
     }
+    _pOdo = -r;
+    // Right lock for the turn in (winding on before it, off after it).
+    _pSteer = smooth(_l3 + _l2 + 1.2, _l3 + _l2 - 0.4, r) * smooth(_l3 - 1.4, _l3 + 0.2, r);
+    if (tau <= _t3) {
+      _pPitch = 0.006 * _v2 / _t3; // creeping to a stop
+    } else if (tau > _t3 + _t2 && tau <= _t3 + _t2 + _tb) {
+      _pPitch = 0.006 * _brake * smooth(0, 0.3, tau - _t3 - _t2) * smooth(_tb, _tb - 0.3, tau - _t3 - _t2);
+    }
     if (r <= _l3) {
       _pPos.setValues(gateX, 0, parkZ - r);
       _pYaw = -math.pi / 2;
@@ -358,6 +393,8 @@ class Delivery3D implements StreetWork {
       final a = -math.pi + (r - _l3) / _turn;
       _pPos.setValues(gateX + _turn + _turn * math.cos(a), 0, _lane + _turn + _turn * math.sin(a));
       _pYaw = headingTo(math.sin(a), -math.cos(a));
+      // Leaning out of the turn (to its left).
+      _pLean = 0.008 * _v2 * _v2 / _turn * _pSteer;
     } else {
       _pPos.setValues(gateX + _turn + (r - _l3 - _l2), 0, _lane);
       _pYaw = math.pi;
@@ -384,6 +421,10 @@ class Delivery3D implements StreetWork {
         final w = _tr - sigma;
         d = _ls + _la - 0.5 * _ar * w * w;
       }
+      _pOdo = -d;
+      // Left lock to swing its tail round into the lane, backing.
+      _pSteer = -smooth(_ls - 1.0, _ls + 0.3, d);
+      _pPitch = sigma < _vr / _ar ? 0.006 * _ar : (sigma > _tr - _vr / _ar ? -0.006 * _ar : 0);
       if (d <= _ls) {
         _pPos.setValues(gateX, 0, parkZ - d);
         _pYaw = -math.pi / 2;
@@ -399,6 +440,10 @@ class Delivery3D implements StreetWork {
     final x = u < tAcc ? 0.5 * _go * u * u : 0.5 * _go * tAcc * tAcc + _v1 * (u - tAcc);
     _pPos.setValues(gateX - _backTurn + x, 0, _laneOut);
     _pYaw = 0;
+    _pOdo = -(_ls + _la) + x;
+    // The wheel straightening as it pulls away; squatting as it accelerates.
+    _pSteer = -(1 - smooth(0, 1.5, x));
+    _pPitch = u > 0 && u < tAcc ? -0.006 * _go : 0;
   }
 
   final _tq = vm.Quaternion.identity();
@@ -557,6 +602,11 @@ class Delivery3D implements StreetWork {
     _truck.visible = _partsNode.visible = _pShown;
     if (!_pShown || run == null) return;
     _truck.place((m) => setTrs(m, _pPos.x, _pPos.y, _pPos.z, yaw: _pYaw));
+    _body.place((m) => setTrs(m, 0, 0, 0, pitch: _pLean, roll: -_pPitch));
+    for (final (w, x, z) in _wheels) {
+      final steer = x > 0 ? 0.55 * _pSteer : 0.0;
+      w.place((m) => setTrs(m, x, _wheelR, z, yaw: steer, roll: -_pOdo / _wheelR));
+    }
     final parked = t >= run.arrive && t < run.depart;
     final blink = (t * 1.6) % 1.0 < 0.5;
     final working = t > run.arrive - 0.6 && t < run.depart + 1.2;

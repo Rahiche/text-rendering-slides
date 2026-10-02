@@ -61,6 +61,9 @@ class CitySigns {
   late final _steel = pbr(rgb(1, 1, 1), metallic: 0.7, roughness: 0.45);
   static final _steelColor = v4(hex3(0x1C2638));
 
+  /// The back of a rooftop sign: painted sheet.
+  static final _backColor = v4(hex3(0x7B8597));
+
   PhysicallyBasedMaterial _glowing(double roughness) => PhysicallyBasedMaterial()
     ..metallicFactor = 0
     ..roughnessFactor = roughness
@@ -157,9 +160,16 @@ class CitySigns {
       for (final px in [-w / 2 + 0.3, w / 2 - 0.3]) {
         steel(vm.Vector3(0.12, 0.62 + h * 0.75, 0.12), vm.Vector3(px, (0.62 + h * 0.75) / 2, 0.45));
       }
-      // Its back, on the rack: from behind, a sign's back (not the word in
-      // mirror writing).
-      steel(vm.Vector3(w, h + 0.3, 0.08), vm.Vector3(0, 0.64 + h / 2, 0.56));
+      // Its back, on the rack: from behind, a sign's back (painted sheet on
+      // a frame, not the word in mirror writing).
+      _batch.add(_steel, part(CuboidGeometry(vm.Vector3(w, h + 0.3, 0.06)), root * vm.Matrix4.translation(vm.Vector3(0, 0.64 + h / 2, 0.56)), _backColor));
+      for (final f in const [0.18, 0.5, 0.82]) {
+        steel(vm.Vector3(w + 0.1, 0.1, 0.1), vm.Vector3(0, 0.49 + (h + 0.3) * f, 0.64));
+      }
+      for (var k = 0; k <= (w / 2.2).floor(); k++) {
+        final x = -w / 2 + 0.05 + k * (w - 0.1) / math.max(1, (w / 2.2).floor());
+        steel(vm.Vector3(0.1, h + 0.3, 0.1), vm.Vector3(x, 0.64 + h / 2, 0.64));
+      }
       final letters = MeshData(positions: m.positions, vertexCount: m.vertexCount, normals: m.normals, texCoords: m.uvs, indices: m.indices);
       _batch.add(_habits[k % _habits.length], _onSwatch(letters, color).transformed(root * vm.Matrix4.translation(vm.Vector3(0, 0.64, 0))));
     }

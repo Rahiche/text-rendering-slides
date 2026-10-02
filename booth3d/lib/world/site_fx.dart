@@ -26,15 +26,15 @@ class Fx3D {
 
   static const _maxDust = 280, _maxSparks = 2600, _maxPixels = 700, _maxConfetti = 440;
 
-  late final InstancedMesh _sparks, _pixels, _confetti;
-  late final BillboardGeometry _dust;
+  late final InstancedMesh _pixels, _confetti;
+  late final BillboardGeometry _dust, _sparks;
   late final SpriteMaterial _dustMat;
 
   /// 0 by day … 1 at night: the dust takes the light it's in.
   double night = 0;
   final _nodes = <Node>[];
   int _nDust = 0, _nSparks = 0, _nPixels = 0, _nConfetti = 0;
-  int _hiSparks = 0, _hiPixels = 0, _hiConfetti = 0;
+  int _hiPixels = 0, _hiConfetti = 0;
 
   void init() {
     InstancedMesh pool(Geometry g, Material m, int n, String name) {
@@ -58,7 +58,15 @@ class Fx3D {
     final dustNode = Node(name: 'dust', mesh: Mesh(_dust, _dustMat))..castsShadows = false;
     _nodes.add(dustNode);
     scene.add(dustNode);
-    _sparks = pool(SphereGeometry(radius: 0.5, segments: 6, rings: 4), UnlitMaterial(), _maxSparks, 'sparks');
+    // Sparks: additive glows (a hot core in a soft halo), so they bloom,
+    // and trails of them run together into streaks.
+    _sparks = BillboardGeometry(capacity: _maxSparks)
+      ..facing = BillboardFacing.velocityStretched
+      ..velocityStretch = 0.055;
+    final sparkMat = SpriteMaterial(colorTexture: _glowTexture())..blendMode = SpriteBlendMode.additive;
+    final sparkNode = Node(name: 'sparks', mesh: Mesh(_sparks, sparkMat))..castsShadows = false;
+    _nodes.add(sparkNode);
+    scene.add(sparkNode);
     _pixels = pool(CuboidGeometry(vm.Vector3.all(1)), UnlitMaterial(), _maxPixels, 'pixels');
     final confettiMat = pbr(rgb(1, 1, 1), roughness: 0.45, metallic: 0.2);
     _confetti = InstancedMesh(geometry: CuboidGeometry(vm.Vector3(1, 0.62, 0.05)), material: confettiMat);
@@ -81,19 +89,16 @@ class Fx3D {
 
   void end() {
     _dust.commit(_nDust);
+    _sparks.commit(_nSparks);
     // Dust is lit by the sky: warm by day, a dim blue at night.
     final k = smooth(0.1, 0.8, night);
     _dustMat.tint = vm.Vector4(lerp(0.95, 0.2, k), lerp(0.9, 0.23, k), lerp(0.84, 0.32, k), 1);
-    for (var i = _nSparks; i < _hiSparks; i++) {
-      _sparks.setInstanceTransform(i, hidden);
-    }
     for (var i = _nPixels; i < _hiPixels; i++) {
       _pixels.setInstanceTransform(i, hidden);
     }
     for (var i = _nConfetti; i < _hiConfetti; i++) {
       _confetti.setInstanceTransform(i, hidden);
     }
-    _hiSparks = _nSparks;
     _hiPixels = _nPixels;
     _hiConfetti = _nConfetti;
     // Empty pools skip the renderer's per-frame work entirely.
@@ -182,13 +187,39 @@ class Fx3D {
     return sum / norm;
   }
 
-  /// A glowing spark of [size] in linear HDR [color] times [glow].
-  void spark(double x, double y, double z, double size, vm.Vector4 color, [double glow = 6]) {
+  /// A glowing spark of [size] (its hot core's) in linear HDR [color] times
+  /// [glow], streaked along its velocity ([vx], [vy], [vz]; m/s).
+  void spark(double x, double y, double z, double size, vm.Vector4 color, [double glow = 6, double vx = 0, double vy = 0, double vz = 0]) {
     if (_nSparks >= _maxSparks || size <= 0.001) return;
-    _sparks.setInstanceTransform(_nSparks, setTrs(_m, x, y, z, s: size));
+    _p.setValues(x, y, z);
+    _v.setValues(vx, vy, vz);
     _c.setValues(color.x * glow, color.y * glow, color.z * glow, 1);
-    _sparks.setInstanceColor(_nSparks, _c);
+    _sparks.setInstance(_nSparks, center: _p, width: size * 2.8, height: size * 2.8, color: _c, velocity: _v);
     _nSparks++;
+  }
+
+  final _v = vm.Vector3.zero();
+
+  /// A falling ember burns out before it gets low: its size at height [y].
+  static double _ember(double y) => smooth(1.4, 3.6, y);
+
+  /// d/dt of [k]·eo(t / [span]) at [t] (eo: ease-out cubic).
+  static double _deo(double t, double span, double k) => t <= 0 || t >= span ? 0 : k * 3 * (1 - t / span) * (1 - t / span) / span;
+
+  /// A glow: white, a hot core and a soft halo falling off to nothing.
+  static Texture2D _glowTexture() {
+    const n = 64;
+    final px = Uint8List(n * n * 4);
+    for (var y = 0; y < n; y++) {
+      for (var x = 0; x < n; x++) {
+        final u = (x + 0.5) / n * 2 - 1, v = (y + 0.5) / n * 2 - 1;
+        final r2 = u * u + v * v;
+        final g = r2 >= 1 ? 0.0 : (0.62 * math.exp(-r2 * 14) + 0.38 * math.exp(-r2 * 3.2)) * (1 - r2);
+        final b = (255 * g.clamp(0.0, 1.0)).round(), i = (y * n + x) * 4;
+        px[i] = px[i + 1] = px[i + 2] = px[i + 3] = b;
+      }
+    }
+    return Texture2D.fromPixels(px, n, n);
   }
 
   /// A glowing pixel (a little cube), [size] across, spun by [spin].
@@ -274,7 +305,8 @@ class Fx3D {
           final px = x0 + (cx - x0) * e + 0.05 * math.sin(g * 30);
           final py = y0 + (cy - y0) * e;
           final pz = z0 + (cz - z0) * e;
-          spark(px, py, pz, (s == 0 ? 0.16 : 0.1 * (1 - s / 7)), s == 0 ? fxPalette[6] : fxPalette[0], s == 0 ? 9 : 4);
+          final de = _deo(g, 1, 1);
+          spark(px, py, pz, (s == 0 ? 0.16 : 0.1 * (1 - s / 7)), s == 0 ? fxPalette[6] : fxPalette[0], s == 0 ? 9 : 4, (cx - x0) * de, (cy - y0) * de, (cz - z0) * de);
         }
         continue;
       }
@@ -317,10 +349,11 @@ class Fx3D {
       for (var s = 0; s < 3; s++) {
         final tt = tau - s * 0.045;
         if (tt < 0) break;
-        final e = 7.0 * eo(tt / 1.15);
+        final e = 7.0 * eo(tt / 1.15), de = _deo(tt, 1.15, 7.0);
         final drop = 1.3 * tt * tt;
         final size = (0.23 - s * 0.06) * (1 - seg(tt, 1.2, 2.6));
-        spark(cx + dx * e, cy + y * e - drop, cz + dz * e * 0.8, size, i.isEven ? c1 : c2, s == 0 ? 7 : 4);
+        final py = cy + y * e - drop;
+        spark(cx + dx * e, py, cz + dz * e * 0.8, size * _ember(py), i.isEven ? c1 : c2, s == 0 ? 7 : 4, dx * de, y * de - 2.6 * tt, dz * de * 0.8);
       }
     }
   }
@@ -333,10 +366,11 @@ class Fx3D {
       for (var s = 0; s < 3; s++) {
         final tt = tau - s * 0.05;
         if (tt < 0) break;
-        final e = 5.4 * eo(tt / 1.0);
+        final e = 5.4 * eo(tt / 1.0), de = _deo(tt, 1.0, 5.4);
         final dx = math.cos(a) * e, dy = math.sin(a) * e * math.cos(tilt), dz = math.sin(a) * e * math.sin(tilt);
         final size = (0.21 - s * 0.05) * (1 - seg(tt, 1.1, 2.4));
-        spark(cx + dx, cy + dy - 1.1 * tt * tt, cz + dz, size, i % 4 < 2 ? c1 : c2, s == 0 ? 7 : 4);
+        final py = cy + dy - 1.1 * tt * tt;
+        spark(cx + dx, py, cz + dz, size * _ember(py), i % 4 < 2 ? c1 : c2, s == 0 ? 7 : 4, math.cos(a) * de, math.sin(a) * math.cos(tilt) * de - 2.2 * tt, math.sin(a) * math.sin(tilt) * de);
       }
       // An inner ring of white.
       if (i.isEven) {
@@ -354,10 +388,11 @@ class Fx3D {
       for (var s = 0; s < 6; s++) {
         final tt = tau - s * 0.07;
         if (tt < 0) break;
-        final e = 5.0 * eo(tt / 0.9);
+        final e = 5.0 * eo(tt / 0.9), de = _deo(tt, 0.9, 5.0);
         final drop = 2.2 * tt * tt;
         final size = (0.17 - s * 0.022) * (1 - seg(tt, 1.6, 2.7));
-        spark(cx + math.cos(a) * rr * e, cy + y * e * 0.8 - drop, cz + math.sin(a) * rr * e * 0.7, size, gold, s == 0 ? 6 : 3);
+        final py = cy + y * e * 0.8 - drop;
+        spark(cx + math.cos(a) * rr * e, py, cz + math.sin(a) * rr * e * 0.7, size * _ember(py), gold, s == 0 ? 6 : 3, math.cos(a) * rr * de, y * de * 0.8 - 4.4 * tt, math.sin(a) * rr * de * 0.7);
       }
     }
   }
@@ -366,12 +401,14 @@ class Fx3D {
     const n = 110;
     for (var i = 0; i < n; i++) {
       final y = 1 - 2 * (i + 0.5) / n, rr = math.sqrt(1 - y * y), a = i * 2.39996 + k * 0.7;
-      final e = 4.8 * eo(tau / 1.0) * (0.6 + 0.4 * rnd(i, k));
+      final spread = 0.6 + 0.4 * rnd(i, k);
+      final e = 4.8 * eo(tau / 1.0) * spread, de = _deo(tau, 1.0, 4.8) * spread;
       // Each spark blinks on its own clock once it's out.
       final on = tau < 0.5 || rnd(i, (tau * 14).floor(), serial) > 0.45;
       if (!on) continue;
       final size = 0.17 * (1 - seg(tau, 1.3, 2.6));
-      spark(cx + math.cos(a) * rr * e, cy + y * e - 1.2 * tau * tau, cz + math.sin(a) * rr * e * 0.8, size, fxPalette[(i + k) % 7], 8);
+      final py = cy + y * e - 1.2 * tau * tau;
+      spark(cx + math.cos(a) * rr * e, py, cz + math.sin(a) * rr * e * 0.8, size * _ember(py), fxPalette[(i + k) % 7], 8, math.cos(a) * rr * de, y * de - 2.4 * tau, math.sin(a) * rr * de * 0.8);
     }
   }
 
@@ -379,12 +416,12 @@ class Fx3D {
     for (var i = 0; i < shape.length; i++) {
       final p = shape[i];
       // Out from the centre to the character, hold and twinkle, then fall.
-      final out = eo(c01(tau / 0.45));
+      final out = eo(c01(tau / 0.45)), dout = _deo(tau, 0.45, 1);
       final fall = math.max(0.0, tau - 1.65);
       final x = cx + p.x * scale * out, y = cy + p.y * scale * out - 1.6 * fall * fall, z = cz + 0.4 * (1 - out);
       final tw = rnd(i, (tau * 10).floor(), k) > 0.82;
       final size = 0.2 * (1 - seg(tau, 1.8, 2.7)) * (tw ? 1.4 : 1);
-      spark(x, y, z, size, tw ? twinkle : c, tw ? 10 : 7);
+      spark(x, y, z, size * _ember(y), tw ? twinkle : c, tw ? 10 : 7, p.x * scale * dout, p.y * scale * dout - 3.2 * fall, -0.4 * dout);
       if (tau < 0.5) spark(cx + p.x * scale * eo(c01((tau - 0.06) / 0.45)), cy + p.y * scale * eo(c01((tau - 0.06) / 0.45)), z, size * 0.6, c, 4);
     }
   }

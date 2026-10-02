@@ -22,6 +22,7 @@ import 'kit.dart';
 import 'photo_op.dart';
 import 'prop_pool.dart';
 import 'scene_caption.dart';
+import 'script_alley.dart';
 import 'shot.dart';
 import 'site_crane.dart';
 import 'site_finish.dart';
@@ -79,6 +80,10 @@ class Site3D {
 
   /// After the last brick: plaster and paint.
   late final finish = Finish3D(scene, crew, fx);
+
+  /// 文字横丁 · Script Alley in the park: a stall for each rule a script
+  /// breaks (built by the world, as it waits for its letters).
+  late final alley = ScriptAlley(scene, fx);
 
   /// Where the camera was last frame (set by the world).
   final camera = vm.Vector3(0, 8, -30);
@@ -360,7 +365,8 @@ class Site3D {
     final plan = _plan = BuildPlan(j, r, b)..palletOnTheWay = delivery.palletAt;
     delivery.planFor(plan);
     works.planFor(plan, busyCam: delivery.camWindows);
-    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: [...delivery.camWindows, ...works.camWindows]);
+    alley.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows]);
+    breaks.planFor(plan, driverBreaks: delivery.driverBreaks, busyCam: [...delivery.camWindows, ...works.camWindows, ...alley.camWindows]);
     final fp = _finishPlan = finish.planFor(
       plan,
       len: CityPace.reveal,
@@ -377,7 +383,7 @@ class Site3D {
     _slid = List.filled(plan.letterCount, -1.0);
     // Capture runs log the timeline (when each letter goes up and is kerned,
     // and finished).
-    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint('${plan.describe()}${fp.describe()}${finish.describeShots()}');
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint('${plan.describe()}${fp.describe()}${finish.describeShots()}${alley.describe()}');
   }
 
   /// The letters' colours, in the order of the name's characters.
@@ -526,6 +532,7 @@ class Site3D {
     final t = m.t;
     focus.clear();
     _pace = m.pace;
+    alley.update(t, night);
     parts.begin();
     if (j == null) {
       parts.end();
@@ -587,6 +594,7 @@ class Site3D {
     verdict.focus(focus, t);
     delivery.focus(focus, t);
     works.focus(focus, t);
+    if (j.phase == Phase.build) alley.focus(focus, t);
     breaks.focus(focus, t);
     // Framing aid: --dart-define=BOOTH3D_LOOK=ex,ey,ez,tx,ty,tz[,fov] pins
     // the camera (with capture mode, to check a spot from a fixed eye);
@@ -620,6 +628,14 @@ class Site3D {
         final hue = _hues[plan.letters.letters[s.letter].glyph % _hues.length];
         final hex = (hue.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase();
         caption.update(t, shot, kick: '塗装 · PAINT', line: '#$hex', note: "the letter's fill, from the top down", swatch: hue);
+      }
+    } else if (shot.startsWith('alley ')) {
+      final a = shot.split(' ').last, stall = alley.stallAt(a);
+      if (stall == null) {
+        caption.update(t, null);
+      } else {
+        final r = alleyRules[stall];
+        caption.update(t, 'alley $a', kick: '文字横丁 · SCRIPT ALLEY', line: r.en, note: r.note);
       }
     } else if (shot.startsWith('verdict')) {
       caption.update(t, 'verdict', kick: '次の建物 · NEXT BUILD', line: m.upcoming, note: "the new manager's blueprint");

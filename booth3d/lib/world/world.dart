@@ -12,6 +12,7 @@ import 'city.dart';
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'life.dart';
+import 'script_alley.dart' show ScriptAlley;
 import 'site.dart';
 import 'sky.dart';
 import 'typing.dart';
@@ -44,7 +45,7 @@ class World3D {
     sky.init();
     site.init();
     typing.init();
-    await city.init();
+    await Future.wait([city.init(), site.alley.init()]);
     stage.value = 'people';
     await life.init();
     ready = true;
@@ -63,7 +64,7 @@ class World3D {
     const world = 'ب ع ا مرحبا ש שלום क ह नमस्ते ก สวัสดี 한 Ж Я Привет Ω λ Γεια σου ¶ Ⅲ ß ñ ♻ ♥';
     TextStyle style(String? locale) => TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale));
     await awaitFallbackFontsAll(
-      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...CitySigns.fontRuns],
+      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...ScriptAlley.fontRuns, ...CitySigns.fontRuns],
       firstWait: const Duration(seconds: 4),
       quiet: const Duration(milliseconds: 700),
       max: const Duration(seconds: 15),

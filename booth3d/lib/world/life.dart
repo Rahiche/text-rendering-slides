@@ -11,6 +11,7 @@ import 'city_plan.dart';
 import 'crew.dart' show FigurePose;
 import 'figure.dart';
 import 'kit.dart';
+import 'script_alley.dart' show AlleyLayout, alleyRules;
 import 'site_geo.dart' show NodePlace;
 
 /// Life in Name City: people walking the sidewalks and the park (in jackets,
@@ -441,7 +442,7 @@ class _Traffic {
 // ── People ──────────────────────────────────────────────────────────────────
 
 class _Route {
-  _Route(this.pts, {this.crossing = const {}, this.watch = const []}) {
+  _Route(this.pts, {this.crossing = const {}, this.watch = const [], this.alley = false}) {
     var acc = 0.0;
     cum.add(0);
     for (var i = 0; i < pts.length; i++) {
@@ -460,6 +461,10 @@ class _Route {
 
   /// Distances along the route where people may stop to watch the build.
   final List<double> watch;
+
+  /// The park's long path: its stops are at the alley's stalls (people
+  /// there turn to the stall on their side).
+  final bool alley;
   final cum = <double>[];
   double get length => cum.last;
 
@@ -472,7 +477,7 @@ class _Route {
   }
 }
 
-enum _Role { walker, spectator, worker }
+enum _Role { walker, spectator, worker, keeper }
 
 class _Person {
   _Person(this.role, this.route, this.d, this.dir, this.speed, this.side, this.scale);
@@ -498,6 +503,7 @@ class _Person {
   int job = 0; // workers: 0 by the wall, 1 at the corner, 2 behind the wall
   int index = 0;
   int slot = 0; // among the figures (figure.dart)
+  int stall = -1; // keepers: their stall in the alley
   bool bag = false, parasol = false;
 }
 
@@ -557,8 +563,15 @@ class _People {
           (s * Plan.peopleBlock[1], 86),
           (s * Plan.peopleBlock[1], Plan.aveZ1 + 1.6),
         ]),
-      // The park's long path.
-      _Route([(-0.9, Plan.parkZ0 + 1), (-0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ0 + 1)]),
+      // The park's long path, past the alley's stalls (stopping at them).
+      _Route(
+        [(-0.9, Plan.parkZ0 + 1), (-0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ1 - 1), (0.9, Plan.parkZ0 + 1)],
+        watch: [
+          for (final z in AlleyLayout.rowZ) z - Plan.parkZ0 - 1,
+          for (final z in AlleyLayout.rowZ.reversed) 2 * (Plan.parkZ1 - Plan.parkZ0 - 2) + 1.8 - (z - Plan.parkZ0 - 1),
+        ],
+        alley: true,
+      ),
     ];
     _front = routes[0];
     const counts = [24, 14, 5, 5, 8, 8, 8];
@@ -598,6 +611,18 @@ class _People {
         p.homeX = s * (Plan.plazaX + 0.12 + 0.3 * rnd(seed, 1));
         p.homeZ = s > 0 ? -4.3 + 6 * rnd(seed, 2) : -7.5 + 6 * rnd(seed, 2);
       }
+      _add(p, seed);
+    }
+    // The alley's keepers, behind their counters.
+    for (var i = 0; i < 6; i++) {
+      seed++;
+      final at = AlleyLayout.keeper(i);
+      final p = _Person(_Role.keeper, null, 0, 1, 0, 0, 0.94 + 0.1 * rnd(seed, 5))
+        ..phase = rnd(seed, 6) * 10
+        ..stall = i
+        ..homeX = at.x
+        ..homeZ = at.z
+        ..heading = AlleyLayout.keeperHeading(i);
       _add(p, seed);
     }
     // Workers, in hard hats: two at each end of the wall, one minding the
@@ -681,6 +706,15 @@ class _People {
         ..skirtLength = 1.2;
     }
     l.legs = pick(_bottoms, 9);
+    if (p.role == _Role.keeper) {
+      // A happi in the stall's colour over a white shirt.
+      final c = lin(alleyRules[p.stall].color);
+      return l
+        ..top = rgbHex(0xF2F0EA)
+        ..layer = c
+        ..sleeves = c
+        ..skirt = null;
+    }
     if (l.slim && l.skirt == null && r(10) < 0.45) {
       l
         ..skirt = pick(_skirts, 11)
@@ -724,6 +758,9 @@ class _People {
           p.x = p.homeX;
           p.z = p.homeZ;
           p.heading = _turn(p.heading, headingTo(-p.x, 2 - p.z), dt);
+        case _Role.keeper:
+          p.x = p.homeX;
+          p.z = p.homeZ;
         case _Role.worker:
           _work(p, t, dt, wallWidth, m.job?.phase, gate);
       }
@@ -734,7 +771,7 @@ class _People {
     final r = p.route!;
     if (p.pause > 0) {
       p.pause -= dt;
-      p.heading = _turn(p.heading, headingTo(-p.x * 0.6, 2 - p.z), dt);
+      p.heading = _turn(p.heading, r.alley ? headingTo(p.x < 0 ? -1 : 1, 0) : headingTo(-p.x * 0.6, 2 - p.z), dt);
       return;
     }
     final onCrossing = r.crossing.containsKey(r.segmentAt(p.d));
@@ -875,7 +912,7 @@ class _People {
         continue;
       }
       final walking = p.role == _Role.walker ? (p.pause <= 0 && !p.waiting) : p.moving;
-      final watcher = p.role == _Role.spectator || (p.role == _Role.walker && p.pause > 0);
+      final watcher = p.role == _Role.spectator || p.role == _Role.keeper || (p.role == _Role.walker && p.pause > 0);
       final cheer = cheering && watcher;
       f.rest();
       f.pos.setValues(p.x, 0, p.z);
@@ -910,6 +947,12 @@ class _People {
       if (p.parasol && !cheer) {
         f.armPitch[1] = 0.95;
         f.armRoll[1] = -0.22;
+      }
+      if (p.role == _Role.keeper && !cheer) {
+        // Now and then, a hand out over the counter: look at this.
+        final show = math.sin(math.pi * seg((t + p.phase * 3) % 9, 0, 2.4));
+        f.armPitch[1] = lerp(f.armPitch[1], 1.25, show);
+        f.armRoll[1] = lerp(f.armRoll[1], -0.25, show);
       }
       final guide = p.guiding && !p.moving;
       if (p.role == _Role.worker) {

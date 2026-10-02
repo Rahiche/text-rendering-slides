@@ -4,7 +4,7 @@ import 'dart:ui' as ui show Image, ImageByteFormat, PictureRecorder;
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart' show compute;
-import 'package:flutter/painting.dart' show Canvas, Offset, Size, TextDirection, TextPainter, TextSpan, TextStyle;
+import 'package:flutter/painting.dart' show Canvas, Offset, Size, TextBaseline, TextDirection, TextPainter, TextSpan, TextStyle;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/booth/craft/extrude.dart';
 import 'package:text_slides/booth/craft/geometry.dart';
@@ -254,6 +254,66 @@ List<GlyphMesh> _solids(List<_SolidJob> jobs) => [
       final g = _outline(j.input);
       if (g.isEmpty) return extrudeGlyph(g);
       return extrudeGlyph(g, unitsPerPx: j.height / g.inkHeight, depth: j.depth, simplify: j.simplify);
+    }(),
+];
+
+/// A text extruded at a fixed scale, and where its pen starts: put the mesh
+/// at ([ox], [oy]) for the text's origin (its start, on the baseline) to be
+/// at 0. [advance]: how far the pen moves over it. (World units.)
+class PlacedSolid {
+  const PlacedSolid(this.mesh, this.ox, this.oy, this.advance);
+  final GlyphMesh mesh;
+  final double ox, oy, advance;
+}
+
+/// Each of [texts] (in its style, rendered at the style's size) shaped,
+/// traced and extruded [depth] thick at [unitsPerPx] world units per pixel:
+/// pieces keep their sizes relative to each other and can be set on a
+/// common baseline (letters alone and the word they make, a mark and its
+/// base…).
+Future<List<PlacedSolid>> extrudeTextsAt(List<(String, TextStyle)> texts, {required double unitsPerPx, double depth = 0.1, double simplify = 0.7}) async {
+  const pad = 6;
+  final jobs = <_SolidJob>[];
+  final pens = <(double, double)>[];
+  for (final (text, style) in texts) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style.copyWith(color: const Color(0xFFFFFFFF))),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = tp.width.ceil() + 2 * pad, h = tp.height.ceil() + 2 * pad;
+    pens.add((tp.width, pad + tp.computeDistanceToActualBaseline(TextBaseline.alphabetic)));
+    final rec = ui.PictureRecorder();
+    tp.paint(Canvas(rec), const Offset(6, 6));
+    tp.dispose();
+    final image = await rec.endRecording().toImage(w, h);
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    final rgba = data!.buffer.asUint8List();
+    final alpha = Uint8List(w * h);
+    for (var i = 0; i < w * h; i++) {
+      alpha[i] = rgba[i * 4 + 3];
+    }
+    jobs.add(_SolidJob(VectorizeInput(w, h, alpha), unitsPerPx, depth, simplify));
+  }
+  final solids = await compute(_solidsAt, jobs);
+  return [
+    for (var i = 0; i < solids.length; i++)
+      () {
+        final (mesh, inkCx, inkBottom) = solids[i];
+        final (advance, baseline) = pens[i];
+        return PlacedSolid(mesh, (inkCx - pad) * unitsPerPx, (baseline - inkBottom) * unitsPerPx, advance * unitsPerPx);
+      }(),
+  ];
+}
+
+/// [_solids] at a fixed scale (the jobs' height is the units per pixel),
+/// with each ink's middle and bottom (pixels).
+List<(GlyphMesh, double, double)> _solidsAt(List<_SolidJob> jobs) => [
+  for (final j in jobs)
+    () {
+      final g = _outline(j.input);
+      if (g.isEmpty) return (extrudeGlyph(g), 0.0, 0.0);
+      return (extrudeGlyph(g, unitsPerPx: j.height, depth: j.depth, simplify: j.simplify), g.inkLeft + g.inkWidth / 2, g.inkBottom);
     }(),
 ];
 

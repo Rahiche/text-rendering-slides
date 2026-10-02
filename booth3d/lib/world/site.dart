@@ -34,6 +34,7 @@ import 'site_kern.dart';
 import 'site_lights.dart';
 import 'site_loader.dart';
 import 'site_plan.dart';
+import 'site_plinths.dart';
 import 'site_props.dart';
 import 'site_wreck.dart';
 import 'verdict.dart';
@@ -134,6 +135,11 @@ class Site3D {
   late final wreck = Wreck(physics, _placeBrick);
   late final loader = Loader3D(scene);
 
+  /// What the letters stand on (the ones whose feet are off the ground),
+  /// and when they came up.
+  late final plinths = Plinths(scene);
+  double _plinthsAt = double.infinity;
+
   /// The cleanup: which bricks are gone (taken off camera).
   List<bool> _gone = const [];
 
@@ -213,6 +219,7 @@ class Site3D {
     verdict.init();
     finish.init();
     loader.init();
+    plinths.init();
     crew
       ..offDuty = breaks.pose
       ..stage = (who, p) {
@@ -365,6 +372,7 @@ class Site3D {
     _swing = null;
     wreck.end();
     loader.end(physics);
+    _plinthsAt = double.infinity;
     _gone = const [];
     _swaps = null;
     _finalized = 0;
@@ -395,12 +403,14 @@ class Site3D {
     });
   }
 
-  void _setupRaster(Job j, NameRaster r) {
+  void _setupRaster(Job j, NameRaster r, double t) {
     _r = r;
     b = SiteLayout.brick(r);
     wallWidth = r.cols * b;
     wallHeight = r.rows * b;
     final plan = _plan = BuildPlan(j, r, b)..palletOnTheWay = delivery.palletAt;
+    plinths.plan(plan);
+    _plinthsAt = t;
     delivery.planFor(plan);
     works.planFor(plan, busyCam: delivery.camWindows);
     alley.planFor(plan, busyCam: [...delivery.camWindows, ...works.camWindows]);
@@ -578,7 +588,7 @@ class Site3D {
     }
     if (!identical(j, _job)) _startJob(j);
     final r = j.raster;
-    if (r != null && _r == null && j.buildStart != null) _setupRaster(j, r);
+    if (r != null && _r == null && j.buildStart != null) _setupRaster(j, r, t);
     if (_r != null && _glyphs != null && !_lettersReady) _makeNextLetter();
 
     _truck.visible = false;
@@ -606,6 +616,10 @@ class Site3D {
       case Phase.cleanup:
         _cleanup(j, t, dt, night);
     }
+    // The plinths: up out of the ground as the plan's made, gone with the
+    // rubble at the cleanup's cut to the swept plaza.
+    final cleaning = j.phase == Phase.cleanup && j.since(t) >= 0.78 * j.phaseLen;
+    plinths.update(_plan == null || cleaning ? 0 : eio(seg(t, _plinthsAt, _plinthsAt + 2.4)));
     breaks
       ..camera.setFrom(camera)
       ..begin(t, night);
@@ -1031,7 +1045,7 @@ class Site3D {
       _idleCrane(vm.Vector3(wallWidth / 2 + 4, 12, -1), t, dt, night);
       return;
     }
-    _swing ??= _Swing(wallWidth, wallHeight, len, from: pre > 0 ? _lifted : null);
+    _swing ??= _Swing(wallWidth, wallHeight, len, from: pre > 0 ? _lifted : null, floor: plinths.runs.fold(0.0, (m, r) => math.max(m, r.top)));
     final sw = _swing!;
     if (_falls == null) {
       _falls = _planFalls(j, sw);
@@ -1039,7 +1053,7 @@ class Site3D {
       wreck.start([
         for (var i = 0; i < fs.length; i++)
           if (!fs[i].ever) null else WreckBrick(fs[i].p0, plan.letter[i], (plan.cellX[i] / b).round(), (plan.cellY[i] / b).round(), fs[i].release, fs[i].v0, fs[i].axis * fs[i].spin, hit: fs[i].hit),
-      ], b, sw.ballAt(u), u);
+      ], b, sw.ballAt(u), u, solids: _solids());
       impactAt = j.phaseStart + pre + sw.firstHit;
       _swaps = [for (final l in plan.letters.letters) sw.passTime((l.col1 + 1 - plan.r.cols / 2) * b) - 0.03];
     }
@@ -1076,7 +1090,7 @@ class Site3D {
       final k = plan.letter[i];
       _bricks.setInstanceTransform(i, u < swaps[k] && _plastered(plan, fp, i, done) ? hidden : _brickM(f.p0.x, f.p0.y, f.p0.z, 1));
     }
-    wreck.update(t, u, dt, sw.ballAt, solidFrom: sw.passTime(-wallWidth / 2 - 1.2) + 0.4);
+    wreck.update(t, u, dt, sw.ballAt, people: _peopleAbout());
     _wallHidden = false;
     // The dust each letter turns to bricks under.
     for (var k = 0; k < swaps.length && done >= 0; k++) {
@@ -1097,6 +1111,10 @@ class Site3D {
     _impactDust(t);
     // Confetti from the celebration still lies about.
     if (j.cutAt == null) fx.confettiShow(u + pre + _pace.phaseLen(Phase.celebrate), wallWidth, j.serial);
+    // The cleanup's truck on its way along the avenue (it was never in
+    // the picture from nowhere).
+    final ahead = j.phaseStart + j.phaseLen - t, clen = _pace.phaseLen(Phase.cleanup);
+    if (ahead < _truckLead) _poseTruck(-ahead / clen, clen, t);
   }
 
   /// Brick [i] where the physics has it.
@@ -1113,9 +1131,66 @@ class Site3D {
   /// The cleanup truck's pose at [t], if it's about.
   ({double x, double z, double yaw, double odo, double steer, double pitch})? _truckNow(double t) {
     final j = _job;
-    if (j == null || j.phase != Phase.cleanup) return null;
+    if (j == null) return null;
+    if (j.phase == Phase.demolish) {
+      final ahead = j.phaseStart + j.phaseLen - t, clen = _pace.phaseLen(Phase.cleanup);
+      if (ahead >= _truckLead) return null;
+      return _truckPose(-ahead / clen, clen, SiteLayout.bayX, SiteLayout.bayZ);
+    }
+    if (j.phase != Phase.cleanup) return null;
     final len = math.max(j.phaseLen, 0.01);
-    return _truckPose(j.since(t) / len, len, -wallWidth / 2 - 2.6, -4.6);
+    return _truckPose(j.since(t) / len, len, SiteLayout.bayX, SiteLayout.bayZ);
+  }
+
+  /// How far the bay gate should be open at [t]: from as the cleanup's
+  /// truck comes along the avenue until it has driven out again.
+  double bayGateOpen(double t) {
+    final j = _job;
+    if (j == null || j.phase != Phase.cleanup) return 0;
+    final len = math.max(j.phaseLen, 0.01), u = j.since(t);
+    return seg(u, 0.1 * len, 0.1 * len + 1.2) * (1 - seg(u, 0.93 * len, 0.93 * len + 1.2));
+  }
+
+  /// The cleanup's truck [f] through the cleanup ([len] long; before 0: on
+  /// its way along the avenue, as the wrecking ends).
+  void _poseTruck(double f, double len, double t) {
+    final tp = _truckPose(f, len, SiteLayout.bayX, SiteLayout.bayZ);
+    final yaw = tp.yaw;
+    truckAt.setValues(tp.x, 0, tp.z);
+    _truck
+      ..visible = tp.x > -120
+      ..place((m) => setTrs(m, tp.x, 0, tp.z, yaw: yaw));
+    // Its body dips forward as it brakes and rocks back as it stops; the
+    // wheels roll, the front pair steers.
+    _truckBody.place((m) => setTrs(m, 0, 0, 0, roll: -tp.pitch));
+    for (final (w, x, z) in _truckWheels) {
+      final steer = x > 0 ? -0.5 * tp.steer : 0.0;
+      w.place((m) => setTrs(m, x, 0.46, z, yaw: steer, roll: -tp.odo / 0.46));
+    }
+    _truckBeacon.emissiveStrength = (t * 2.2) % 1.0 < 0.5 ? 6 : 0.4;
+  }
+
+  /// How long before the cleanup the truck comes into the picture.
+  static const _truckLead = 6.0;
+
+  /// The wrecking ball [f] through the cleanup: from wherever the swing
+  /// left it, up at once (settling under the hook as it rises), over to the
+  /// yard and down onto its place there.
+  vm.Vector3 _homeBall(_Swing sw, double f) {
+    final rest = Verdict3D.ballRest, c = sw.ballAt(sw.len);
+    final high = vm.Vector3(5.0, math.min(c.y + 3, 10.5), 1.5), over = vm.Vector3(rest.x, rest.y + 4.0, rest.z);
+    if (f < 0.16) {
+      final up = eio(f / 0.16);
+      return vm.Vector3(lerp(c.x, high.x, up), lerp(c.y, high.y, up), lerp(c.z, high.z, up));
+    }
+    if (f < 0.38) return polarLerp(high, over, eio(seg(f, 0.16, 0.38)));
+    return over + (rest - over) * eio(seg(f, 0.38, 0.5));
+  }
+
+  /// The cleanup truck's frame [f] through it (for its physics).
+  vm.Matrix4 _truckMatrix(double f, double len, double park, double bay) {
+    final p = _truckPose(f, len, park, bay);
+    return trs(vm.Vector3(p.x, 0, p.z), rotY: p.yaw);
   }
 
   /// The truck's turn into the bay (radius, metres), the lane it comes
@@ -1173,6 +1248,22 @@ class Site3D {
     if (d.length2 < 1e-6 || look.length2 < 1e-6) return true;
     return d.normalized().dot(look.normalized()) > 0.62;
   }
+
+  /// The solid things near the wall the rubble meets: the plinths, the
+  /// crane's footing and mast (centre, half extents).
+  List<(vm.Vector3, vm.Vector3)> _solids() => [
+    for (final r in plinths.runs) (vm.Vector3((r.x0 + r.x1) / 2, r.top / 2, 0), vm.Vector3((r.x1 - r.x0) / 2, r.top / 2, plinths.depth / 2)),
+    (vm.Vector3(SiteLayout.mastX, 0.3, SiteLayout.mastZ), vm.Vector3(1.4, 0.3, 1.4)),
+    (vm.Vector3(SiteLayout.mastX, (0.6 + SiteLayout.jibY - 0.5) / 2, SiteLayout.mastZ), vm.Vector3(0.6, (SiteLayout.jibY - 1.1) / 2, 0.6)),
+  ];
+
+  /// Where the crew and the manager's party stand (last frame), by their
+  /// index (null: not about, or up in the crane), for the rubble to bounce
+  /// off.
+  List<vm.Vector3?> _peopleAbout() => [
+    for (var i = 0; i < crew.poses.length; i++)
+      if (i != Crew3D.operator && crew.poses[i].visible) crew.poses[i].pos else null,
+  ];
 
   /// Dust where bricks first came down on the ground.
   void _impactDust(double t) {
@@ -1287,31 +1378,27 @@ class Site3D {
       final pass = sw.passTime(p.x);
       final ballY = sw.yAtX(p.x);
       final dy = p.y - ballY, dz = 0 - sw.z;
-      final dist = math.sqrt(dy * dy + dz * dz);
-      final hit = dist < _Swing.radius + b * 1.2;
+      // In the ball's way if its surface comes within reach of the brick.
+      final r = _Swing.radius + b * 0.55;
+      final d2 = r * r - dy * dy - dz * dz;
+      final hit = d2 > 0;
       vm.Vector3 v;
       double release;
       if (hit) {
-        final bv = sw.velocityAt(pass);
+        // Let go just as the ball (coming from the right) touches it: the
+        // ball itself knocks it flying (it's solid; it barely notices a
+        // brick). A little scatter of its own.
+        release = math.max(sw.release, sw.passTime(p.x + math.sqrt(d2)) - 1 / 60);
         final away = vm.Vector3(0, dy, dz)..normalize();
-        final k = 0.55 + 0.5 * rnd(i, 3);
-        v = bv * k + away * (2.0 + 2.5 * rnd(i, 4)) + vm.Vector3(0, 1.5 + 3.0 * rnd(i, 5), (rnd(i, 6) - 0.5) * 5);
-        release = pass;
+        v = away * (0.5 + 0.8 * rnd(i, 4)) + vm.Vector3(0, 0.3 * rnd(i, 5), (rnd(i, 6) - 0.5) * 1.2);
       } else {
-        // Its support is gone: it crumbles a moment after the ball passes.
+        // Shaken loose: it crumbles a moment after the ball passes (or as
+        // soon as nothing holds it up: the wreck checks).
         final below = p.y < ballY;
         release = pass + 0.12 + (below ? 0.5 + 1.1 * rnd(i, 7) : 0.05 + 0.35 * rnd(i, 7)) + (wallHeight - p.y) * 0.03;
         v = vm.Vector3(-1.2 * rnd(i, 8) - 0.3, 0.8 * rnd(i, 9), (rnd(i, 10) - 0.5) * 2.0);
       }
-      // It comes to rest on the plaza: not out in the street, nor among
-      // the works and its smoking corner at the back left.
       final fall = _Fall(p, v, release, _axesFor(i), 3 + 6 * rnd(i, 11), hit: hit);
-      final fly = fall.landAt(b) + 0.25;
-      final rx = p.x + v.x * fly, rz = p.z + v.z * fly;
-      final lx = -14.2 + 2.6 * rnd(i, 12), hx = 14.5 - 2.6 * rnd(i, 13);
-      if (rx < lx || rx > hx) v.x = ((rx < lx ? lx : hx) - p.x) / fly;
-      final lz = -7.6 + 1.5 * rnd(i, 14), hz = 1.6 - 1.2 * rnd(i, 15);
-      if (rz < lz || rz > hz) v.z = ((rz < lz ? lz : hz) - p.z) / fly;
       out.add(fall);
     }
     return out;
@@ -1328,55 +1415,54 @@ class Site3D {
     for (final l in _letters) {
       l.node.visible = false;
     }
-    // The ball is hoisted away.
+    // The ball is hoisted away at once, up and over towards the crane, out
+    // of the loader's way (it starts right where the ball came to hang);
+    // carried back to its place by the yard and set down there.
     final sw = _swing;
-    if (sw != null && f < 0.35) {
-      final up = eio(f / 0.35);
-      // From wherever the swing left it, settling under the hook as it rises.
-      final c = sw.ballAt(sw.len);
-      final ball = vm.Vector3(c.x * (1 - up), c.y + up * 14, c.z);
+    final rest = Verdict3D.ballRest;
+    if (sw != null && f < 0.5) {
+      final ball = _homeBall(sw, f);
       ballAt.setFrom(ball);
       crane.swingBall(vm.Vector3(ball.x, 14, ball.z), ball, t, dt, night: night);
     } else {
+      if (sw != null) crane.ballRest = rest;
       _idleCrane(vm.Vector3(SiteLayout.mastX - 5, 9, SiteLayout.mastZ - 4), t, dt, night);
     }
     final falls = _falls;
     // The truck: in along the avenue's eastbound lane, braking; reversing
     // round into the bay by the rubble, tub first; out the same way.
-    final park = -wallWidth / 2 - 2.6;
-    const bay = -4.6;
-    final tp = _truckPose(f, len, park, bay);
-    final yaw = tp.yaw;
-    truckAt.setValues(tp.x, 0, tp.z);
-    _truck
-      ..visible = true
-      ..place((m) => setTrs(m, tp.x, 0, tp.z, yaw: yaw));
-    // Its body dips forward as it brakes and rocks back as it stops; the
-    // wheels roll, the front pair steers.
-    _truckBody.place((m) => setTrs(m, 0, 0, 0, roll: -tp.pitch));
-    for (final (w, x, z) in _truckWheels) {
-      final steer = x > 0 ? -0.5 * tp.steer : 0.0;
-      w.place((m) => setTrs(m, x, 0.46, z, yaw: steer, roll: -tp.odo / 0.46));
-    }
-    _truckBeacon.emissiveStrength = (t * 2.2) % 1.0 < 0.5 ? 6 : 0.4;
+    const park = SiteLayout.bayX, bay = SiteLayout.bayZ;
+    _poseTruck(f, len, t);
     if (falls == null || !wreck.active) return;
-    final truck = trs(vm.Vector3(truckAt.x, truckAt.y, truckAt.z), rotY: yaw);
-    // The loader's bucketful: the bricks nearest the rubble's left end.
+    // The loader's bucketful: the bricks nearest where it starts. Whatever
+    // else lies where the machine stands goes too (scooped in the cut):
+    // nothing may start inside it.
     if (_gone.length != falls.length) {
+      if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(wreck.report(_solids()));
       wreck.releaseAll();
       _gone = List.filled(falls.length, false);
+      final from = loader.startAt(park);
+      double away(int i) => (wreck.positionOf(i) - from).length2;
       final near = [
         for (var i = 0; i < falls.length; i++)
           if (falls[i].ever) i,
-      ]..sort((a, c) => wreck.positionOf(a).x.compareTo(wreck.positionOf(c).x));
+      ]..sort((a, c) => away(a).compareTo(away(c)));
       // (Without physics there's no loader: the rubble just goes at the cut.)
       final load = Physics.available ? near.take(40).toList() : const <int>[];
       for (final i in load) {
         wreck.pickUp(i);
         _gone[i] = true;
       }
-      physics.clock = u;
-      if (Physics.available) loader.start(physics, load, b, park, bay, _placeBrick, (i) => _bricks.setInstanceTransform(i, hidden));
+      if (Physics.available) {
+        for (final i in near) {
+          if (_gone[i] || !loader.inTheWay(wreck.positionOf(i), park)) continue;
+          wreck.pickUp(i);
+          _gone[i] = true;
+          _bricks.setInstanceTransform(i, hidden);
+        }
+        physics.clock = u;
+        loader.start(physics, load, b, park, bay, (g) => _truckMatrix(g, len, park, bay), _placeBrick, (i) => _bricks.setInstanceTransform(i, hidden));
+      }
     }
     // The rest of the rubble goes off camera (and whatever's left at the
     // cut to the swept plaza).
@@ -1393,9 +1479,16 @@ class Site3D {
       _bricks.setInstanceTransform(i, hidden);
       taken++;
     }
-    loader.update(f, truck, cut: 0.78, leave: 0.8);
-    wreck.settle(t, dt, beforeStep: (tu) => loader.beforeStep(physics, tu / len));
-    loader.ride(truck, physics);
+    loader.update(physics, f, cut: 0.78);
+    final sw2 = _swing;
+    wreck.settle(
+      t,
+      dt,
+      beforeStep: (tu) {
+        loader.beforeStep(physics, tu / len);
+        if (sw2 != null) wreck.ballTo(_homeBall(sw2, math.min(tu / len, 0.5)));
+      },
+    );
     _wallHidden = false;
     if (j.cutAt == null) {
       fx.confettiShow(u + _pace.phaseLen(Phase.celebrate) + _pace.phaseLen(Phase.demolish), wallWidth, j.serial, fade: c01(f / 0.3));
@@ -1413,8 +1506,14 @@ class _SiteWork implements StreetWork {
     final d = site.delivery.laneBlock(eastbound, t);
     if (d != null || !eastbound) return d;
     final p = site._truckNow(t);
-    if (p == null || p.z > -9.5) return null;
-    return (p.x - 4.2, p.x + 4.2);
+    if (p == null) return null;
+    // In the lane (and, from a little before it pulls out of the bay,
+    // the stretch it pulls out across).
+    if (p.z <= -9.5) return (p.x - 4.2, p.x + 4.2);
+    final j = site._job!;
+    final f = j.phase == Phase.cleanup ? j.since(t) / math.max(j.phaseLen, 0.01) : 0.0;
+    if (f > 0.74) return (SiteLayout.bayX - 2.0, SiteLayout.bayX + 8.4);
+    return null;
   }
 
   @override
@@ -1423,7 +1522,9 @@ class _SiteWork implements StreetWork {
     if (d != null) return d;
     final p = site._truckNow(t);
     if (p == null || p.z < -14 || p.z > -6.5) return null;
-    final park = -site.wallWidth / 2 - 2.6;
+    const park = SiteLayout.bayX;
+    // (Only while it's turning in or out across the pavement.)
+    if ((p.x - park).abs() > 6) return null;
     return (math.min(p.x, park) - 3.2, math.max(p.x, park) + 3.2);
   }
 }
@@ -1458,9 +1559,10 @@ class _Piece {
 /// The wrecking ball's swing: lowered at the right of the wall, then
 /// released as a pendulum from above the middle, through the wall.
 class _Swing {
-  _Swing(this.w, this.h, this.len, {this.from}) {
+  _Swing(this.w, this.h, this.len, {this.from, double floor = 0}) {
     pivotY = SiteLayout.jibY - 0.45 - 1.55 + 1.0;
-    l = pivotY - h * 0.42;
+    // (Its lowest point clears the plinths, whatever the wall's height.)
+    l = pivotY - math.max(h * 0.42, floor + radius + 0.12);
     theta0 = math.asin(math.min(0.97, (w / 2 + 2.4) / l));
     omega = math.sqrt(SiteLayout.g / l);
     release = len * 0.26;
@@ -1518,7 +1620,10 @@ class _Swing {
       return vm.Vector3(startX, lerp(startY + 5.5, startY, down), z);
     }
     final th = theta(u);
-    return vm.Vector3(l * math.sin(th), pivotY - l * math.cos(th), z);
+    // The last of it: hoisted (the crane takes up the cable as the swing
+    // dies down), out of the way of the cleanup.
+    final up = eio(seg(u, len - 1.8, len));
+    return vm.Vector3(l * math.sin(th), pivotY - l * math.cos(th) + up * 5.0, z);
   }
 
   vm.Vector3 velocityAt(double u) {

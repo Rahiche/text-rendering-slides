@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter_scene/physics.dart' show BodyType, BoxShape, PhysicsMaterial, PoseTarget, SphereShape;
+import 'package:flutter_scene/physics.dart' show BodyType, BoxShape, CapsuleShape, PhysicsMaterial, PoseTarget, SphereShape;
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'kit.dart';
@@ -48,10 +48,15 @@ class _Piece implements PoseTarget {
 /// 解体 · The wreck in real physics (Rapier): the name's bricks as rigid
 /// bodies. Each letter is cut into chunks of a few bricks still mortared
 /// together (single bricks where the ball goes through), held in the wall
-/// until let go: then they tumble, knock into each other and the ground,
-/// and come to rest in piles. A chunk that lands hard breaks into its
-/// bricks. After its first pass the ball (kinematic, on its swing) shoves
-/// whatever it meets. The cleanup picks the bricks up where they lie.
+/// until let go: then they tumble, knock into each other, the plinths and
+/// the ground, and come to rest in piles. The ball (kinematic, on its
+/// swing: a tonne against a brick) is solid: the bricks in its way are let
+/// go as it touches them, and it knocks them flying. Whatever nothing
+/// holds up any more — no longer joined, through standing bricks, to its
+/// letter's foot — falls at once. A chunk that lands hard breaks into its
+/// bricks. Fast bricks are swept (CCD) so they never pass through
+/// anything. People nearby are capsules the rubble bounces off. The
+/// cleanup picks the bricks up where they lie.
 class Wreck {
   Wreck(this.physics, this.draw);
 
@@ -66,9 +71,19 @@ class Wreck {
   List<vm.Quaternion> _rot = const [];
   final _shatter = <_Piece>[];
   int _ball = -1;
-  List<int> _ballColliders = const [];
-  bool _ballSolid = false;
   double _b = 0.2, _now = 0;
+
+  /// The bricks as planned, where each is in the wall (letter, column,
+  /// row), and each letter's foot (its lowest row): for what holds what up.
+  List<WreckBrick?> _src = const [];
+  final _cell = <(int, int, int), int>{};
+  final _foot = <int, int>{};
+  bool _dirty = false;
+
+  /// The people about: a kinematic capsule each (by their index), and
+  /// where it was put last (null: parked out of the way).
+  final _people = <int>[];
+  final _peopleAt = <vm.Vector3?>[];
 
   /// Where bricks first hit the ground: (scene time, x, z), for dust.
   final impacts = <(double, double, double)>[];
@@ -98,8 +113,7 @@ class Wreck {
       final y0 = br.at.y - _b / 2;
       final land = (v.y + math.sqrt(v.y * v.y + 2 * 9.81 * math.max(0, y0))) / 9.81;
       final f = math.min(tau, land), slide = tau > land ? 0.3 * (1 - math.exp(-(tau - land) * 4)) : 0.0;
-      final p = _pos[i]
-        ..setValues(br.at.x + v.x * (f + slide), math.max(_b / 2, br.at.y + v.y * f - 4.905 * f * f), br.at.z + v.z * (f + slide));
+      final p = _pos[i]..setValues(br.at.x + v.x * (f + slide), math.max(_b / 2, br.at.y + v.y * f - 4.905 * f * f), br.at.z + v.z * (f + slide));
       final spin = br.spin.length;
       if (spin > 1e-6) _q.setAxisAngle(br.spin / spin, spin * (f + slide * 0.5));
       _rot[i].setFrom(_q);
@@ -116,9 +130,17 @@ class Wreck {
 
   /// Builds the wreck from [bricks] (null: not standing), bricks [b] wide;
   /// the ball at [ballAt], [u] seconds into the wrecking.
-  void start(List<WreckBrick?> bricks, double b, vm.Vector3 ballAt, double u) {
+  void start(List<WreckBrick?> bricks, double b, vm.Vector3 ballAt, double u, {List<(vm.Vector3, vm.Vector3)> solids = const []}) {
     end();
     _b = b;
+    _src = bricks;
+    for (var i = 0; i < bricks.length; i++) {
+      final br = bricks[i];
+      if (br == null) continue;
+      _cell[(br.letter, br.col, br.row)] = i;
+      final f = _foot[br.letter];
+      if (f == null || br.row < f) _foot[br.letter] = br.row;
+    }
     if (!Physics.available) {
       _plain = bricks;
       _pos = [for (final br in bricks) br?.at.clone() ?? vm.Vector3.zero()];
@@ -179,7 +201,12 @@ class Wreck {
       _add(group, [for (final j in group) bricks[j]!.at - mid], mid, vm.Quaternion.identity(), release, v, s, BodyType.fixed, later: true);
     }
     _ball = w.createBody(target: StillPose(ballAt), type: BodyType.kinematic);
-    _ballColliders = w.createColliders(_ball, SphereShape(radius: _ballRadius), material: const PhysicsMaterial(friction: 0.4, restitution: 0.05, density: 8), collisionMask: 0);
+    w.createColliders(_ball, SphereShape(radius: _ballRadius), material: const PhysicsMaterial(friction: 0.4, restitution: 0.12, density: 8));
+    // The solid things the rubble meets.
+    for (final (c, h) in solids) {
+      final body = w.createBody(target: StillPose(c), type: BodyType.fixed);
+      w.createColliders(body, BoxShape(halfExtents: h), material: const PhysicsMaterial(friction: 0.8, restitution: 0.05));
+    }
   }
 
   static const _ballRadius = 1.0;
@@ -192,7 +219,12 @@ class Wreck {
     p.body = w.createBody(target: p, type: type);
     final half = vm.Vector3.all(_b * 0.48);
     for (final o in p.offsets) {
-      w.createColliders(p.body, BoxShape(halfExtents: half), material: _mortar, localPose: vm.Matrix4.translation(o));
+      w.createColliders(
+        p.body,
+        BoxShape(halfExtents: half),
+        material: _mortar,
+        localPose: vm.Matrix4.translation(o),
+      );
     }
   }
 
@@ -211,7 +243,17 @@ class Wreck {
   /// A piece of [bricks] at [offsets] from [at]; in the physics now, or
   /// ([later]) a few at a time over the next frames (the wall's pieces: all
   /// at once would stall a frame).
-  _Piece _add(List<int> bricks, List<vm.Vector3> offsets, vm.Vector3 at, vm.Quaternion q, double release, vm.Vector3 v, vm.Vector3 s, BodyType type, {bool later = false}) {
+  _Piece _add(
+    List<int> bricks,
+    List<vm.Vector3> offsets,
+    vm.Vector3 at,
+    vm.Quaternion q,
+    double release,
+    vm.Vector3 v,
+    vm.Vector3 s,
+    BodyType type, {
+    bool later = false,
+  }) {
     final p = _Piece(this, bricks, offsets, at, release, v, s);
     p.q.setFrom(q);
     if (later) {
@@ -228,32 +270,103 @@ class Wreck {
   }
 
   /// [u] seconds into the wrecking, [dt] since the last: lets go of what's
-  /// due, moves the ball to [ballAt] (solid from [solidFrom] on), steps the
-  /// physics, breaks up chunks that landed hard.
-  void update(double t, double u, double dt, vm.Vector3 Function(double u) ballAt, {required double solidFrom}) {
+  /// due (and whatever's no longer held up), moves the ball to [ballAt] and
+  /// the [people] (their feet) where they are, steps the physics, breaks up
+  /// chunks that landed hard.
+  void update(double t, double u, double dt, vm.Vector3 Function(double u) ballAt, {List<vm.Vector3?> people = const []}) {
     if (!active) return;
     if (_plain.isNotEmpty) return _plainUpdate(u);
     final w = physics.world;
     _makeSome(u, 80);
     for (final p in _pieces) {
       if (p.released || u < p.release || p.body < 0) continue;
-      p.released = true;
-      w
-        ..setBodyKind(p.body, BodyType.dynamic_)
-        ..setBodyLinearVelocity(p.body, p.velocity * 0.85)
-        ..setBodyAngularVelocity(p.body, p.spin)
-        ..wakeBody(p.body);
+      _release(p);
     }
-    if (!_ballSolid && u >= solidFrom) {
-      _ballSolid = true;
-      for (final c in _ballColliders) {
-        w.setColliderFilter(c, 0xFFFFFFFF, 0xFFFFFFFF);
-      }
-    }
+    if (_dirty && _unmade.isEmpty) _support();
+    _place(people);
     _now = t;
     physics.advance(dt, beforeStep: (tu) => w.setBodyKinematicTargetPose(_ball, ballAt(tu), _q0));
     _breakUp();
   }
+
+  /// Lets [p] fall: with its planned kick, or ([gentle]: it just lost its
+  /// support) none.
+  void _release(_Piece p, {bool gentle = false}) {
+    final w = physics.world;
+    p.released = true;
+    _dirty = true;
+    w
+      ..setBodyKind(p.body, BodyType.dynamic_)
+      ..setBodyCcdEnabled(p.body, true)
+      ..setBodyLinearVelocity(p.body, gentle ? vm.Vector3.zero() : p.velocity)
+      ..setBodyAngularVelocity(p.body, gentle ? p.spin * 0.15 : p.spin)
+      ..wakeBody(p.body);
+  }
+
+  /// Lets go of whatever nothing holds up: standing bricks not joined,
+  /// side by side or one on another through standing bricks, to their
+  /// letter's foot. (A chunk stands while any of its bricks is held.)
+  void _support() {
+    _dirty = false;
+    final n = _src.length;
+    final held = List<bool>.filled(n, false);
+    bool standing(int i) {
+      final k = i < _pieceOf.length ? _pieceOf[i] : -1;
+      return k >= 0 && !_pieces[k].released;
+    }
+
+    final queue = <int>[];
+    for (var i = 0; i < n; i++) {
+      final br = _src[i];
+      if (br == null || br.row != _foot[br.letter] || !standing(i)) continue;
+      held[i] = true;
+      queue.add(i);
+    }
+    while (queue.isNotEmpty) {
+      final br = _src[queue.removeLast()]!;
+      for (final (dc, dr) in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
+        final j = _cell[(br.letter, br.col + dc, br.row + dr)];
+        if (j == null || held[j] || !standing(j)) continue;
+        held[j] = true;
+        queue.add(j);
+      }
+    }
+    for (final p in _pieces) {
+      if (p.released || p.body < 0 || p.bricks.any((i) => held[i])) continue;
+      _release(p, gentle: true);
+    }
+  }
+
+  /// The people as capsules where they stand ([people]: their feet, by
+  /// their index; null: not about). One walking moves its capsule (and
+  /// shoves what it walks into); one appearing, or jumping somewhere,
+  /// teleports it (nothing gets flung by a jump).
+  void _place(List<vm.Vector3?> people) {
+    final w = physics.world;
+    while (_people.length < people.length && _people.length < 24) {
+      final body = w.createBody(target: StillPose(_parked), type: BodyType.kinematic);
+      w.createColliders(body, const CapsuleShape(radius: 0.26, halfHeight: 0.6), material: const PhysicsMaterial(friction: 0.6, restitution: 0.1));
+      _people.add(body);
+      _peopleAt.add(null);
+    }
+    for (var k = 0; k < _people.length; k++) {
+      final feet = k < people.length ? people[k] : null, last = _peopleAt[k];
+      if (feet == null) {
+        if (last != null) w.setBodyPose(_people[k], _parked, _q0);
+        _peopleAt[k] = null;
+        continue;
+      }
+      final at = vm.Vector3(feet.x, feet.y + 0.86, feet.z);
+      if (last == null || last.distanceTo(at) > 0.5) {
+        w.setBodyPose(_people[k], at, _q0);
+      } else {
+        w.setBodyKinematicTargetPose(_people[k], at, _q0);
+      }
+      _peopleAt[k] = at;
+    }
+  }
+
+  static final _parked = vm.Vector3(0, -60, 0);
   static final _q0 = vm.Quaternion.identity();
 
   /// Steps the physics without the ball (the cleanup), [beforeStep] moving
@@ -265,17 +378,42 @@ class Wreck {
     _breakUp();
   }
 
+  /// Where the rubble lies (capture runs): bricks sunk into the ground, or
+  /// inside one of [solids] (centre, half extents).
+  String report(List<(vm.Vector3, vm.Vector3)> solids) {
+    var n = 0, sunk = 0, inside = 0;
+    var deepest = 0.0;
+    for (var i = 0; i < _src.length; i++) {
+      if (_src[i] == null) continue;
+      n++;
+      final p = _pos[i];
+      final low = p.y - _b * 0.48;
+      if (low < -0.02) {
+        sunk++;
+        deepest = math.max(deepest, -low);
+      }
+      for (final (c, h) in solids) {
+        if ((p.x - c.x).abs() < h.x - 0.02 && (p.y - c.y).abs() < h.y - 0.02 && (p.z - c.z).abs() < h.z - 0.02) {
+          inside++;
+          break;
+        }
+      }
+    }
+    return 'WRECK $n bricks: $sunk sunk into the ground (deepest ${(deepest * 100).round()} cm), $inside inside something solid';
+  }
+
+  /// Moves the ball to [at] (kinematic: it shoves what's in its way).
+  void ballTo(vm.Vector3 at) {
+    if (_ball >= 0 && _plain.isEmpty) physics.world.setBodyKinematicTargetPose(_ball, at, _q0);
+  }
+
   /// Lets go of everything still standing.
   void releaseAll() {
     if (_plain.isNotEmpty) return;
     _makeSome(double.infinity, 0);
-    final w = physics.world;
     for (final p in _pieces) {
       if (p.released || p.body < 0) continue;
-      p.released = true;
-      w
-        ..setBodyKind(p.body, BodyType.dynamic_)
-        ..wakeBody(p.body);
+      _release(p, gentle: true);
     }
   }
 
@@ -304,11 +442,15 @@ class Wreck {
     _gone.clear();
     _pieces.clear();
     _unmade.clear();
+    _src = const [];
+    _cell.clear();
+    _foot.clear();
+    _people.clear();
+    _peopleAt.clear();
+    _dirty = false;
     _pieceOf = const [];
     _shatter.clear();
     _ball = -1;
-    _ballColliders = const [];
-    _ballSolid = false;
     impacts.clear();
   }
 

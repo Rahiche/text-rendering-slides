@@ -189,7 +189,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         ..save(name, png!.buffer.asUint8List())
         ..log('captured $name  (${j?.name} · ${j?.phase.name} ${(j?.progress(model.t) ?? 0).toStringAsFixed(2)} · ${world.director.shotLabel})');
     }
-    out.finish();
+    out
+      ..log(world.life.overlapReport())
+      ..finish();
   }
 
   @override

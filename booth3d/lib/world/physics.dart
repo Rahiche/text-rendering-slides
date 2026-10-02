@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_scene/physics.dart';
 import 'package:flutter_scene_rapier/flutter_scene_rapier.dart';
@@ -5,11 +7,13 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 /// Real rigid-body physics (Rapier) on the scene's clock: stepped from the
 /// world's update with the model's time, not the wall clock, so capture runs
-/// and fast-forward see the same simulation. One world at a time (made for
-/// a scene that needs it, dropped after); the ground is a fixed slab whose
-/// top is y = 0.
+/// and fast-forward see the same simulation. One world, made ahead of time
+/// ([warmUp]: making one takes a few frames' worth) and emptied for each
+/// scene that needs it (back to a snapshot of it bare); the ground is a
+/// fixed slab whose top is y = 0.
 class Physics {
   RapierWorld? _world;
+  Uint8List? _bare;
   double _acc = 0;
 
   /// The simulation's own clock (scene seconds): set when a scene starts
@@ -45,7 +49,13 @@ class Physics {
       ..maxSubsteps = maxSteps;
     final ground = w.createBody(target: StillPose(vm.Vector3(0, -0.5, 0)), type: BodyType.fixed);
     w.createColliders(ground, BoxShape(halfExtents: vm.Vector3(200, 0.5, 200)), material: const PhysicsMaterial(friction: 0.8, restitution: 0.1));
+    if (w.supportsSnapshot) _bare = w.snapshot();
     return w;
+  }
+
+  /// Makes the world now (at start-up, not in the middle of a scene).
+  void warmUp() {
+    if (available) world;
   }
 
   bool get active => _world != null;
@@ -70,10 +80,14 @@ class Physics {
     w.interpolatePoses(_acc / step);
   }
 
-  /// Drops the world and everything in it.
+  /// Empties the world (back to bare ground), or drops it if it can't be.
   void reset() {
-    _world?.dispose();
-    _world = null;
+    final w = _world, bare = _bare;
+    if (w != null && !(bare != null && w.restore(bare))) {
+      w.dispose();
+      _world = null;
+      _bare = null;
+    }
     _acc = 0;
     clock = 0;
   }
@@ -90,7 +104,7 @@ class Physics {
       p.advance(1 / 60);
     }
     final (t, _) = p.world.readBodyPose(h);
-    p.reset();
+    p._world?.dispose();
     return 'PHYSICS ${p.runtimeType} rapier: a box dropped from 2 m is at ${t.y.toStringAsFixed(3)} m after 1 s';
   }
 }

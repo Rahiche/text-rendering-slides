@@ -71,8 +71,7 @@ class Loader3D {
       body.box(vm.Vector3(x, 2.4, z), vm.Vector3(0.09, 1.35, 0.09)); // cab posts
     }
     _root.add(Node(mesh: Mesh(body.build(), yellow)));
-    final panes = MeshBatch()
-      ..box(vm.Vector3(-0.05, 2.4, 0), vm.Vector3(1.15, 1.25, 1.38));
+    final panes = MeshBatch()..box(vm.Vector3(-0.05, 2.4, 0), vm.Vector3(1.15, 1.25, 1.38));
     _root.add(Node(mesh: Mesh(panes.build(), glass))..castsShadows = false);
     final trim = MeshBatch()
       ..box(vm.Vector3(-1.2, 1.79, 0), vm.Vector3(2.0, 0.08, 1.7)) // engine hood line
@@ -83,19 +82,30 @@ class Loader3D {
     // the outside: you see them turn.
     final white = vm.Vector4(1, 1, 1, 1);
     final tyre = merged([
-      part(CylinderGeometry(bottomRadius: _wr - 0.05, topRadius: _wr - 0.05, height: 0.48, radialSegments: 20), trs(vm.Vector3.zero(), rotX: math.pi / 2), white),
+      part(
+        CylinderGeometry(bottomRadius: _wr - 0.05, topRadius: _wr - 0.05, height: 0.48, radialSegments: 20),
+        trs(vm.Vector3.zero(), rotX: math.pi / 2),
+        white,
+      ),
       for (var k = 0; k < 14; k++)
         for (final side in const [-1.0, 1.0])
           part(
             CuboidGeometry(vm.Vector3(0.1, 0.13, 0.22)),
-            trs(vm.Vector3((_wr - 0.04) * math.cos(k * math.pi / 7), (_wr - 0.04) * math.sin(k * math.pi / 7), side * 0.12), rotZ: k * math.pi / 7 + side * 0.35),
+            trs(
+              vm.Vector3((_wr - 0.04) * math.cos(k * math.pi / 7), (_wr - 0.04) * math.sin(k * math.pi / 7), side * 0.12),
+              rotZ: k * math.pi / 7 + side * 0.35,
+            ),
             white,
           ),
     ]);
     MeshGeometry hubOf(double side) => merged([
       part(CylinderGeometry(bottomRadius: 0.3, topRadius: 0.3, height: 0.5, radialSegments: 10), trs(vm.Vector3.zero(), rotX: math.pi / 2), white),
       for (var k = 0; k < 8; k++)
-        part(CuboidGeometry(vm.Vector3(0.06, 0.06, 0.06)), vm.Matrix4.translation(vm.Vector3(0.2 * math.cos(k * math.pi / 4), 0.2 * math.sin(k * math.pi / 4), side * 0.26)), white),
+        part(
+          CuboidGeometry(vm.Vector3(0.06, 0.06, 0.06)),
+          vm.Matrix4.translation(vm.Vector3(0.2 * math.cos(k * math.pi / 4), 0.2 * math.sin(k * math.pi / 4), side * 0.26)),
+          white,
+        ),
     ]);
     final rubber = pbr(rgb(1, 1, 1), roughness: 0.85)..baseColorFactor = rgb(0.035, 0.04, 0.05);
     for (final x in const [-1.3, 1.3]) {
@@ -133,16 +143,16 @@ class Loader3D {
   final _loads = <_Load>[];
   void Function(int i) _hide = _noHide;
   static void _noHide(int i) {}
-  int _bucketBody = -1, _tub = -1;
-  bool _riding = false;
-  final _rideLocal = <vm.Matrix4>[];
+
+  /// Its solid parts: the bucket, the machine itself, and the truck (all
+  /// kinematic: they shove whatever's in their way, and the load rides in
+  /// the truck's tub when it drives off).
+  int _bucketBody = -1, _machine = -1, _truck = -1;
+  vm.Matrix4 Function(double f) _truckAt = _noTruck;
+  static vm.Matrix4 _noTruck(double f) => vm.Matrix4.identity();
 
   double _x = 0, _z = 0, _yaw = 0, _theta = 0, _phi = 0;
   double _spin = 0;
-
-  /// Bricks it carries (their instance indices), for the site to leave
-  /// alone.
-  Iterable<int> get carried => _loads.map((l) => l.i);
 
   bool get active => _loads.isNotEmpty;
 
@@ -150,39 +160,77 @@ class Loader3D {
   /// the truck parked at ([park], [bay]); the path between, an S along x.
   late vm.Vector3 _from, _to;
 
+  /// Where it starts, for the site to clear the rubble it's standing in.
+  /// (In front of the plinths: its bucket and its side clear of them.)
+  vm.Vector3 startAt(double park) => vm.Vector3(park + 7.6, 0, -1.8);
+
+  /// Whether [p] (world) is where the machine stands at the start (with a
+  /// margin): bricks there are in its way.
+  bool inTheWay(vm.Vector3 p, double park) {
+    final o = startAt(park);
+    // It starts facing −x (yaw π): its length along x, from its tail at +x,
+    // the bucket out in front.
+    final lx = o.x - p.x, lz = p.z - o.z;
+    return lx > -2.7 && lx < 4.9 && lz.abs() < 1.6 && p.y < 2.4;
+  }
+
   /// Starts the cleanup's load: the loader at the rubble's left end with
-  /// [bricks] (their instance indices) in its bucket (bricks [b] wide),
-  /// the truck's tub ready at ([park], [bay]) facing along +z (yaw π/2).
-  void start(Physics physics, List<int> bricks, double b, double park, double bay, void Function(int i, vm.Vector3 t, vm.Quaternion q) draw, void Function(int i) hide) {
+  /// [bricks] (their instance indices) in its bucket (bricks [b] wide);
+  /// the truck where [truckAt] has it [f] through the cleanup (its tub
+  /// ready once it's backed in at ([park], [bay])).
+  void start(
+    Physics physics,
+    List<int> bricks,
+    double b,
+    double park,
+    double bay,
+    vm.Matrix4 Function(double f) truckAt,
+    void Function(int i, vm.Vector3 t, vm.Quaternion q) draw,
+    void Function(int i) hide,
+  ) {
     end(physics);
     _hide = hide;
-    _from = vm.Vector3(park + 7.6, 0, -0.9);
+    _truckAt = truckAt;
+    _from = startAt(park);
     _to = vm.Vector3(park + 3.55, 0, bay + 0.85);
     _pose(0);
     final w = physics.world;
-    // The bucket: floor, back, sides (kinematic, moved every step).
-    _bucketBody = w.createBody(target: StillPose(_bucketPos(), _bucketRot()), type: BodyType.kinematic);
     const steel = PhysicsMaterial(friction: 0.6, restitution: 0.05);
-    for (final (c, h) in [
+    void boxes(int body, List<(vm.Vector3, vm.Vector3)> parts) {
+      for (final (c, h) in parts) {
+        w.createColliders(
+          body,
+          BoxShape(halfExtents: h),
+          material: steel,
+          localPose: vm.Matrix4.translation(c),
+        );
+      }
+    }
+
+    // The bucket: floor, back, sides.
+    _bucketBody = w.createBody(target: StillPose(_bucketPos(), _bucketRot()), type: BodyType.kinematic);
+    boxes(_bucketBody, [
       (vm.Vector3(_bd / 2, 0.04, 0), vm.Vector3(_bd / 2, 0.04, _bw / 2)),
       (vm.Vector3(0.04, _bh / 2, 0), vm.Vector3(0.04, _bh / 2, _bw / 2)),
       (vm.Vector3(_bd / 2, _bh / 2, _bw / 2), vm.Vector3(_bd / 2, _bh / 2, 0.035)),
       (vm.Vector3(_bd / 2, _bh / 2, -_bw / 2), vm.Vector3(_bd / 2, _bh / 2, 0.035)),
-    ]) {
-      w.createColliders(_bucketBody, BoxShape(halfExtents: h), material: steel, localPose: vm.Matrix4.translation(c));
-    }
-    // The truck's tub (its frame: the truck's, at the bay, turned π/2).
-    final truck = trs(vm.Vector3(park, 0, bay), rotY: math.pi / 2);
-    _tub = w.createBody(target: StillPose(truck.getTranslation(), vm.Quaternion.fromRotation(truck.getRotation())), type: BodyType.fixed);
-    for (final (c, h) in [
+    ]);
+    // The machine: its body and wheels, its front frame.
+    _machine = w.createBody(target: StillPose(vm.Vector3(_x, 0, _z), _rootRot()), type: BodyType.kinematic);
+    boxes(_machine, [(vm.Vector3(-0.6, 1.0, 0), vm.Vector3(1.95, 0.75, 1.3)), (vm.Vector3(1.0, 0.95, 0), vm.Vector3(0.75, 0.3, 0.6))]);
+    // The truck: chassis, cab, and the tub (hollow: the load goes in).
+    final m0 = truckAt(0);
+    _truck = w.createBody(target: StillPose(m0.getTranslation(), vm.Quaternion.fromRotation(m0.getRotation())), type: BodyType.kinematic);
+    boxes(_truck, [
+      (vm.Vector3(0.1, 0.62, 0), vm.Vector3(2.8, 0.16, 0.85)),
+      (vm.Vector3(2.05, 1.45, 0), vm.Vector3(0.78, 0.75, 1.03)),
+      (vm.Vector3(2.95, 1.0, 0), vm.Vector3(0.18, 0.25, 1.03)),
       (vm.Vector3(-0.85, 1.05, 0), vm.Vector3(1.8, 0.07, 1.1)),
       (vm.Vector3(-0.85, 1.75, 1.06), vm.Vector3(1.8, 0.65, 0.05)),
       (vm.Vector3(-0.85, 1.75, -1.06), vm.Vector3(1.8, 0.65, 0.05)),
       (vm.Vector3(-2.6, 1.75, 0), vm.Vector3(0.05, 0.65, 1.1)),
       (vm.Vector3(0.9, 1.85, 0), vm.Vector3(0.06, 0.75, 1.1)),
-    ]) {
-      w.createColliders(_tub, BoxShape(halfExtents: h), material: steel, localPose: vm.Matrix4.translation(c));
-    }
+    ]);
     // The load, heaped in the bucket.
     final half = vm.Vector3.all(b * 0.48);
     const brick = PhysicsMaterial(friction: 0.78, restitution: 0.08, density: 1.9);
@@ -196,83 +244,66 @@ class Loader3D {
       final q = _bucketRot() * vm.Quaternion.axisAngle(vm.Vector3(0, 1, 0), (rnd(k, 3) - 0.5) * 0.6);
       final load = _Load(bricks[k], draw, at, q);
       load.body = w.createBody(target: load, type: BodyType.dynamic_);
-      w.createColliders(load.body, BoxShape(halfExtents: half), material: brick);
+      w
+        ..createColliders(load.body, BoxShape(halfExtents: half), material: brick)
+        ..setBodyCcdEnabled(load.body, true);
       _loads.add(load);
       draw(load.i, at, q);
     }
-    _riding = false;
     _swept = false;
-    _rideLocal.clear();
     _root.visible = true;
   }
 
-  /// [f] through the cleanup (0..1): drives, lifts, tips; the bucket's
-  /// physics follows (from [beforeStep]). [truck]: the truck's pose (for
-  /// the load to ride away with, once it leaves at [leave]).
-  /// [cut]: the cut to the swept plaza (the loader has gone, and anything
-  /// it spilt); [leave]: when the truck pulls away.
-  void update(double f, vm.Matrix4 truck, {required double cut, required double leave}) {
+  /// [f] through the cleanup (0..1): drives, lifts, tips (the bodies follow
+  /// in [beforeStep]). [cut]: the cut to the swept plaza (the loader has
+  /// gone, and anything it spilt; the load rides away in the truck).
+  void update(Physics physics, double f, {required double cut}) {
     if (!active) return;
     _pose(f);
     if (f >= cut && !_swept) {
       _swept = true;
       _root.visible = false;
-      final inv = vm.Matrix4.inverted(truck);
+      final w = physics.world;
+      for (final b in [_bucketBody, _machine]) {
+        if (b >= 0) w.destroyBody(b);
+      }
+      _bucketBody = _machine = -1;
+      final inv = vm.Matrix4.inverted(_truckAt(f));
       _loads.removeWhere((l) {
         final local = inv.transformed3(l.t.clone());
         final inTub = local.x > -2.7 && local.x < 1.0 && local.z.abs() < 1.15 && local.y > 0.9;
-        if (!inTub) _hide(l.i);
-        return !inTub;
+        if (inTub) return false;
+        if (l.body >= 0) w.destroyBody(l.body);
+        l.body = -1;
+        _hide(l.i);
+        return true;
       });
-    }
-    // Once the truck pulls away, what's in the tub goes with it.
-    if (f >= leave && !_riding) {
-      _riding = true;
-      final inv = vm.Matrix4.inverted(truck);
-      for (final l in _loads) {
-        _rideLocal.add(inv * vm.Matrix4.compose(l.t, l.r, vm.Vector3.all(1)));
-      }
     }
   }
 
   bool _swept = false;
 
-  /// Moves the bucket to where the arms have it at [f] (each physics step).
+  /// Moves the bucket, the machine and the truck to where they are at
+  /// [f] (each physics step).
   void beforeStep(Physics physics, double f) {
-    if (_bucketBody < 0 || _riding) return;
+    if (_truck < 0) return;
+    final w = physics.world;
+    final m = _truckAt(f);
+    w.setBodyKinematicTargetPose(_truck, m.getTranslation(), vm.Quaternion.fromRotation(m.getRotation()));
+    if (_bucketBody < 0) return;
     _pose(f);
-    physics.world.setBodyKinematicTargetPose(_bucketBody, _bucketPos(), _bucketRot());
+    w
+      ..setBodyKinematicTargetPose(_bucketBody, _bucketPos(), _bucketRot())
+      ..setBodyKinematicTargetPose(_machine, vm.Vector3(_x, 0, _z), _rootRot());
   }
 
-  /// The riding load's poses (after the truck's moved), drawn with [draw].
-  void ride(vm.Matrix4 truck, Physics physics) {
-    if (!_riding) return;
-    final w = physics.active ? physics.world : null;
-    for (var k = 0; k < _loads.length; k++) {
-      final l = _loads[k];
-      if (l.body >= 0 && w != null) {
-        w.destroyBody(l.body);
-        l.body = -1;
-      }
-      final m = truck * _rideLocal[k];
-      l.draw(l.i, m.getTranslation(), vm.Quaternion.fromRotation(m.getRotation()));
-    }
-    if (w != null) {
-      if (_bucketBody >= 0) w.destroyBody(_bucketBody);
-      if (_tub >= 0) w.destroyBody(_tub);
-    }
-    _bucketBody = -1;
-    _tub = -1;
-  }
+  vm.Quaternion _rootRot() => vm.Quaternion.axisAngle(vm.Vector3(0, 1, 0), _yaw);
 
   void end(Physics physics) {
     // (The physics world goes with the wreck's; only forget the handles.)
     _swept = false;
     _loads.clear();
-    _rideLocal.clear();
-    _bucketBody = -1;
-    _tub = -1;
-    _riding = false;
+    _bucketBody = _machine = _truck = -1;
     _root.visible = false;
   }
 

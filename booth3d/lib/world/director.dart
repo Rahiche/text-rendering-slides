@@ -294,7 +294,7 @@ class Director {
       case Phase.cleanup:
         // The truck comes in and backs up to the rubble; the bricks go
         // into it; then up over the swept plaza, ready for the next name.
-        final park = -w / 2 - 2.6;
+        const park = SiteLayout.bayX;
         if (u < 0.26) {
           // High and wide from behind the bay, out over the avenue: the
           // truck comes along it, brakes past the bay and reverses round

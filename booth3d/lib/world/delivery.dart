@@ -44,7 +44,7 @@ class Delivery3D implements StreetWork {
 
   static const _half = 2.8; // half its length
   static const _far = 165.0; // where it comes from and goes (east)
-  static const _turn = 4.0, _backTurn = 2.5;
+  static const _turn = 4.0;
   static const _lane = Plan.laneWest, _laneOut = Plan.laneEast;
   static const _bedTop = 1.05;
 
@@ -401,17 +401,27 @@ class Delivery3D implements StreetWork {
     }
   }
 
-  // Leaving: reverse straight out, back round into the eastbound lane, a
-  // pause, then off east.
-  static const _rz = _laneOut + _backTurn, _ls = parkZ - _rz, _la = _backTurn * math.pi / 2;
+  // Leaving: reverse straight out through the gate (its cab clear of the
+  // fence before it turns), across the eastbound lane into the westbound
+  // one (traffic both ways waits), a pause, then forward, right round
+  // into the eastbound lane, and off east.
+  static const _outZ = -16.2, _outTurn = 3.2;
+  static const _ls = parkZ - _outZ, _la = _outTurn * math.pi / 2;
   static const _vr = 2.0, _ar = 2.0;
-  static const _tr = 2 * _vr / _ar + (_ls + _la - _vr * _vr / _ar) / _vr;
-  static const _go = 2.5;
+  static const _tr = 2 * _vr / _ar + (_ls - _vr * _vr / _ar) / _vr;
+  static const _pauseOut = 0.6, _go = 2.0;
+
+  /// When (seconds after it starts to leave) it's round the turn into the
+  /// eastbound lane.
+  static double get _turnedAt {
+    // Accelerating at [_go] along the turn (never reaching [_v1] on it).
+    return _tr + _pauseOut + math.sqrt(2 * _la / _go);
+  }
 
   /// The truck [sigma] seconds after it starts to leave.
   void _leaving(double sigma) {
     if (sigma < _tr) {
-      // Backing out.
+      // Backing straight out.
       final double d;
       if (sigma < _vr / _ar) {
         d = 0.5 * _ar * sigma * sigma;
@@ -419,31 +429,32 @@ class Delivery3D implements StreetWork {
         d = 0.5 * _vr * _vr / _ar + _vr * (sigma - _vr / _ar);
       } else {
         final w = _tr - sigma;
-        d = _ls + _la - 0.5 * _ar * w * w;
+        d = _ls - 0.5 * _ar * w * w;
       }
       _pOdo = -d;
-      // Left lock to swing its tail round into the lane, backing.
-      _pSteer = -smooth(_ls - 1.0, _ls + 0.3, d);
       _pPitch = sigma < _vr / _ar ? 0.006 * _ar : (sigma > _tr - _vr / _ar ? -0.006 * _ar : 0);
-      if (d <= _ls) {
-        _pPos.setValues(gateX, 0, parkZ - d);
-        _pYaw = -math.pi / 2;
-      } else {
-        final b = -(d - _ls) / _backTurn;
-        _pPos.setValues(gateX - _backTurn + _backTurn * math.cos(b), 0, _rz + _backTurn * math.sin(b));
-        _pYaw = headingTo(-math.sin(b), math.cos(b));
-      }
+      _pPos.setValues(gateX, 0, parkZ - d);
+      _pYaw = -math.pi / 2;
       return;
     }
-    final u = math.max(0.0, sigma - _tr - 0.5);
+    // Stopped a moment, then forward: right round into the lane, and east.
+    final u = math.max(0.0, sigma - _tr - _pauseOut);
     final tAcc = _v1 / _go;
-    final x = u < tAcc ? 0.5 * _go * u * u : 0.5 * _go * tAcc * tAcc + _v1 * (u - tAcc);
-    _pPos.setValues(gateX - _backTurn + x, 0, _laneOut);
-    _pYaw = 0;
-    _pOdo = -(_ls + _la) + x;
-    // The wheel straightening as it pulls away; squatting as it accelerates.
-    _pSteer = -(1 - smooth(0, 1.5, x));
+    final s = u < tAcc ? 0.5 * _go * u * u : 0.5 * _go * tAcc * tAcc + _v1 * (u - tAcc);
+    _pOdo = -_ls + s;
     _pPitch = u > 0 && u < tAcc ? -0.006 * _go : 0;
+    // Full right lock round the turn, straightening as it comes out.
+    _pSteer = smooth(0.0, 0.8, u) * (1 - smooth(_la - 0.6, _la + 0.8, s));
+    if (s <= _la) {
+      final phi = s / _outTurn;
+      _pPos.setValues(gateX + _outTurn - _outTurn * math.cos(phi), 0, _outZ + _outTurn * math.sin(phi));
+      _pYaw = headingTo(math.sin(phi), math.cos(phi));
+      // Leaning out of the turn (to its left).
+      _pLean = 0.004 * math.min(_v1, _go * u) * math.min(_v1, _go * u) / _outTurn * _pSteer;
+      return;
+    }
+    _pPos.setValues(gateX + _outTurn + (s - _la), 0, _laneOut);
+    _pYaw = 0;
   }
 
   final _tq = vm.Quaternion.identity();
@@ -810,17 +821,22 @@ class Delivery3D implements StreetWork {
   (double, double)? laneBlock(bool eastbound, double t) {
     for (final r in _runs) {
       if (eastbound) {
-        // Turning in across it, then backing out into it and driving off.
+        // Turning in across it; backing out across it and turning into it;
+        // then driving off along it.
         if (t > r.arrive - 8 && t < r.arrive - 1.8) return (gateX - 2.4, gateX + _turn + 2.6);
-        if (t > r.depart - 1.5 && t < r.depart + _tr + 0.6) return (gateX - _backTurn - _half - 0.6, gateX + 1.6);
-        if (t >= r.depart + _tr + 0.6 && t < r.depart + 30) {
+        if (t > r.depart - 1.5 && t < r.depart + _turnedAt + 0.4) return (gateX - 1.8, gateX + _outTurn + _half + 0.6);
+        if (t >= r.depart + _turnedAt + 0.4 && t < r.depart + 30) {
           _at(t);
           if (_pPos.x < 160) return (_pPos.x - _half - 0.4, _pPos.x + _half + 0.4);
         }
-      } else if (t > r.arrive - _approachTime && t < r.arrive - _t3 - _t2 * 0.5) {
-        // Coming along the westbound lane (cars behind follow it).
-        _at(t);
-        return (_pPos.x - _half - 0.4, _pPos.x + _half + 0.4);
+      } else {
+        // Coming along the westbound lane (cars behind follow it); backing
+        // out into it and turning out of it.
+        if (t > r.arrive - _approachTime && t < r.arrive - _t3 - _t2 * 0.5) {
+          _at(t);
+          return (_pPos.x - _half - 0.4, _pPos.x + _half + 0.4);
+        }
+        if (t > r.depart + 1.0 && t < r.depart + _turnedAt) return (gateX - 1.8, gateX + _outTurn + 1.6);
       }
     }
     return null;

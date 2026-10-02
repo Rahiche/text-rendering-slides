@@ -14,6 +14,11 @@ abstract final class SiteLayout {
   /// Tower crane: mast foot and jib height.
   static const mastX = 13.0, mastZ = 4.3, jibY = 15.0;
 
+  /// The cleanup's truck reverses into the bay at x = [bayX] (its tub
+  /// towards the wall, its cab out to the avenue) through the bay gate in
+  /// the front barriers, between the bollards.
+  static const bayX = -6.25, bayZ = -4.6;
+
   /// The brick yard by the crane: pallet k stands at [yard] (4 × 3, from
   /// the front row).
   static vm.Vector3 yard(int k) => vm.Vector3(11.7 + (k % 4) * 1.55, 0, -1.5 + ((k ~/ 4) % 3) * 1.5);

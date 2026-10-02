@@ -7,8 +7,10 @@ import 'package:text_slides/booth/web_fonts.dart';
 import 'package:text_slides/booth/model.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
 
+import '../perf.dart' show PerfLog;
 import '../tuning.dart';
 import 'city.dart';
+import 'city_plan.dart' show Plan;
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'kit.dart' show lerp;
@@ -50,6 +52,7 @@ class World3D {
     stage.value = 'city';
     await Physics.ensureReady();
     if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(Physics.selfTest());
+    site.physics.warmUp();
     sky.init();
     site.init();
     typing.init();
@@ -89,25 +92,53 @@ class World3D {
       _skipped = true;
       m.skip();
     }
+    // (A perf build says what took the time in a slow update.)
+    final watch = PerfLog.enabled ? (Stopwatch()..start()) : null;
+    final marks = watch == null ? null : <(String, int)>[];
+    void mark(String what) => marks?.add((what, watch!.elapsedMicroseconds));
+
     sky.update(m.t, dt);
     city.update(sky, m.t);
+    mark('sky+city');
     site.fx
       ..night = sky.night
       ..begin();
     site.camera.setFrom(director.camera.position);
     site.cameraTarget.setFrom(director.camera.target);
     site.update(m, dt, night: sky.night);
-    city.gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t));
+    mark('site');
+    city
+      ..gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t))
+      ..bayGate = site.bayGateOpen(m.t);
     typing
       ..attach(BoothUi.of(m))
       ..update(m, dt, site.fx);
     site.fx.end();
+    mark('typing+fx');
     director
       ..typingWeight = typing.weight
       ..night = sky.night
       ..update(m, dt, site);
     site.captionFor(m, director.shotLabel);
-    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork);
+    // The site's people out on the pavement (the new manager's party, the
+    // driver): the crowd walks round them.
+    final out = [
+      for (final p in site.crew.poses)
+        if (p.visible && (p.pos.z < Plan.plazaZ0 - 0.2 || p.pos.x.abs() > Plan.plazaX + 0.2)) p.pos,
+    ];
+    mark('director');
+    life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork, others: out);
+    mark('life');
+    if (watch != null && marks != null && watch.elapsedMicroseconds > 12000) {
+      var last = 0;
+      PerfLog.line('slow update at t=${m.t.toStringAsFixed(1)} (${m.job?.phase.name}): ${[
+        for (final (w, at) in marks) () {
+          final d = at - last;
+          last = at;
+          return '$w ${(d / 1000).toStringAsFixed(1)}';
+        }(),
+      ].join(', ')} ms');
+    }
     // The lens: close-ups go shallow, the background soft.
     final c = director.closeness;
     scene.depthOfField

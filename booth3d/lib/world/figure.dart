@@ -232,7 +232,9 @@ class FigureRig {
       final wh = smooth(0.3, 0.16, toFace) * smooth(0.45, 0.8, roll);
       final ay = oy.clamp(0.155, 0.425);
       final toBody = math.sqrt(ox * ox + (oy - ay) * (oy - ay) + oz * oz) - 0.155;
-      final wt = smooth(0.22, 0.08, toBody);
+      // (In front of it: hanging at the side, the toy's short arm was
+      // close to its hips too.)
+      final wt = smooth(0.22, 0.08, toBody) * smooth(-0.06, -0.15, oz);
       final w = math.max(wh, wt);
       if (w > 0) {
         final fx = ox * 0.86, fy = 0.685 + hy * 0.86, fz = -0.01 + oz * 0.86;
@@ -984,6 +986,7 @@ class Figures {
   }
 
   static const _vestRings = [
+    [-0.07, 0.18, 0.124, 0.006],
     [0.07, 0.172, 0.118, -0.006],
     [0.2, 0.174, 0.12, -0.012],
     [0.32, 0.19, 0.128, -0.014],

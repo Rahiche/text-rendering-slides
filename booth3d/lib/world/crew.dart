@@ -262,8 +262,9 @@ class Crew3D {
   void _aim(FigurePose p, int s, vm.Vector3 target) {
     // The shoulder as the figure stands, and the chest's turn.
     var r = _reach(p, s, target);
-    final hx = target.x - p.pos.x, hz = target.z - p.pos.z;
-    if (r > FigureRig.maxReach && target.y < _sh.y && hx * hx + hz * hz < 1.0) {
+    // (Something low in front: not a corner held up at the side.)
+    final hx = target.x - p.pos.x, hz = target.z - p.pos.z, ahead = -math.sin(p.yaw) * hx - math.cos(p.yaw) * hz;
+    if (r > FigureRig.maxReach && target.y < _sh.y && hx * hx + hz * hz < 1.0 && ahead > 0.2) {
       var lo = p.stoop, hi = p.stoop + 0.7;
       for (var k = 0; k < 6; k++) {
         p.stoop = (lo + hi) / 2;

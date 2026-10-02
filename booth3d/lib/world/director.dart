@@ -64,6 +64,10 @@ class Director {
   /// How much the camera should care about the typed letters (0..1).
   double typingWeight = 0;
 
+  /// The lens: the distance it focuses at, and how close-up the shot is
+  /// (0 a wide, everything sharp … 1 a close-up, the background soft).
+  double focus = 10, closeness = 0;
+
   /// 0 by day … 1 at night (fireworks get the wide sky shot at night).
   double night = 0;
 
@@ -148,6 +152,9 @@ class Director {
     }
     _avoid(eye, site);
     camera = PerspectiveCamera(position: eye, target: target, fovRadiansY: _fov.value * math.pi / 180, fovNear: 0.2, fovFar: 900);
+    // Focus on what it looks at; the closer in, the shallower.
+    focus = (target - eye).length;
+    closeness = smooth(9.5, 5.0, focus) * smooth(54, 40, _fov.value);
   }
 
   /// Whether [s] frames something other than the camera does now: it

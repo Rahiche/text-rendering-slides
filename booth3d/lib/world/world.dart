@@ -11,6 +11,7 @@ import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
+import 'kit.dart' show lerp;
 import 'life.dart';
 import 'physics.dart';
 import 'script_alley.dart' show ScriptAlley;
@@ -37,6 +38,10 @@ class World3D {
   Future<void> init() async {
     await Scene.initializeStaticResources();
     scene.antiAliasingMode = Tuning.aa;
+    scene.depthOfField
+      ..quality = DepthOfFieldQuality.low
+      ..maxBackgroundBlur = 18
+      ..maxForegroundBlur = 14;
     EnvironmentMap.radianceCubeSize = Tuning.cube;
     if (kIsWeb) {
       stage.value = 'fonts';
@@ -103,5 +108,11 @@ class World3D {
       ..update(m, dt, site);
     site.captionFor(m, director.shotLabel);
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork);
+    // The lens: close-ups go shallow, the background soft.
+    final c = director.closeness;
+    scene.depthOfField
+      ..enabled = Tuning.dof && c > 0.02
+      ..focusDistance = director.focus
+      ..fStop = lerp(16, 2.4, c);
   }
 }

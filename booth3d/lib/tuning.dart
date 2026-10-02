@@ -51,6 +51,9 @@ abstract final class Tuning {
   /// sun's contact shadows): things darken where they meet the ground and
   /// each other, so nothing floats. The capture build reads it from a
   /// define (to compare), a perf build from the environment.
+  /// Depth of field in close-ups (BOOTH3D_DOF=0 to compare).
+  static final bool dof = (_env('BOOTH3D_DOF') ?? const String.fromEnvironment('BOOTH3D_DOF', defaultValue: '1')) != '0';
+
   static final bool ao = (_env('BOOTH3D_AO') ?? const String.fromEnvironment('BOOTH3D_AO', defaultValue: '1')) != '0';
 
   static final double speed = _num('BOOTH3D_SPEED') ?? const int.fromEnvironment('BOOTH3D_SPEED', defaultValue: 1).toDouble();

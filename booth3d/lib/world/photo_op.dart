@@ -54,8 +54,9 @@ class PhotoOp {
 
   final cue = PhotoCue();
 
-  /// The board's bottom edge in the carriers' hands, and raised in the cheer.
-  static const _hold = 0.5, _raised = 1.0;
+  /// The board's bottom edge in the carriers' hands (its sides at their
+  /// waists), and raised in the cheer.
+  static const _hold = 0.85, _raised = 1.45;
 
   /// Where the board is held for the photo (the middle of its bottom edge),
   /// and where the tripod stands.
@@ -478,7 +479,7 @@ class PhotoOp {
     if (close) {
       // The board left of the middle, clear of the countdown (top right).
       final back = math.max(1.6, works.boardWidth * 1.35), s = 0.1 * back;
-      shot = Shot(vm.Vector3(0.14 + s, 1.0, _spot.z - back), vm.Vector3(s, _hold + works.boardHeight * 0.55, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
+      shot = Shot(vm.Vector3(0.14 + s, _hold + 0.5, _spot.z - back), vm.Vector3(s, _hold + works.boardHeight * 0.55, _spot.z), fov: 36, settle: 0.7, drift: 0.3);
     } else {
       // From the pavement, a wide lens: the whole name, the team in front.
       final eye = vm.Vector3(0.3, 3.0, -10.0), tg = vm.Vector3(0, h * 0.42 + 0.2, -0.3);

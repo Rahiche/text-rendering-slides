@@ -823,7 +823,7 @@ class Finish3D {
         ..legPitch[0] = 0.5 * low
         ..legPitch[1] = -0.15 * low;
       crew.aim(f, 1, tool);
-      _c.setValues(f.pos.x - 0.25, 0.75 - 0.2 * low, f.pos.z + 0.3);
+      _c.setValues(f.pos.x - 0.25, 1.05 - 0.3 * low, f.pos.z + 0.3);
       crew.aim(f, 0, _c);
       return;
     }
@@ -849,7 +849,7 @@ class Finish3D {
   /// above the other.
   void _grip(FigurePose f, vm.Vector3 tool, vm.Vector3 low, vm.Vector3 high) {
     final fx = -math.sin(f.yaw), fz = -math.cos(f.yaw);
-    low.setValues(f.pos.x + fx * 0.27, f.pos.y + 0.72, f.pos.z + fz * 0.27);
+    low.setValues(f.pos.x + fx * 0.3, f.pos.y + 1.0, f.pos.z + fz * 0.3);
     _dir
       ..setFrom(tool)
       ..sub(low)

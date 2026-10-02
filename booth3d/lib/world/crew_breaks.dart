@@ -5,6 +5,7 @@ import 'package:text_slides/booth/model.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'crew.dart';
+import 'figure.dart';
 import 'kit.dart';
 import 'shot.dart';
 import 'site_fx.dart';
@@ -521,7 +522,15 @@ class CrewBreaks {
         p.armPitch[s] = q.armPitch[s];
         p.armRoll[s] = q.armRoll[s];
         p.legPitch[s] = q.legPitch[s];
+        p.elbow[s] = q.elbow[s];
+        p.knee[s] = q.knee[s];
       }
+      p
+        ..headYaw = q.headYaw
+        ..headPitch = q.headPitch
+        ..twist = q.twist
+        ..stoop = q.stoop
+        ..stride = q.stride;
       return;
     }
     p.pos.setValues(lerp(p.pos.x, q.pos.x, k), lerp(p.pos.y, q.pos.y, k), lerp(p.pos.z, q.pos.z, k));
@@ -535,7 +544,18 @@ class CrewBreaks {
       p.armPitch[s] = lerp(p.armPitch[s], q.armPitch[s], k);
       p.armRoll[s] = lerp(p.armRoll[s], q.armRoll[s], k);
       p.legPitch[s] = lerp(p.legPitch[s], q.legPitch[s], k);
+      // (Set joints: the nearer pose's.)
+      if (k >= 0.5) {
+        p.elbow[s] = q.elbow[s];
+        p.knee[s] = q.knee[s];
+      }
     }
+    p
+      ..headYaw = lerp(p.headYaw, q.headYaw, k)
+      ..headPitch = lerp(p.headPitch, q.headPitch, k)
+      ..twist = lerp(p.twist, q.twist, k)
+      ..stoop = lerp(p.stoop, q.stoop, k);
+    if (k >= 0.5) p.stride = q.stride;
   }
 
   /// A break on the platform: a stretch, a look at the city, a word with
@@ -877,7 +897,7 @@ class CrewBreaks {
     final u = t % 3.8;
     final pop = eo(c01(u / 0.25)) * (1 - c01((u - 3.3) / 0.3));
     if (pop <= 0) return;
-    final x = me.pos.x, y = me.pos.y + me.bob + 1.62 + 0.03 * math.sin(t * 3), z = me.pos.z;
+    final x = me.pos.x, y = me.pos.y + me.bob + 2.0 + 0.03 * math.sin(t * 3), z = me.pos.z;
     final yaw = math.atan2(-(camera.x - x), -(camera.z - z));
     _bubbles.setInstanceTransform(_nBubbles++, setTrs(_m, x + 0.12, y, z, yaw: yaw, roll: 0.06 * math.sin(t * 2 + turn), s: pop));
   }
@@ -1035,6 +1055,7 @@ abstract final class OffDuty {
   static void walk(FigurePose p, double t, double speed, int seed) {
     final ph = t * speed * 4.2 + seed;
     final sw = math.sin(ph) * 0.5;
+    p.stride = ph;
     p.legPitch[0] = sw;
     p.legPitch[1] = -sw;
     p.armPitch[0] = -sw * 0.7;
@@ -1146,8 +1167,9 @@ abstract final class OffDuty {
     p.armRoll[1] = 0.3;
   }
 
-  /// Sitting down ([down] 0..1): hips up onto a bench seat (the figures'
-  /// hips are at 0.36 m standing, the seat at 0.5), legs forward.
+  /// Sitting down ([down] 0..1): onto a bench seat (at 0.5 m: a seated
+  /// figure's hips are 0.36 m above where it stands, see [FigureRig]),
+  /// legs forward.
   static void sit(FigurePose p, double down) {
     p.pos.y += 0.19 * down;
     p.legPitch[0] = p.legPitch[1] = 1.45 * down;
@@ -1163,34 +1185,17 @@ abstract final class OffDuty {
 
   // ── Where the hands and the mouth are ─────────────────────────────────────
 
-  static final _root = vm.Matrix4.identity(), _torso = vm.Matrix4.identity(), _arm = vm.Matrix4.identity(), _l = vm.Matrix4.identity();
-  static final _rx = vm.Matrix4.identity(), _rz = vm.Matrix4.identity();
+  static final _rig = FigureRig();
 
-  /// The torso's frame for [p] (as the crew draws it).
-  static vm.Matrix4 _torsoOf(FigurePose p) {
-    setTrs(_root, p.pos.x, p.pos.y + p.bob, p.pos.z, yaw: p.yaw);
-    return _torso
-      ..setFrom(_root)
-      ..multiply(setTrs(_l, 0, 0.36, 0, pitch: -p.lean));
-  }
-
-  /// The centre of [p]'s hand [s] (0 = −x side, 1 = +x side), world.
+  /// The middle of [p]'s hand [s] (0 = −x side, 1 = +x side), world.
   static vm.Vector3 hand(FigurePose p, int s, vm.Vector3 out) {
-    final side = s == 0 ? -1.0 : 1.0;
-    _rz.setRotationZ(side * p.armRoll[s]);
-    _rx.setRotationX(p.armPitch[s]);
-    _arm
-      ..setFrom(_torsoOf(p))
-      ..multiply(setTrs(_l, side * 0.205, 0.5, 0))
-      ..multiply(_rz)
-      ..multiply(_rx);
-    out.setValues(0, -0.36, 0);
-    return _arm.transform3(out);
+    _rig.solve(p);
+    return out..setFrom(_rig.palms[s]);
   }
 
   /// [p]'s mouth, world.
   static vm.Vector3 mouth(FigurePose p, vm.Vector3 out) {
-    out.setValues(0, 0.68, -0.13);
-    return _torsoOf(p).transform3(out);
+    _rig.solve(p, arms: false);
+    return _rig.mouth(1, out);
   }
 }

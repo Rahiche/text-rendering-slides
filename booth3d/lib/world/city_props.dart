@@ -17,6 +17,12 @@ class CityProps {
 
   final Scene scene;
   late final UnlitMaterial _vendGlow, _fairyGlow;
+
+  /// What people keep out of, by kind (centre, half extents): trunks,
+  /// benches, cones, machines, the post box.
+  final solids = <String, List<(vm.Vector3, vm.Vector3)>>{};
+  void _solid(String kind, double x, double y, double z, double hx, double hy, double hz) =>
+      (solids[kind] ??= []).add((vm.Vector3(x, y, z), vm.Vector3(hx, hy, hz)));
   final _fairyNode = Node(name: 'fairy lights');
   final _canopies = <(vm.Vector3, double)>[];
 
@@ -63,6 +69,7 @@ class CityProps {
       final isPink = pink ?? rnd(k, 2) < 0.28;
       final c = isPink ? sakura[k % sakura.length] : greens[k % greens.length];
       trunks.addInstance(trs(vm.Vector3(x, 1.2 * s, z), s: vm.Vector3.all(s)));
+      _solid('tree trunks', x, 1.2 * s, z, 0.15 * s, 1.2 * s, 0.15 * s);
       final r = 1.5 * s;
       final crown = vm.Vector3(x, 2.4 * s + r * 0.55, z);
       leaves.addInstance(trs(crown, rotY: rnd(k, 3) * 6, s: vm.Vector3.all(r)), color: v4(hex3(c)));
@@ -145,13 +152,20 @@ class CityProps {
     // Facing the paths in the park (front = local −Z); none in front of
     // the tofu shop and the forge (vignettes).
     for (var z = Plan.parkZ0 + 5.0; z < Plan.parkZ1; z += 9) {
-      if ((z - 49).abs() > 1 && !Plan.inLot(-3.4, z)) benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
-      if ((z + 4 - 44).abs() > 1 && !Plan.inLot(3.4, z + 4)) benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
+      if ((z - 49).abs() > 1 && !Plan.inLot(-3.4, z)) {
+        benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
+        _solid('benches', -3.4, 0.45, z, 0.26, 0.45, 0.86);
+      }
+      if ((z + 4 - 44).abs() > 1 && !Plan.inLot(3.4, z + 4)) {
+        benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
+        _solid('benches', 3.4, 0.45, z + 4, 0.26, 0.45, 0.86);
+      }
     }
     // On the plaza's flanks, facing the build.
     for (final s in [-1.0, 1.0]) {
       for (final z in [0.0, 6.6]) {
         benches.addInstance(trs(vm.Vector3(s * (Plan.lampFlank - 0.05), 0, z), rotY: s * math.pi / 2));
+        _solid('benches', s * (Plan.lampFlank - 0.05), 0.45, z, 0.26, 0.45, 0.86);
       }
     }
     scene.add(
@@ -186,6 +200,7 @@ class CityProps {
     ];
     for (final (x, z) in spots) {
       cones.addInstance(trs(vm.Vector3(x, 0.02, z), rotY: rnd(x.round(), z.round()) * 3));
+      _solid('cones', x, 0.38, z, 0.2, 0.38, 0.2);
     }
     scene.add(Node(name: 'cones')..addComponent(InstancedMeshComponent(cones)));
   }
@@ -203,6 +218,7 @@ class CityProps {
     void machine(double x, double z, double rotY) {
       k++;
       bodies.addInstance(trs(vm.Vector3(x, 0.02, z), rotY: rotY), color: v4(hex3(colors[k % colors.length])));
+      _solid('vending machines', x, 0.95, z, 0.5, 0.95, 0.38);
       final f = trs(vm.Vector3(x, 0.02, z), rotY: rotY) * vm.Matrix4.translation(vm.Vector3(0, 1.2, -0.385));
       fronts.addInstance(f, color: v4(hex3(k.isEven ? 0xD8ECFF : 0xFFF1D6)));
     }
@@ -230,6 +246,7 @@ class CityProps {
       part(CuboidGeometry(vm.Vector3(0.3, 0.05, 0.04)), vm.Matrix4.translation(vm.Vector3(0, 0.85, -0.26)), v4(hex3(0x1B2233))),
     ]);
     scene.add(Node(name: 'post box', mesh: Mesh(geo, pbr(rgb(1, 1, 1), roughness: 0.4)), localTransform: trs(vm.Vector3(-17.6, 0.02, Plan.walkFront))));
+    _solid('post box', -17.6, 0.6, Plan.walkFront, 0.27, 0.6, 0.27);
   }
 
   void update(double night, double t) {

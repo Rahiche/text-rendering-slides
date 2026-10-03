@@ -13,6 +13,7 @@ import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
 import 'director.dart';
+import 'figure.dart' show Figures;
 import 'figure_rig.dart' show FigureMotion;
 import 'kit.dart' show lerp;
 import 'life.dart';
@@ -59,6 +60,8 @@ class World3D {
     typing.init();
     await Future.wait([city.init(), site.alley.init(), site.vignettes.init()]);
     director.solids = city.towers.solids;
+    // The street furniture: everyone keeps out of it.
+    Figures.of(scene).solids.addAll(city.props.solids);
     stage.value = 'people';
     await life.init();
     ready = true;

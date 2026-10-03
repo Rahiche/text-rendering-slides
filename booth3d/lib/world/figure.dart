@@ -81,6 +81,9 @@ class _Body {
 
   /// (Capture runs: feet off the ground, last frame; the last frames.)
   bool aloft = false;
+
+  /// Sitting (on a bench, a seat): on whatever they sit on, not out of it.
+  bool seated = false;
   List<String>? ring;
   final FigureLook look;
 
@@ -279,6 +282,7 @@ class Figures {
       ..yaw = p.yaw
       ..walking = p.stride.isFinite
       ..steer = p.steer
+      ..seated = math.min(p.legPitch[0], p.legPitch[1]) > 0.9
       ..seen = now;
     p.motion = b.motion;
     r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
@@ -528,7 +532,8 @@ class Figures {
           }
           // How much each gives: none if they don't steer; someone standing
           // a little to someone walking.
-          double give(_Body x, _Body y) => !x.steer ? 0.0 : (!x.walking && y.walking ? 0.25 : 1.0);
+          // (And none sitting down.)
+          double give(_Body x, _Body y) => !x.steer || x.seated ? 0.0 : (!x.walking && y.walking ? 0.25 : 1.0);
           final ga = give(a, b), gb = give(b, a), sum = ga + gb;
           if (sum <= 0) continue;
           final o = minD - d;
@@ -554,6 +559,7 @@ class Figures {
         ..nx += (tx - a.nx) * k
         ..nz += (tz - a.nz) * k;
       // Never into anything solid (at once: walking into it, along it).
+      if (a.seated) continue;
       outOfSolids(a.x + a.nx, a.y, a.z + a.nz, a.r, _out, fromX: a.x, fromZ: a.z);
       a
         ..nx = _out[0] - a.x
@@ -574,6 +580,7 @@ class Figures {
     // footprint, while the box spans the person's height.
     for (final i in _seen) {
       final a = _bodies[i];
+      if (a.seated) continue;
       final x = a.x + a.nx, z = a.z + a.nz;
       for (final MapEntry(key: kind, value: boxes) in solids.entries) {
         var worst = 0.0;

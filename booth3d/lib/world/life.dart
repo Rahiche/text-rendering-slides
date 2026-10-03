@@ -553,7 +553,8 @@ class _People {
     const ex = Plan.streetX + Plan.streetHalf + 0.4, ix = Plan.streetX - Plan.streetHalf - 0.4;
     final routes = [
       // Round the plaza block and through the park.
-      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 26, 41, 50, 117, 125]),
+      // (Its watch points between the front's bollards.)
+      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 24, 41, 50, 117, 125]),
       // Over the avenue at the plaza's corners and back along the far side
       // (a plain loop: no doubling back, where keeping left would swap
       // sides).
@@ -884,6 +885,11 @@ class _People {
       p.vel = p.v = 0;
       p.pause -= dt;
       p.heading = _turn(p.heading, r.alley ? headingTo(p.x < 0 ? -1 : 1, 0) : headingTo(-p.x * 0.6, 2 - p.z), dt);
+      // (Not leaning into a bollard after making way for someone.)
+      _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out);
+      p
+        ..x = _out[0]
+        ..z = _out[1];
       return;
     }
     final onCrossing = r.crossing.containsKey(r.segmentAt(p.d));

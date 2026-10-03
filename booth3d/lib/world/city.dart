@@ -301,6 +301,7 @@ class City3D {
       if (Plan.inLot(x, z, 1.5)) return;
       // The arm reaches over the road side (towards +x when towards > 0).
       pole.addInstance(trs(vm.Vector3(x, 2.5, z)));
+      (props.solids['lamp posts'] ??= []).add((vm.Vector3(x, 2.5, z), vm.Vector3(0.09, 2.5, 0.09)));
       final ax = x + 0.4 * towards;
       arm.addInstance(trs(vm.Vector3(ax, 4.95, z)));
       final head = vm.Vector3(x + 0.85 * towards, 4.85, z);
@@ -350,6 +351,7 @@ class City3D {
     for (var x = -16.0; x <= 16.01; x += 4) {
       final bx = (x - 12).abs() < 0.1 ? 10.4 : x;
       post.addInstance(trs(vm.Vector3(bx, 0.395, Plan.bollardZ)));
+      (props.solids['bollards'] ??= []).add((vm.Vector3(bx, 0.4, Plan.bollardZ), vm.Vector3(0.11, 0.4, 0.11)));
       cap.addInstance(trs(vm.Vector3(bx, 0.84, Plan.bollardZ)));
     }
     scene.add(Node(name: 'bollards')..addComponent(InstancedMeshComponent(post)));

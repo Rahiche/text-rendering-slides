@@ -166,7 +166,7 @@ class Wreck {
       for (var i = 0; i < n; i++)
         if (bricks[i] != null) i,
     ]..sort((a, c) => bricks[a]!.row != bricks[c]!.row ? bricks[c]!.row.compareTo(bricks[a]!.row) : bricks[a]!.col.compareTo(bricks[c]!.col));
-    const sizes = [(1, 1), (2, 1), (2, 1), (3, 1), (3, 1), (4, 1), (2, 2), (3, 2)];
+    const sizes = [(1, 1), (1, 1), (2, 1), (2, 1), (2, 1), (3, 1), (2, 2), (1, 2)];
     for (final i in order) {
       if (taken[i]) continue;
       final br = bricks[i]!;
@@ -290,16 +290,20 @@ class Wreck {
   }
 
   /// Lets [p] fall: with its planned kick, or ([gentle]: it just lost its
-  /// support) none.
+  /// support) a little nudge of its own, so what comes down together
+  /// doesn't stay in one sheet.
   void _release(_Piece p, {bool gentle = false}) {
     final w = physics.world;
     p.released = true;
     _dirty = true;
+    final i = p.bricks.first;
+    final v = gentle ? vm.Vector3((rnd(i, 41) - 0.5) * 0.9, rnd(i, 42) * 0.3, (rnd(i, 43) - 0.5) * 0.9) : p.velocity;
+    final s = gentle ? p.spin * 0.15 + vm.Vector3(rnd(i, 44) - 0.5, rnd(i, 45) - 0.5, rnd(i, 46) - 0.5) * 2.4 : p.spin;
     w
       ..setBodyKind(p.body, BodyType.dynamic_)
       ..setBodyCcdEnabled(p.body, true)
-      ..setBodyLinearVelocity(p.body, gentle ? vm.Vector3.zero() : p.velocity)
-      ..setBodyAngularVelocity(p.body, gentle ? p.spin * 0.15 : p.spin)
+      ..setBodyLinearVelocity(p.body, v)
+      ..setBodyAngularVelocity(p.body, s)
       ..wakeBody(p.body);
   }
 
@@ -482,7 +486,7 @@ class Wreck {
     final w = physics.world;
     for (final p in [..._shatter]) {
       if (p.body < 0) continue;
-      if (w.readBodyLinearVelocity(p.body).length2 < 2.0 * 2.0) continue;
+      if (w.readBodyLinearVelocity(p.body).length2 < 1.2 * 1.2) continue;
       _split(p, scatter: true);
     }
     _shatter.clear();
@@ -500,13 +504,13 @@ class Wreck {
       final i = p.bricks[k];
       final r = p.offsets[k].clone()..applyQuaternion(p.q);
       final bv = v + s.cross(r);
-      if (scatter) bv.add(vm.Vector3(rnd(i, 31) - 0.5, rnd(i, 32) * 0.8, rnd(i, 33) - 0.5) * 1.6);
+      if (scatter) bv.add(vm.Vector3(rnd(i, 31) - 0.5, rnd(i, 32) * 0.8, rnd(i, 33) - 0.5) * 2.2);
       final single = _add([i], [vm.Vector3.zero()], _pos[i], p.q, 0, bv, s, BodyType.dynamic_)
         ..released = true
         ..landed = true;
       w
         ..setBodyLinearVelocity(single.body, bv)
-        ..setBodyAngularVelocity(single.body, s + (scatter ? vm.Vector3(rnd(i, 34) - 0.5, rnd(i, 35) - 0.5, rnd(i, 36) - 0.5) * 6 : vm.Vector3.zero()));
+        ..setBodyAngularVelocity(single.body, s + (scatter ? vm.Vector3(rnd(i, 34) - 0.5, rnd(i, 35) - 0.5, rnd(i, 36) - 0.5) * 8 : vm.Vector3.zero()));
     }
   }
 }

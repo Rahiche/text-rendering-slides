@@ -1666,10 +1666,16 @@ class _Swing {
       }
     }
     firstHit = first.isFinite ? first : release + 1;
+    exitTau = passTime(-(w / 2 + 0.6)) - release;
   }
 
   final double w, h, len;
   late final double pivotY, l, theta0, omega, release, firstHit;
+
+  /// When (seconds after the release) the ball is out past the wall's far
+  /// end on its first swing: it has given up a good part of its swing to
+  /// the wall by then, and rises only so far.
+  late final double exitTau;
 
   /// Where the ball starts from (lifted off the ground by the yard, after
   /// the manager's visit), or null: lowered from above.
@@ -1683,7 +1689,10 @@ class _Swing {
   double theta(double u) {
     final tau = u - release;
     if (tau <= 0) return theta0;
-    return theta0 * math.cos(omega * tau) * math.exp(-0.09 * tau);
+    // (After the wall: the swing that's left. Every brick it hits it hits
+    // before then, on the way through, as planned.)
+    final spent = 1 - 0.45 * smooth(exitTau, exitTau + 0.45, tau);
+    return theta0 * spent * math.cos(omega * tau) * math.exp(-0.09 * tau);
   }
 
   /// Where the trolley (the pendulum's pivot) is: over the start while the
@@ -1714,13 +1723,6 @@ class _Swing {
     // dies down), out of the way of the cleanup.
     final up = eio(seg(u, len - 1.8, len));
     return vm.Vector3(l * math.sin(th), pivotY - l * math.cos(th) + up * 5.0, z);
-  }
-
-  vm.Vector3 velocityAt(double u) {
-    final tau = u - release;
-    final th = theta(u);
-    final dth = -theta0 * omega * math.sin(omega * tau) * math.exp(-0.09 * tau);
-    return vm.Vector3(l * dth * math.cos(th), l * dth * math.sin(th), 0);
   }
 
   /// The ball's height where its arc crosses [x].

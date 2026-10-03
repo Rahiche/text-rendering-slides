@@ -533,9 +533,12 @@ class _Plan {
     // site gate, to the blueprint's place; the manager in front.
     const gx = 13.0;
     final spots = [vm.Vector3(x - 1.4, 0, z - 0.3), vm.Vector3(x - 0.12, 0, z + 0.05), vm.Vector3(x + 0.12, 0, z + 0.05)];
+    // (Along the pavement in single file by the site's barriers, out of
+    // the way of the people walking along it.)
+    const pz = -9.75;
     for (var i = 0; i < 3; i++) {
-      final lag = i * 0.55, side = i == 0 ? 0.0 : (i == 1 ? -0.35 : 0.35);
-      final pts = [vm.Vector3(19.4 + lag, 0, -10.3 + side * 0.5), vm.Vector3(gx + side, 0, -10.3 + side * 0.5), vm.Vector3(gx + side, 0, -6.2), spots[i]];
+      final lag = i * 0.75, side = i == 0 ? 0.0 : (i == 1 ? -0.35 : 0.35);
+      final pts = [vm.Vector3(19.4 + lag, 0, pz), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(gx + side, 0, -6.2), spots[i]];
       // Arriving at the blueprint's place by [_arrive].
       final speed = 1.55;
       final start = d + Verdict3D._arrive - Walk.lengthOf(pts) / speed - lag * 0.6;
@@ -544,7 +547,7 @@ class _Plan {
       final post = vm.Vector3(math.min(w / 2 + 2.3, 12.4) + 0.62 * i, 0, -4.4 - 0.4 * (i % 2));
       toPost.add(Walk([spots[i], post], d + Verdict3D._disperse + 0.5 + 0.2 * i, 1.3));
       // And away during the cleanup, the way they came.
-      final out = [post, vm.Vector3(gx + side, 0, -6.2), vm.Vector3(gx + side, 0, -10.3 + side * 0.5), vm.Vector3(21 + lag, 0, -10.3 + side * 0.5)];
+      final out = [post, vm.Vector3(gx + side, 0, -6.2), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(21 + lag, 0, pz)];
       leave.add(Walk(out, d + CityPace.verdict + phaseSeconds[Phase.demolish]! + 1.5 + 0.3 * i, 1.4));
     }
     gate

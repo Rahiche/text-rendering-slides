@@ -407,7 +407,8 @@ class GlyphWorks {
   /// the build.
   void _schedule(BuildPlan plan, Map<int, (int, double)> pins) {
     final sc = plan.sched, n = plan.letterCount;
-    final deadline = plan.t0 + plan.len - 0.25, first = plan.job.startedAt + 1.5;
+    // (The first letter no sooner than its maker can walk in from home.)
+    final deadline = plan.t0 + plan.len - 0.25, first = plan.job.startedAt + 0.5 + _walkIn;
     var squeeze = 1.0;
     for (var tries = 0; tries < 14; tries++) {
       _steps.clear();

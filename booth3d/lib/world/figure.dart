@@ -200,6 +200,9 @@ class Figures {
   /// The look person [n] was added with.
   FigureLook lookOf(int n) => _bodies[n].look;
 
+  /// How fast person [n] was going in the last frame (x, z, m/s).
+  (double, double) velocityOf(int n) => (_bodies[n].vx, _bodies[n].vz);
+
   /// Hides person [n].
   void hide(int n) {
     final b = _bodies[n];
@@ -250,6 +253,13 @@ class Figures {
       ..nudgeZ = p.steer && _nudgeOn ? b.nz : 0;
     if (b.seen != now) _seen.add(n);
     final since = now - b.seen;
+    // (Capture runs: someone jumping somewhere between two frames.)
+    if (_counting && since > 1e-4 && since < 0.07) {
+      final jx = p.pos.x - b.x, jz = p.pos.z - b.z, jump = math.sqrt(jx * jx + jz * jz);
+      if (jump > 0.8 && _jumps.length < 40) {
+        _jumps.add('#$n at t=${now.toStringAsFixed(2)}: ${jump.toStringAsFixed(1)} m from ${b.x.toStringAsFixed(1)},${b.z.toStringAsFixed(1)} to ${p.pos.x.toStringAsFixed(1)},${p.pos.z.toStringAsFixed(1)}');
+      }
+    }
     if (since > 1e-4 && since < 0.25) {
       b
         ..vx = (p.pos.x - b.x) / since
@@ -336,6 +346,7 @@ class Figures {
   String overlapReport() =>
       'FIGURES overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm at t=${_deepestAt.toStringAsFixed(1)} ($_deepestWho)\n'
       '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}\n'
+      'FIGURES jumps: ${_jumps.length}${[for (final j in _jumps) '\n  $j'].join()}\n'
       'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}';
 
   /// Solid things people keep out of (and capture runs check they did), by
@@ -379,6 +390,16 @@ class Figures {
   }
 
   final _out = [0.0, 0.0];
+
+  /// Which solids (kind and box) are within a metre of (x, z): for logs.
+  String solidsAt(double x, double z) => [
+    for (final MapEntry(key: kind, value: boxes) in solids.entries)
+      for (final (c, h) in boxes)
+        if ((x - c.x).abs() < h.x + 1 && (z - c.z).abs() < h.z + 1) '$kind (${c.x.toStringAsFixed(2)},${c.y.toStringAsFixed(2)},${c.z.toStringAsFixed(2)} ±${h.x.toStringAsFixed(2)},${h.y.toStringAsFixed(2)},${h.z.toStringAsFixed(2)})',
+  ].join('; ');
+
+  /// People who jumped somewhere between two frames (capture runs).
+  final _jumps = <String>[];
 
   /// People found inside [solids], by kind: frames, the worst (depth,
   /// when, who).

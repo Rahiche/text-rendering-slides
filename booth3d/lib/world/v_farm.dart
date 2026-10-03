@@ -57,6 +57,10 @@ class PixelFarm extends Vignette {
   static const _scan0 = 0.8, _perRow = 0.55, _harvest = 15.0;
   static const _scanEnd = _scan0 + _rows * _perRow;
 
+  /// The fence (half its width and depth): round the plots with room for
+  /// the tractor to go past a row's end and turn.
+  static const _fenceX = _cols * _cell / 2 + 1.45, _fenceZ = _rows * _cell / 2 + 1.05;
+
   late final InstancedMesh _crops;
   int _farmer = -1;
   final _p = FigurePose();
@@ -76,15 +80,16 @@ class PixelFarm extends Vignette {
     await _rasterize();
     final b = Batch();
     final m = pbr(rgb(1, 1, 1), roughness: 0.95);
-    // The field's earth, its plots' furrows, a fence round it.
-    box(b, m, _cols * _cell + 0.6, 0.06, _rows * _cell + 0.6, 0, 0.03, 0, Vignette.c(0xC9AE84));
+    // The field's earth, its plots' furrows, a fence round it (room inside
+    // it for the tractor to turn at the rows' ends).
+    final w = _fenceX, d = _fenceZ;
+    box(b, m, 2 * w - 0.2, 0.06, 2 * d - 0.2, 0, 0.03, 0, Vignette.c(0xC9AE84));
     for (var c = 0; c <= _cols; c++) {
       box(b, m, 0.03, 0.065, _rows * _cell, (c - _cols / 2) * _cell, 0.035, 0, Vignette.c(0x9E8662));
     }
     for (var r = 0; r <= _rows; r++) {
       box(b, m, _cols * _cell, 0.065, 0.03, 0, 0.035, (r - _rows / 2) * _cell, Vignette.c(0x9E8662));
     }
-    final w = _cols * _cell / 2 + 0.5, d = _rows * _cell / 2 + 0.5;
     for (final (x0, z0, x1, z1) in [(-w, -d, w, -d), (-w, d, w, d), (-w, -d, -w, d), (w, -d, w, d)]) {
       final len = math.sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
       box(b, m, x0 == x1 ? 0.06 : len, 0.06, x0 == x1 ? len : 0.06, (x0 + x1) / 2, 0.55, (z0 + z1) / 2, Vignette.c(0xF4F1EA));
@@ -104,7 +109,7 @@ class PixelFarm extends Vignette {
         ..addComponent(InstancedMeshComponent(_crops))
         ..castsShadows = false,
     );
-    await sign(4.2, 0.9, vm.Matrix4.translation(vm.Vector3(0, 1.4, -_rows * _cell / 2 - 0.8)), (c, s) {
+    await sign(4.2, 0.9, vm.Matrix4.translation(vm.Vector3(0, 1.4, -_fenceZ - 0.3)), (c, s) {
       c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF2E5E2E));
       Vignette.text(c, '画素畑 · PIXEL FARM', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.44, const Color(0xFFF4EBD8), lang: 'ja');
       Vignette.text(c, 'coverage → grey', Rect.fromLTWH(0, s.height * 0.6, s.width, s.height * 0.34), s.height * 0.24, const Color(0xFFF2C94C));
@@ -183,13 +188,30 @@ class PixelFarm extends Vignette {
         _crops.setInstanceColor(i, vm.Vector4(0.22 * dark + 0.05, 0.42 * dark + 0.08, 0.16 * dark + 0.04, 1));
       }
     }
-    // The tractor on its row, and the scanline's light along it.
+    // The tractor on its row, and the scanline's light along it; waiting at
+    // the first row's start before; after the last (which ends at the
+    // field's left), round and back up its side to the start (never a
+    // jump).
     final r = row.clamp(0, _rows - 1), forward = r.isEven;
-    final x = lerp(_x(0) - 0.6, _x(_cols - 1) + 0.6, forward ? along : 1 - along);
+    final x0 = _x(0) - 0.6, x1 = _x(_cols - 1) + 0.6;
+    final x = lerp(x0, x1, forward ? along : 1 - along);
     final z = _z(r);
     final scanning = u > _scan0 && u < _scanEnd;
-    final tx = scanning ? x : _x(0) - 1.6, tz = scanning ? z : _z(0);
-    final yaw = scanning ? (forward ? -math.pi / 2 : math.pi / 2) : 0.0;
+    double tx, tz, yaw;
+    if (scanning) {
+      tx = x;
+      tz = z;
+      yaw = forward ? -math.pi / 2 : math.pi / 2;
+    } else if (u <= _scan0) {
+      tx = x0;
+      tz = _z(0);
+      yaw = -math.pi / 2;
+    } else {
+      final f = seg(u, _scanEnd, _scanEnd + 2.6);
+      tx = x0;
+      tz = lerp(_z(_rows - 1), _z(0), smooth(0.15, 0.85, f));
+      yaw = f < 0.85 ? lerp(math.pi / 2, math.pi, smooth(0, 0.15, f)) : lerp(math.pi, 1.5 * math.pi, smooth(0.85, 1, f));
+    }
     _tractor(tx, tz, yaw);
     if (scanning) pglow(0, 0.1, z, _cols * _cell, 0.02, _cell * 0.9, vm.Vector4(1.6, 1.4, 0.5, 1));
     // The farmer at the wheel.

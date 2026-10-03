@@ -217,6 +217,9 @@ class Crew3D {
 
   void _draw(int i) => _figures.draw(_slots[i], poses[i]);
 
+  /// How fast figure [i] was going in the last frame (x, z, m/s).
+  (double, double) velocityOf(int i) => _figures.velocityOf(_slots[i]);
+
   final _rig = FigureRig();
   final _sh = vm.Vector3.zero(), _d = vm.Vector3.zero();
 
@@ -309,8 +312,8 @@ class Crew3D {
   /// right end to the front (from or to [from] on the platform: along the
   /// deck to the gate first; else their rest spot); from the front of the
   /// wall (the finish called off), along it.
-  List<vm.Vector3> _route(int z, double w, {required bool toWall, vm.Vector3? from}) {
-    final rest = _workSpot(z, w), watch = _watchSpot(z, w);
+  List<vm.Vector3> _route(int z, double w, {required bool toWall, vm.Vector3? from, double? watchW}) {
+    final rest = _workSpot(z, w), watch = _watchSpot(z, watchW ?? w);
     final work = from ?? rest;
     if (work.z < 0) return toWall ? [watch, vm.Vector3(work.x, 0, -2.6), work] : [work, vm.Vector3(work.x, 0, -2.6), watch];
     final gate = _gates.length > z ? _gates[z] : rest.x;
@@ -381,6 +384,13 @@ class Crew3D {
     final j = m.job;
     final t = m.t;
     if (j == null) return;
+    // A new name (its wall another width): the builders set off from where
+    // the last one had them watching, the foreman from his corner then.
+    if (!identical(j, _jobOf)) {
+      _jobOf = j;
+      _fromW = _lastW.isNaN ? w : _lastW;
+    }
+    _lastW = w;
     _night = night;
     _t = t;
     _figures.night = night;
@@ -420,14 +430,19 @@ class Crew3D {
       switch (j.phase) {
         case Phase.intake:
           // (Through the gap by the yard one after another, the farthest
-          // going first: nobody catches anybody up.)
-          final route = _route(z, w, toWall: true);
-          final start = j.phaseStart + 0.3 + z * 0.3 - (_toCorner(route) - _toCorner(_route(0, w, toWall: true))) / 3.4;
+          // going first: nobody catches anybody up. From where they were
+          // watching the last name go.)
+          final route = _route(z, w, toWall: true, watchW: _fromW);
+          final start = j.phaseStart + 0.3 + z * 0.3 - (_toCorner(route) - _toCorner(_route(0, w, toWall: true, watchW: _fromW))) / 3.4;
           final (moving, heading) = _walk(route, start, 3.4, t, p.pos);
           p.pos.y = standY(p.pos, w, floor);
           if (moving) {
             _gait(p, (t - start) * 3.4, 3.4, seed, _lengthOf(route));
             p.yaw = heading;
+          } else if (plan != null && t >= start) {
+            // There: the plan has them from now (stepping over to their first
+            // place as the build's about to start).
+            _work(p, z, plan, t, floor, seed);
           } else {
             _idle(p, t, seed);
           }
@@ -480,6 +495,11 @@ class Crew3D {
   }
 
   final _place = CrewPlace(), _cutPlace = CrewPlace();
+
+  /// The job last seen, the wall's width last frame, and the width the
+  /// builders stood watching for when this job started.
+  Job? _jobOf;
+  double _lastW = double.nan, _fromW = double.nan;
 
   /// Where builder [z] was at [at] (for a build cut short): on the
   /// platform, or at the finish.
@@ -869,6 +889,22 @@ class Crew3D {
     final p = poses[foreman]..rest();
     p.clipboard = true;
     p.pos.setValues(w / 2 + 0.75, 0, -1.55);
+    // A new name, its wall another width: over to the new corner.
+    final from = _fromW.isNaN ? w : _fromW;
+    if (j.phase == Phase.intake && (from - w).abs() > 0.05) {
+      final d = (w - from).abs() / 2, a = j.phaseStart + 0.6, e = a + d / 1.4;
+      if (t < e) {
+        p.pos.x = lerp(from / 2 + 0.75, w / 2 + 0.75, c01((t - a) / (e - a)));
+        if (t >= a) {
+          _gait(p, (t - a) * 1.4, 1.4, 3, d);
+          p.yaw = w > from ? -math.pi / 2 : math.pi / 2;
+          p.armPitch[0] = 1.0;
+          p.armRoll[0] = 0.12;
+          p.elbow[0] = double.nan;
+          return;
+        }
+      }
+    }
     _idle(p, t, 3, face: math.atan2(-(0 - p.pos.x), -(0.4 - p.pos.z)) * 0.8);
     // Clipboard up, reading.
     p.armPitch[0] = 1.15;

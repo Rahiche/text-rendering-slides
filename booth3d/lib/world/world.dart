@@ -125,10 +125,14 @@ class World3D {
     site.captionFor(m, director.shotLabel);
     // The site's people (the crew, the new manager's party on the
     // pavement, the driver): the crowd walks round them.
+    final crew = site.crew.poses;
     final out = [
-      for (final p in site.crew.poses)
-        if (p.visible && p.pos.y < 0.5) vm.Vector3(p.pos.x + p.nudgeX, 0, p.pos.z + p.nudgeZ),
-      ...site.vignettes.kit.walkers,
+      for (var i = 0; i < crew.length; i++)
+        if (crew[i].visible && crew[i].pos.y < 0.5) () {
+          final (vx, vz) = site.crew.velocityOf(i);
+          return (vm.Vector3(crew[i].pos.x + crew[i].nudgeX, 0, crew[i].pos.z + crew[i].nudgeZ), vx, vz);
+        }(),
+      for (final w in site.vignettes.kit.walkers) (w, 0.0, 0.0),
     ];
     mark('director');
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork, others: out);

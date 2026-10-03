@@ -331,7 +331,8 @@ class TofuShop extends Vignette {
       courier.yaw = math.pi;
     } else {
       second = true;
-      _walkBetween(courier, _kx[1], -6.2, _home, _loop - 0.2, u);
+      // (Back to the first kiosk: where the next turn starts.)
+      _walkBetween(courier, _kx[1], _kx[0], _home, _loop - 0.2, u);
     }
     // The crate, held in front.
     final fwdX = -math.sin(courier.yaw), fwdZ = -math.cos(courier.yaw);

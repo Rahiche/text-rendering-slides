@@ -45,14 +45,14 @@ class Life3D {
   }
 
   /// How often people walked into each other (capture runs).
-  String overlapReport() => _people.overlapReport();
+  String overlapReport() => '${_people.overlapReport()}\nWALKER jumps: ${_people.jumpLog.length}${[for (final j in _people.jumpLog) '\n  $j'].join()}';
 
   /// Steps the life by [dt] (sub-stepped when fast-forwarding) and poses it
   /// for [camera] (anything right at the camera steps out of its way).
   /// Traffic and people make way for [work] (the site's delivery truck);
   /// people walk round each other and [others] (the site's people out on
   /// the pavement: the new manager's party, the driver).
-  void update(BoothModel m, double dt, {required vm.Vector3 camera, required double wallWidth, required double night, StreetWork? work, List<vm.Vector3> others = const []}) {
+  void update(BoothModel m, double dt, {required vm.Vector3 camera, required double wallWidth, required double night, StreetWork? work, List<(vm.Vector3, double, double)> others = const []}) {
     var left = dt;
     while (left > 1e-6) {
       final h = math.min(left, 0.1);
@@ -513,6 +513,7 @@ class _Person {
   bool moving = false;
   bool placed = false;
   bool guiding = false; // the corner's worker, guiding the delivery truck
+  bool onWay = false; // a walker placed on their way (after that, they walk back onto it)
   int job = 0; // workers: 0 by the wall, 1 at the corner, 2 behind the wall
   int index = 0;
   int slot = 0; // among the figures (figure.dart)
@@ -553,15 +554,15 @@ class _People {
     final routes = [
       // Round the plaza block and through the park.
       _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 26, 41, 50, 117, 125]),
-      // Over the avenue at the plaza's corners and back along the far side.
+      // Over the avenue at the plaza's corners and back along the far side
+      // (a plain loop: no doubling back, where keeping left would swap
+      // sides).
       _Route([
-        (ix, far1),
         (Plan.crossX[1], far1),
         (Plan.crossX[1], fz),
         (Plan.crossX[0], fz),
         (Plan.crossX[0], far1),
-        (-ix, far1),
-      ], crossing: {1: true, 3: true}, watch: [14, 42]),
+      ], crossing: {0: true, 2: true}, watch: [11.9, 39.9]),
       // The far side beyond the side streets (crossing them on their green).
       for (final s in [-1.0, 1.0])
         _Route([
@@ -771,7 +772,9 @@ class _People {
     _all.add(p);
   }
 
-  List<vm.Vector3> _others = const [];
+  /// Others about (the site's people): where they are, and how fast they
+  /// go (x, z, m/s).
+  List<(vm.Vector3, double, double)> _others = const [];
 
   /// Walking round people (BOOTH3D_AVOID=0: not, to compare).
   static const _avoidOn = String.fromEnvironment('BOOTH3D_AVOID', defaultValue: '1') != '0';
@@ -810,7 +813,7 @@ class _People {
     }
   }
 
-  void step(double t, double dt, BoothModel m, double wallWidth, StreetWork? work, [List<vm.Vector3> others = const []]) {
+  void step(double t, double dt, BoothModel m, double wallWidth, StreetWork? work, [List<(vm.Vector3, double, double)> others = const []]) {
     _others = others;
     final gate = work?.gateBusy(t);
     for (final p in _all) {
@@ -854,7 +857,8 @@ class _People {
           dx /= d;
           dz /= d;
         }
-        final move = (minD - d) * (moves(q) ? 0.5 : 1.0);
+        // (Eased apart over a frame or two, never in one jump.)
+        final move = math.min((minD - d) * (moves(q) ? 0.5 : 1.0), 0.1);
         if (p.role == _Role.worker) {
           p
             ..x += dx * move
@@ -936,6 +940,9 @@ class _People {
       }
     }
     final moved = (next - p.d).abs();
+    if (_debugJumps && moved > 0.5 && jumpLog.length < 60) {
+      jumpLog.add('walker #${p.index} t=${t.toStringAsFixed(2)}: d ${p.d.toStringAsFixed(2)} → ${next.toStringAsFixed(2)} vel ${p.vel.toStringAsFixed(2)} dir ${p.dir} waiting ${p.waiting} pause ${p.pause.toStringAsFixed(2)} lap ${p.lap}');
+    }
     p.v = moved / math.max(dt, 1e-6);
     p.d = next;
     if (p.d >= r.length) {
@@ -970,13 +977,36 @@ class _People {
     }
     final off = p.side + p.dodge;
     final wasX = p.x, wasZ = p.z;
-    p.x = a.$1 + dx * f + nx * off * p.dir;
-    p.z = a.$2 + dz * f + nz * off * p.dir;
-    // (Round anything solid by the way: a sign post, a pallet.)
-    _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out, fromX: wasX, fromZ: wasZ);
+    // Where their way has them; back onto it, if something moved them off
+    // it (someone they made way for, stopping to watch), at no more than a
+    // brisk step: never a jump.
+    final wx = a.$1 + dx * f + nx * off * p.dir, wz = a.$2 + dz * f + nz * off * p.dir;
+    final ex = wx - p.x, ez = wz - p.z, e = math.sqrt(ex * ex + ez * ez), most = (p.vel + 1.2) * dt;
+    if (p.onWay && e > most) {
+      p
+        ..x += ex / e * most
+        ..z += ez / e * most;
+    } else {
+      p
+        ..x = wx
+        ..z = wz;
+    }
+    p.onWay = true;
+    // (Round anything solid by the way, a sign post, a pallet: out by its
+    // nearer side, so they slide past it.)
+    _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out);
+    if (_debugJumps && t > 0.5 && ((_out[0] - p.x).abs() > 0.3 || (_out[1] - p.z).abs() > 0.3) && jumpLog.length < 60) {
+      jumpLog.add('walker #${p.index} t=${t.toStringAsFixed(2)} pushed out of a solid: ${p.x.toStringAsFixed(2)},${p.z.toStringAsFixed(2)} → ${_out[0].toStringAsFixed(2)},${_out[1].toStringAsFixed(2)}: ${_figures.solidsAt(p.x, p.z)}');
+    }
     p
       ..x = _out[0]
       ..z = _out[1];
+    if (_debugJumps) {
+      final jx = p.x - wasX, jz = p.z - wasZ;
+      if (t > 0.5 && jx * jx + jz * jz > 0.25 && jumpLog.length < 60) {
+        jumpLog.add('walker #${p.index} t=${t.toStringAsFixed(2)}: ${math.sqrt(jx * jx + jz * jz).toStringAsFixed(2)} m (${wasX.toStringAsFixed(2)},${wasZ.toStringAsFixed(2)} → ${p.x.toStringAsFixed(2)},${p.z.toStringAsFixed(2)}) seg $i/$n len ${(r.cum[i + 1] - r.cum[i]).toStringAsFixed(2)} into ${(p.d - r.cum[i]).toStringAsFixed(2)} off ${off.toStringAsFixed(2)} dir ${p.dir} waiting ${p.waiting}');
+      }
+    }
     p.fx = dx / l * p.dir;
     p.fz = dz / l * p.dir;
     if (!p.waiting) p.heading = _turn(p.heading, headingTo(dx * p.dir, dz * p.dir), dt);
@@ -1051,8 +1081,8 @@ class _People {
       if (identical(q, p)) continue;
       obstacle(q.x, q.z, q.fx * q.v, q.fz * q.v, 0.27 * q.scale);
     }
-    for (final o in _others) {
-      obstacle(o.x, o.z, 0, 0, 0.3);
+    for (final (o, vx, vz) in _others) {
+      obstacle(o.x, o.z, vx, vz, 0.3);
     }
     // Back into line once past (and only then).
     final target = want ?? (lineBlocked ? p.dodge : 0.0);
@@ -1157,6 +1187,10 @@ class _People {
   }
 
   final _out = [0.0, 0.0];
+
+  /// Capture runs: walkers that jumped between two steps, and why.
+  static const _debugJumps = String.fromEnvironment('BOOTH3D_TIMES') != '';
+  final jumpLog = <String>[];
 
   static double _turn(double from, double to, double dt) {
     var d = (to - from) % (2 * math.pi);

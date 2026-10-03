@@ -1193,6 +1193,11 @@ class BuildPlan {
         _windows[z].add((from, end));
         i = j + 1;
       }
+      // (A stop there'd be no time to stay at: skipped, straight on to
+      // the next.)
+      for (var q = legs.length - 2; q >= 1; q--) {
+        if (legs[q + 1].t - legs[q].t < 0.8) legs.removeAt(q);
+      }
       // How long each walk takes: at a walking pace, but there before the
       // next move.
       var px = restX(z), pz = cz;

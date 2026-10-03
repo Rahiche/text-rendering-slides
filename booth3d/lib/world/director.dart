@@ -60,8 +60,11 @@ class Director {
   int cuts = 0;
 
   /// Every shot is held at least this long: no flash frames between two
-  /// requests.
-  static const minHold = 2.0;
+  /// requests. One of the director's own framings gives way to another
+  /// (in the same phase) only after [ownHold]: a calm build, not a
+  /// slideshow.
+  static const minHold = 2.0, ownHold = 3.5;
+  Phase? _sincePhase;
 
   /// A request that just ended keeps the camera on its last framing this
   /// long, in case another comes straight after; when one was last on, and
@@ -112,7 +115,8 @@ class Director {
       label = _label;
     }
     if (label != _label || cut) {
-      if (!cut && t - _since < minHold && _held != null && !label.startsWith('look')) {
+      final own = label.startsWith('director') && _label.startsWith('director') && phase == _sincePhase;
+      if (!cut && t - _since < (own ? ownHold : minHold) && _held != null && !label.startsWith('look')) {
         // Too soon after the last cut: hold that shot a moment longer.
         shot = _held!;
       } else {
@@ -122,6 +126,7 @@ class Director {
         cut = cut || _far(shot) || label.startsWith('look');
         _label = label;
         _since = t;
+        _sincePhase = phase;
       }
     }
     _held = shot;

@@ -548,7 +548,7 @@ class _Plan {
       toPost.add(Walk([spots[i], post], d + Verdict3D._disperse + 0.5 + 0.2 * i, 1.3));
       // And away during the cleanup, the way they came.
       final out = [post, vm.Vector3(gx + side, 0, -6.2), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(21 + lag, 0, pz)];
-      leave.add(Walk(out, d + CityPace.verdict + phaseSeconds[Phase.demolish]! + 1.5 + 0.3 * i, 1.4));
+      leave.add(Walk(out, d + CityPace.verdict + phaseSeconds[Phase.demolish]! + 1.5 + 0.8 * i, 1.4));
     }
     gate
       ..add((arrive[0].at(1), arrive[2].at(2)))

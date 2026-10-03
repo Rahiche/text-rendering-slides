@@ -282,8 +282,17 @@ class FinishPlan {
 
   /// Where they stand to reach it: following, a little behind.
   double bodyX(FinishUnit u, double tau, {required bool plasterer}) {
-    final s = _spanAt(u, u.top - v * tau);
-    return s[0] + 0.55 * s[1] * math.sin(2 * math.pi * tau / u.period + (plasterer ? 0 : math.pi) - 0.45);
+    // The middle of the band they're working, over the last second's work
+    // (a letter's edges jump from row to row; they don't), swaying a
+    // little with each stroke: the pole does the reaching, the feet no
+    // more than a shuffle can (under a metre a second).
+    var mid = 0.0;
+    for (var i = 0; i < 6; i++) {
+      mid += _spanAt(u, u.top - v * math.max(0.0, tau - 0.2 * i))[0];
+    }
+    final half = _spanAt(u, u.top - v * tau)[1];
+    final sway = math.min(0.55 * half, 0.15 * u.period);
+    return mid / 6 + sway * math.sin(2 * math.pi * tau / u.period + (plasterer ? 0 : math.pi) - 0.45);
   }
 
   /// The plaster (else the paint) front's height on [u] at [t].
@@ -837,9 +846,11 @@ class Finish3D {
     crew.aim(f, 0, _c);
     crew.aim(f, 1, _d);
     f.lean = 0.05 - 0.14 * c01((tool.y - 2.0) / 3.0);
-    // Stepping sideways as they go along.
-    Gait.sideways(f, (f.pos.x - p.bodyX(unit, 0, plasterer: plasterer)) * math.cos(f.yaw));
+    // Stepping sideways as they go along (along the wall they face: not a
+    // step for every turn towards the tool).
+    Gait.sideways(f, p.bodyX(unit, 0, plasterer: plasterer) - f.pos.x);
   }
+
 
   /// Turns [f] towards (x, z).
   static void _face(FigurePose f, double x, double z) => f.yaw = math.atan2(-(x - f.pos.x), -(z - f.pos.z));

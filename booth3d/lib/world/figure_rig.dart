@@ -822,9 +822,10 @@ class FigureMotion {
   double _t = double.nan, _x = 0, _z = 0, _shownYaw = 0, _bank = 0;
   bool _arms = false, _walking = false;
 
-  /// Whether the last frame was a jump: its rates are the ones from before
-  /// it, so this frame's steps (the new pose's own pace) aren't a jump.
-  bool _jumped = false;
+  /// Whether the last frame was a jump, of the body (the trunk and the
+  /// legs) and of the arms: its rates are the ones from before it, so this
+  /// frame's steps (the new pose's own pace) aren't a jump.
+  bool _jumpedBody = false, _jumpedArms = false;
 
   /// How far off where it was going a joint must be to count as a jump.
   static final _jump = Float64List.fromList([
@@ -867,27 +868,37 @@ class FigureMotion {
         _bank = 0;
         _arms = arms;
         _walking = p.stride.isFinite;
-        _jumped = false;
+        _jumpedBody = _jumpedArms = false;
       }
       return;
     }
     final n = arms ? _n : FigureRig.jArm;
     final e = math.exp(-dt / settle);
-    // A jump anywhere (or setting off, or stopping) is a new pose: every
-    // joint carries on from where it was. A jump is a step faster than
-    // anyone moves, or (the rates being the pose's own: not just after a
-    // jump) a sudden change of pace; a walk's legs swing fast, so only a
-    // bigger one there.
+    // A jump in the body (or setting off, or stopping) is a new pose for
+    // it: every joint of it carries on from where it was; the arms the
+    // same, on their own (a hand going somewhere new mustn't throw the
+    // legs). A jump is a step faster than anyone moves, or (the rates
+    // being the pose's own: not just after a jump) a sudden change of
+    // pace; a walk's legs swing fast, so only a bigger one there.
     final walking = p.stride.isFinite;
-    var jumped = dt > 0 && walking != _walking;
-    for (var i = 0; i < n && !jumped && dt > 0; i++) {
+    var body = dt > 0 && walking != _walking, arms2 = body;
+    for (var i = 0; i < n && dt > 0; i++) {
+      final arm = i >= FigureRig.jArm;
+      if (arm ? arms2 : body) continue;
       var step = j[i] - _last[i];
       if (i == FigureRig.jYaw) step = _wrap(step);
-      final legs = walking && i >= FigureRig.jLeg && i < FigureRig.jArm;
-      jumped = step.abs() > _jump[i] + _speed[i] * dt || (!_jumped && (step - _rate[i] * dt).abs() > _jump[i] * (legs ? 2.5 : 1));
+      final legs = walking && i >= FigureRig.jLeg && !arm;
+      final after = arm ? _jumpedArms : _jumpedBody;
+      if (step.abs() > _jump[i] + _speed[i] * dt || (!after && (step - _rate[i] * dt).abs() > _jump[i] * (legs ? 2.5 : 1))) {
+        if (arm) {
+          arms2 = true;
+        } else {
+          body = true;
+        }
+      }
     }
     for (var i = 0; i < n; i++) {
-      final x = j[i];
+      final x = j[i], jumped = i >= FigureRig.jArm ? arms2 : body;
       var step = x - _last[i];
       if (i == FigureRig.jYaw) step = _wrap(step);
       final miss = step - _rate[i] * dt;
@@ -928,7 +939,10 @@ class FigureMotion {
       _bank = bank;
       _arms = arms;
       _walking = walking;
-      if (dt > 0) _jumped = jumped;
+      if (dt > 0) {
+        _jumpedBody = body;
+        _jumpedArms = arms2;
+      }
     }
   }
 }

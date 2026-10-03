@@ -294,7 +294,8 @@ class GlyphWorks {
     for (final s in _steps) {
       if (s.maker == i) last = s;
     }
-    return (t: last?.homeAt ?? double.negativeInfinity, at: WorksLayout.homes[i]);
+    if (last == null) return (t: double.negativeInfinity, at: WorksLayout.homes[i]);
+    return (t: math.max(last.homeAt, last.toHome?.end ?? last.homeAt), at: WorksLayout.homes[i]);
   }
 
   /// Each step's share of a letter's way down the line.
@@ -489,7 +490,7 @@ class GlyphWorks {
     final busy = [
       for (final st in plan.steps)
         if (st != null && st.filmed) (st.a - 1.5, st.e + 1.0),
-      for (final (a, e) in busyCam) (a - 2.0, e + 2.0),
+      for (final (a, e) in busyCam) (a - 3.5, e + 3.5),
       if (journey != null)
         for (final (a, e, _) in journey.stretches) (a - 2.0, e + 2.0),
     ]..sort((x, y) => x.$1.compareTo(y.$1));
@@ -872,7 +873,7 @@ class GlyphWorks {
   /// to being back home), or null.
   _Steps? _makerJob(int i, double tt) {
     for (final s in _steps) {
-      if (s.maker == i && tt >= s.walkIn && tt < s.homeAt) return s;
+      if (s.maker == i && tt >= s.walkIn && tt < math.max(s.homeAt, s.toHome?.end ?? 0)) return s;
     }
     return null;
   }
@@ -1490,30 +1491,38 @@ class GlyphWorks {
   void _work(FigurePose p, _Steps s, double tt, double t) {
     final seed = 40 + s.maker * 7;
     _walksOf(s);
-    if (tt < s.at[0]) {
+    if (tt < math.max(s.at[0], s.toFeeder!.end)) {
       s.toFeeder!.pose(p, tt, seed);
-      if (tt >= s.walkIn + _walkIn - 0.05) p.yaw = 0;
+      if (tt >= s.toFeeder!.end - 0.05) p.yaw = 0;
       return;
     }
     final step = s.stepAt(tt);
-    if (step >= 7) {
+    if (step >= 7 && tt >= s.toHome!.start) {
       s.toHome!.pose(p, tt, seed);
       return;
     }
-    if (step == 6) {
+    if (step >= 6) {
       // The pixels to the board: round the belt's end, behind the board,
       // leaning over it to set them in.
-      final there = s.at[7] - 0.6;
+      // (There once the walk's over: in a hurry, a little late, never in
+      // a jump.)
+      final there = math.max(s.at[7] - 0.6, s.toBoard!.end);
       if (tt < there) {
-        s.toBoard!.pose(p, tt, seed);
-        if (tt < s.toBoard!.start) p.yaw = 0;
+        final back = s.stepBack;
+        if (back != null && tt < s.toBoard!.start) {
+          // (Facing the line again while they wait.)
+          back.pose(p, tt, seed);
+        } else {
+          s.toBoard!.pose(p, tt, seed);
+          if (tt < s.toBoard!.start) p.yaw = 0;
+        }
         _holdOut(p);
         return;
       }
       p.pos.setValues(s.slotX, 0, WorksLayout.placeZ);
       p.yaw = 0;
       OffDuty.stand(p, t, seed);
-      final k = math.sin(math.pi * seg(tt, there, s.at[7] + 0.3));
+      final k = math.sin(math.pi * seg(tt, there, math.max(there + 0.5, s.at[7] + 0.3)));
       p.lean = 0.45 * k;
       _holdOut(p);
       p.armPitch[0] = p.armPitch[1] = lerp(0.85, 1.25, k);
@@ -1598,19 +1607,53 @@ class GlyphWorks {
     if (s.toBoard != null && s.slotX == x) return;
     s.slotX = x;
     final home = WorksLayout.homes[s.maker], slot = vm.Vector3(x, 0, WorksLayout.placeZ);
+    // In from home (once back from their last letter: then a little
+    // brisker, to be there on time).
     final toFeeder = WorksLayout.route(home, vm.Vector3(WorksLayout.workX[0], 0, WorksLayout.workZ));
-    s.toFeeder = Walk(toFeeder, s.walkIn, Walk.lengthOf(toFeeder) / _walkIn);
-    final way = [
-      vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.workZ),
-      vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ),
-      vm.Vector3(WorksLayout.walkX, 0, WorksLayout.placeZ),
-      slot,
-    ];
-    final go = s.at[6] + 0.3, there = s.at[7] - 0.6;
-    s.toBoard = Walk(way, go, Walk.lengthOf(way) / math.max(0.4, there - go));
-    final back = WorksLayout.route(slot, home);
-    s.toHome = Walk(back, s.at[7] + 0.3, Walk.lengthOf(back) / math.max(0.5, s.homeAt - s.at[7] - 0.3));
+    var feedGo = s.walkIn;
+    if (s.k >= 3) {
+      final pm = _steps[s.k - 3];
+      _walksOf(pm);
+      feedGo = math.max(feedGo, pm.toHome!.end + 0.1);
+    }
+    s.toFeeder = Walk(toFeeder, feedGo, math.min(2.2, Walk.lengthOf(toFeeder) / math.max(0.5, s.at[0] - feedGo)));
+    // Round to the board once the walkway's clear: the last letter's maker
+    // goes home along it, and it's a corridor for one (they wait their
+    // turn at the rasterizer; no faster than a brisk walk after).
+    var go = s.at[6] + 0.3;
+    if (s.k > 0 && s.k - 1 < _steps.length) {
+      final q = _steps[s.k - 1];
+      if (q.maker != s.maker) {
+        _walksOf(q);
+        final h = q.toHome!;
+        go = math.max(go, h.at(h.pts.length - 2) + 0.4);
+      }
+    }
+    // (Waiting, a step back into the lane behind the belt: off the
+    // rasterizer, which the next letter's maker comes to.)
+    var way = _boardWay(slot);
+    s.stepBack = null;
+    if (go > s.at[6] + 0.35) {
+      final back = vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.laneZ);
+      final step = s.stepBack = Walk([way.first, back], s.at[6] + 0.3, 1.0);
+      go = math.max(go, step.end + 0.1);
+      way = [back, vm.Vector3(WorksLayout.walkX, 0, WorksLayout.laneZ), ...way.skip(2)];
+    }
+    final there = s.at[7] - 0.6;
+    s.toBoard = Walk(way, go, math.min(2.2, Walk.lengthOf(way) / math.max(0.4, there - go)));
+    // Home once they've set it on the board (later, if they were late).
+    final back = WorksLayout.route(slot, home), homeGo = math.max(s.at[7] + 0.3, s.toBoard!.end + 0.7);
+    s.toHome = Walk(back, homeGo, math.min(2.2, Walk.lengthOf(back) / math.max(0.5, s.homeAt - homeGo)));
   }
+
+  /// A maker's way from the rasterizer round the belt's end to the board's
+  /// [slot].
+  static List<vm.Vector3> _boardWay(vm.Vector3 slot) => [
+    vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.workZ),
+    vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ),
+    vm.Vector3(WorksLayout.walkX, 0, WorksLayout.placeZ),
+    slot,
+  ];
 
   /// How low a maker crouches to reach along the belt (a little: they lean
   /// over it, rather than duck under the bench).
@@ -2238,6 +2281,10 @@ class _Steps {
   /// Its maker's walks (see [GlyphWorks._walksOf]), and where on the board
   /// they were made for.
   Walk? toFeeder, toBoard, toHome;
+
+  /// Back out of the way (into the lane) while the walkway's busy, if it
+  /// is.
+  Walk? stepBack;
   double slotX = double.nan;
 
   /// The step it's at, at [t]: −1 before, 7 once on the board.

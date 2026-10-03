@@ -525,7 +525,7 @@ class ScriptAlley {
     final busy = [
       for (final st in plan.steps)
         if (st != null && st.filmed) (st.a - 2.0, st.e + 1.5),
-      for (final (a, e) in busyCam) (a - 2.0, e + 2.0),
+      for (final (a, e) in busyCam) (a - 3.5, e + 3.5),
     ];
     final want = plan.len > 90 ? 2 : 1, end = plan.t0 + plan.len - 2.0;
     var from = plan.t0 + 14.0;

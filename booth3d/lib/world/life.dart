@@ -1083,6 +1083,13 @@ class _People {
     }
     for (final (o, vx, vz) in _others) {
       obstacle(o.x, o.z, vx, vz, 0.3);
+      // Coming across (the site's people walk briskly, and not along the
+      // pavement): where they'll be when nearest, within a second.
+      final rx = o.x - p.x, rz = o.z - p.z, wx = vx - p.fx * p.v, wz = vz - p.fz * p.v, w2 = wx * wx + wz * wz;
+      if (w2 > 0.25) {
+        final tc = (-(rx * wx + rz * wz) / w2).clamp(0.0, 1.0);
+        if (tc > 0.05) obstacle(p.x + rx + wx * tc, p.z + rz + wz * tc, vx, vz, 0.3);
+      }
     }
     // Back into line once past (and only then).
     final target = want ?? (lineBlocked ? p.dodge : 0.0);

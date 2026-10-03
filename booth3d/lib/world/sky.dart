@@ -295,9 +295,11 @@ class _Look {
   final double lightPower, ambient, exposure, fog;
 
   static final _keys = <(double, _Look)>[
-    (6.6, _Look(hex3(0x3466B4), hex3(0xFFC98C), hex3(0x16243F), hex3(0xFFC66D, 14), hex3(0xFFC98C), 2.3, 1.15, 1.08, 0.0035)),
-    (8.0, _Look(hex3(0x2A6CCB), hex3(0x9AD3FF), hex3(0x152842), hex3(0xFFF4DC, 16), hex3(0xFFF0D8), 3.5, 1.0, 1.0, 0.003)),
-    (12.0, _Look(hex3(0x2063C9), hex3(0x90CEFF), hex3(0x152842), hex3(0xFFFBF0, 16), hex3(0xFFF8EE), 3.9, 1.0, 1.0, 0.003)),
+    (6.6, _Look(hex3(0x3466B4), hex3(0xFFC98C), hex3(0x2A3B5C), hex3(0xFFC66D, 14), hex3(0xFFC98C), 2.3, 1.35, 1.08, 0.0035)),
+    // (The morning's shade lifted a little: a lighter bounce off the
+    // ground, more of the sky's light, so nobody stands in a gloom.)
+    (8.0, _Look(hex3(0x2A6CCB), hex3(0x9AD3FF), hex3(0x2A3E62), hex3(0xFFF4DC, 16), hex3(0xFFF0D8), 3.5, 1.25, 1.0, 0.003)),
+    (12.0, _Look(hex3(0x2063C9), hex3(0x90CEFF), hex3(0x2A3E62), hex3(0xFFFBF0, 16), hex3(0xFFF8EE), 3.9, 1.2, 1.0, 0.003)),
     (15.6, _Look(hex3(0x2763C3), hex3(0x9FD1F9), hex3(0x152842), hex3(0xFFF0D8, 16), hex3(0xFFEFD6), 3.6, 1.0, 1.0, 0.003)),
     (17.0, _Look(hex3(0x3457A8), hex3(0xFFCF8A), hex3(0x1A2440), hex3(0xFFC66D, 16), hex3(0xFFC27A), 3.0, 1.05, 1.03, 0.0034)),
   ];

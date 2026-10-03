@@ -27,10 +27,11 @@ abstract final class BreakSpots {
   /// middle), clear of a parked delivery truck.
   static final vendRing = [vm.Vector3(15.25, 0, -4.5), vm.Vector3(15.95, 0, -3.85), vm.Vector3(16.25, 0, -4.75)];
 
-  /// The smoking corner (喫煙所), off to the left behind the wall, by the
-  /// plaza's edge (out of the camera's way into the Glyph Works): the
-  /// standing ashtray, and four places round it.
-  static final ashtray = vm.Vector3(-16.1, 0, 2.6);
+  /// The smoking corner (喫煙所), off to the left behind the wall, in from
+  /// the plaza's edge (clear of the pavement's passers-by, and out of the
+  /// camera's way into the Glyph Works): the standing ashtray, and four
+  /// places round it.
+  static final ashtray = vm.Vector3(-14.9, 0, 2.6);
   static final smokeRing = [
     for (final a in const [-2.2, -0.95, 2.15, 0.75]) vm.Vector3(ashtray.x + 0.66 * math.cos(a), 0, ashtray.z + 0.66 * math.sin(a)),
   ];

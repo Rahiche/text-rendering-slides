@@ -485,9 +485,22 @@ class Figures {
           uz = -cz / d;
         } else {
           final meeting = b.walking && fx * -math.sin(b.yaw) + fz * -math.cos(b.yaw) < -0.3;
-          final side = meeting || i < j ? 1.0 : -1.0;
-          ux = -fz * side;
-          uz = fx * side;
+          final vb2 = b.vx * b.vx + b.vz * b.vz;
+          if (!meeting && vb2 > 0.04 && v2 > 1e-4) {
+            // Crossing their way: behind them (across the way the two
+            // close, on the side they're coming from).
+            final rv = math.sqrt(v2);
+            ux = -vz / rv;
+            uz = vx / rv;
+            if (ux * b.vx + uz * b.vz > 0) {
+              ux = -ux;
+              uz = -uz;
+            }
+          } else {
+            final side = meeting || i < j ? 1.0 : -1.0;
+            ux = -fz * side;
+            uz = fx * side;
+          }
         }
         final need = (minD - d) * share * w;
         a

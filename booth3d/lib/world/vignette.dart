@@ -441,7 +441,9 @@ class Vignettes {
     final busy = [
       for (final st in plan.steps)
         if (st != null && st.filmed) (st.a - 2.0, st.e + 1.5),
-      for (final (a, e) in busyCam) (a - 2.0, e + 2.0),
+      // (Back on the build a few seconds between visits: a shot, not a
+      // glimpse.)
+      for (final (a, e) in busyCam) (a - 3.5, e + 3.5),
     ];
     final want = sample ? 3 : (plan.len > 80 ? 2 : 1), end = plan.t0 + plan.len - 2.0;
     var from = plan.t0 + (sample ? 12.0 : 22.0);

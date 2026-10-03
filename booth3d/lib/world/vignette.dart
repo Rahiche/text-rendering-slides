@@ -374,6 +374,11 @@ class Vignettes {
   /// The texts they shape, for the web's font warm-up.
   List<(String, TextStyle)> get fontRuns => [for (final v in all) ...v.fontRuns];
 
+  /// Each scene's clock, unvisited: its own turn of its loop; after a
+  /// visit, carrying on from where the visit left it (nobody jumps as the
+  /// camera leaves).
+  late final _phase = [for (var i = 0; i < all.length; i++) 7.3 * i];
+
   _Visit? _visitAt(double t) {
     for (final v in _visits) {
       if (t >= v.a && t < v.e) return v;
@@ -393,6 +398,7 @@ class Vignettes {
     }
     for (final (i, v) in all.indexed) {
       final visited = on != null && on.$1 == i;
+      if (visited) _phase[i] = -on.$2;
       // Its details only near the camera (each node is drawn in every
       // pass: a whole scene of them seen from across the city costs more
       // than it shows); posed a little further out.
@@ -405,7 +411,7 @@ class Vignettes {
         ..visited = visited
         ..detail.visible = visited || d2 < 40 * 40;
       if (!visited && d2 > 75 * 75) continue;
-      final u = visited ? t - on.$2 : (t + 7.3 * i) % v.loop;
+      final u = visited ? t - on.$2 : (t + _phase[i]) % v.loop;
       v.pose(u, t, night);
     }
   }

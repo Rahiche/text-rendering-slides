@@ -211,8 +211,9 @@ class BuildSchedule {
     const step = 0.8;
     final x = math.max(0.0, level - 0.45) / step;
     final k = x.floorToDouble();
-    // Rises during the last 20% of each interval, smoothly.
-    return (k + eio(seg(x - k, 0.8, 1.0))) * step;
+    // Rises during the last half of each interval, smoothly (as the wall
+    // gets there: a lift, not a jolt).
+    return (k + eio(seg(x - k, 0.5, 1.0))) * step;
   }
 }
 
@@ -904,7 +905,14 @@ class BuildPlan {
   double _levelOf(int k, double t) {
     final l = letters.letters[k], cum = _rowCum[k];
     final a = letterStart[k], e = letterStart[k + 1];
-    final c = _countTo(t, a, e) - a;
+    // (The brick on its way counts as it goes: the level, and the deck with
+    // it, rise smoothly, not a brick at a time.)
+    final n = _countTo(t, a, e);
+    var c = (n - a).toDouble();
+    if (n < e) {
+      final from = n > a ? layT[n - 1] : layT[n] - 1.0;
+      c += c01((t - from) / math.max(1e-3, layT[n] - from));
+    }
     if (c <= 0) return l.row0 * b;
     if (c >= e - a) return (l.row1 + 1) * b;
     var j = 0;

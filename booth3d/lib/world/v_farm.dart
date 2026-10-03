@@ -15,11 +15,13 @@ import 'vignette.dart';
 
 /// 画素畑 · Rasterization, a field beyond the park (north of the tram):
 /// its plots are pixels, and the outline of an "a" is marked out across
-/// them. A tractor works the rows one by one, like a scanline, and leaves
-/// each plot planted as much as the outline covers it — a full crop where
-/// it's all inside, a thinner, lower one on the edges (the greys that
-/// smooth a glyph's edge), bare earth outside. From the air: an "a",
-/// anti-aliased. Then the harvest, and again.
+/// them. An irrigation boom as wide as the field rolls down it row by row,
+/// like a scanline (the water reaching its nozzles left to right), and
+/// each plot it waters comes up as much as the outline covers it — a full
+/// crop where it's all inside, a thinner, lower one on the edges (the
+/// greys that smooth a glyph's edge), bare earth outside. From the air: an
+/// "a", anti-aliased. Then the boom rolls back, clearing the field for the
+/// next one; the farmer walks beside it.
 class PixelFarm extends Vignette {
   PixelFarm(super.kit);
 
@@ -33,7 +35,7 @@ class PixelFarm extends Vignette {
   String get note => 'each pixel as dark as the outline covers it: anti-aliasing';
 
   @override
-  double get loop => 17;
+  double get loop => 20;
   @override
   double get visit => 13.4;
 
@@ -53,13 +55,35 @@ class PixelFarm extends Vignette {
       for (var c = 0; c < _cols; c++) frame.transform3(vm.Vector3(_x(c), 0, _z(r))),
   ];
 
-  /// The rows' turns (the tractor's scanline), the hold, the harvest.
-  static const _scan0 = 0.8, _perRow = 0.55, _harvest = 15.0;
-  static const _scanEnd = _scan0 + _rows * _perRow;
+  /// The boom's sweep down the rows (the scanline), the hold, the way back
+  /// (clearing them).
+  static const _scan0 = 0.8, _scanEnd = 10.8, _back0 = 13.2, _back1 = 19.6;
+
+  /// Where the boom waits (its line across the rows): before the first
+  /// row, and past the last.
+  static const _zStart = _rows * _cell / 2 + 0.55, _zEnd = -_zStart;
+
+  /// Its end towers (x), the farmer's way beside the right one.
+  static const _towerX = _cols * _cell / 2 + 0.55, _walkX = _towerX + 0.6;
 
   /// The fence (half its width and depth): round the plots with room for
-  /// the tractor to go past a row's end and turn.
+  /// the boom's towers and the farmer.
   static const _fenceX = _cols * _cell / 2 + 1.45, _fenceZ = _rows * _cell / 2 + 1.05;
+
+  /// 0..1 over [a]–[b] at a steady pace, easing in and out over half a
+  /// second at each end (as a machine starts and stops).
+  static double _ramp(double u, double a, double b) {
+    const e = 0.5;
+    final t = u - a, len = b - a, v = 1 / (len - e);
+    if (t <= 0) return 0;
+    if (t >= len) return 1;
+    if (t < e) return 0.5 * v / e * t * t;
+    if (t > len - e) return 1 - 0.5 * v / e * (len - t) * (len - t);
+    return 0.5 * v * e + v * (t - e);
+  }
+
+  /// The boom's line at [u].
+  static double _boomZ(double u) => u < _back0 ? lerp(_zStart, _zEnd, _ramp(u, _scan0, _scanEnd)) : lerp(_zEnd, _zStart, _ramp(u, _back0, _back1));
 
   late final InstancedMesh _crops;
   int _farmer = -1;
@@ -76,12 +100,12 @@ class PixelFarm extends Vignette {
 
   @override
   Future<void> init() async {
-    makePool(boxes: 16, glows: 8, cyls: 6);
+    makePool(boxes: 64, glows: 8, cyls: 10);
     await _rasterize();
     final b = Batch();
     final m = pbr(rgb(1, 1, 1), roughness: 0.95);
     // The field's earth, its plots' furrows, a fence round it (room inside
-    // it for the tractor to turn at the rows' ends).
+    // it for the boom's towers, and the farmer).
     final w = _fenceX, d = _fenceZ;
     box(b, m, 2 * w - 0.2, 0.06, 2 * d - 0.2, 0, 0.03, 0, Vignette.c(0xC9AE84));
     for (var c = 0; c <= _cols; c++) {
@@ -164,18 +188,17 @@ class PixelFarm extends Vignette {
   void pose(double u, double t, double night) {
     if (!_ready) return;
     pool.begin();
-    final harvest = smooth(_harvest, _harvest + 1.2, u);
-    // The scanline: which row the tractor's on, and how far along it
-    // (back and forth).
-    final row = ((u - _scan0) / _perRow).floor().clamp(-1, _rows), along = ((u - _scan0) / _perRow) - row;
+    // The boom's line; whether it's watering (on its way down) or clearing
+    // (on its way back).
+    final bz = _boomZ(u), back = u >= _back0;
     for (var r = 0; r < _rows; r++) {
       for (var c = 0; c < _cols; c++) {
         final i = r * _cols + c, cover = _cover[i];
-        // Planted once the tractor's past it on its row.
-        final forward = r.isEven, at = forward ? c / _cols : 1 - (c + 1) / _cols;
-        final done = r < row || (r == row && along > at);
-        final grow = done ? smooth(0, 0.35, r < row ? 1 : (along - at) * 3) : 0.0;
-        final g = cover * grow * (1 - harvest);
+        // Up once the boom's water reaches it (the far nozzles a moment
+        // after the near ones); gone once it's rolled back over it.
+        final z = _z(r), lag = c / _cols * 0.35;
+        final grow = back ? 1 - smooth(0, 0.5, bz - (z - _cell / 2)) : smooth(0, 0.6, z + _cell / 2 - bz - lag);
+        final g = cover * grow;
         if (g < 0.02) {
           _crops.setInstanceTransform(i, hidden);
           continue;
@@ -188,66 +211,66 @@ class PixelFarm extends Vignette {
         _crops.setInstanceColor(i, vm.Vector4(0.22 * dark + 0.05, 0.42 * dark + 0.08, 0.16 * dark + 0.04, 1));
       }
     }
-    // The tractor on its row, and the scanline's light along it; waiting at
-    // the first row's start before; after the last (which ends at the
-    // field's left), round and back up its side to the start (never a
-    // jump).
-    final r = row.clamp(0, _rows - 1), forward = r.isEven;
-    final x0 = _x(0) - 0.6, x1 = _x(_cols - 1) + 0.6;
-    final x = lerp(x0, x1, forward ? along : 1 - along);
-    final z = _z(r);
-    final scanning = u > _scan0 && u < _scanEnd;
-    double tx, tz, yaw;
-    if (scanning) {
-      tx = x;
-      tz = z;
-      yaw = forward ? -math.pi / 2 : math.pi / 2;
-    } else if (u <= _scan0) {
-      tx = x0;
-      tz = _z(0);
-      yaw = -math.pi / 2;
-    } else {
-      final f = seg(u, _scanEnd, _scanEnd + 2.6);
-      tx = x0;
-      tz = lerp(_z(_rows - 1), _z(0), smooth(0.15, 0.85, f));
-      yaw = f < 0.85 ? lerp(math.pi / 2, math.pi, smooth(0, 0.15, f)) : lerp(math.pi, 1.5 * math.pi, smooth(0.85, 1, f));
-    }
-    _tractor(tx, tz, yaw);
-    if (scanning) pglow(0, 0.1, z, _cols * _cell, 0.02, _cell * 0.9, vm.Vector4(1.6, 1.4, 0.5, 1));
-    // The farmer at the wheel.
+    final sweeping = u > _scan0 && u < _scanEnd;
+    _boom(bz, watering: sweeping);
+    // The scanline: a light along the row it's over.
+    if (sweeping) pglow(0, 0.08, bz, _cols * _cell, 0.02, 0.14, vm.Vector4(1.6, 1.4, 0.5, 1));
+    // The farmer, walking beside it (a step behind its right tower);
+    // waiting, he watches the field.
     final p = _p..rest();
-    p.pos.setValues(tx - math.sin(yaw) * -0.2, 0.55, tz - math.cos(yaw) * -0.2);
-    p.legPitch[0] = p.legPitch[1] = 1.45;
-    p.yaw = yaw;
+    final pace = u < _back0 ? (_zStart - _zEnd) / (_scanEnd - _scan0 - 0.5) : (_zStart - _zEnd) / (_back1 - _back0 - 0.5);
+    final dz = _boomZ(u + 0.02) - _boomZ(u - 0.02), speed = dz.abs() / 0.04, walking = speed / pace;
+    p.pos.setValues(_walkX, 0, (bz + 0.45).clamp(-_fenceZ + 0.35, _fenceZ - 0.35));
     final m = Manner.of(190);
-    Idle.breathe(p, t, m);
-    Idle.glance(p, t, m, look: 0.4);
-    p.armPitch[0] = p.armPitch[1] = 1.0;
-    p.armRoll[0] = p.armRoll[1] = -0.15;
+    if (walking > 0.05) {
+      final dist = back ? bz - _zEnd : _zStart - bz;
+      Gait.walk(p, Gait.phaseAt(dist, math.max(speed, 0.3), 1, m), math.max(speed, 0.3), m, amount: c01(walking * 1.5));
+      p.yaw = lerp(math.pi / 2, back ? math.pi : 0, c01(walking * 1.5));
+    } else {
+      Idle.stand(p, t, m);
+      p.yaw = math.pi / 2 + Idle.facing(t, m, 0.25);
+    }
     draw(_farmer, p);
     pool.end();
   }
 
-  /// A little tractor at (x, z) facing [yaw].
-  void _tractor(double x, double z, double yaw) {
-    final red = Vignette.c(0xC8442F), dark = Vignette.c(0x2B2E33);
-    final fx = -math.sin(yaw), fz = -math.cos(yaw);
-    pbox(x + fx * 0.3, 0.55, z + fz * 0.3, 0.7, 0.45, 1.1, red, yaw: yaw);
-    pbox(x + fx * 0.75, 0.75, z + fz * 0.75, 0.5, 0.35, 0.4, red, yaw: yaw);
-    for (final s in [-1.0, 1.0]) {
-      final sx = fz * s * 0.42, sz = -fx * s * 0.42;
-      // (It only ever drives along the rows: the axles across them.)
-      pcyl(x - fx * 0.15 + sx, 0.38, z - fz * 0.15 + sz, 0.38, 0.18, dark, pitch: math.pi / 2);
-      pcyl(x + fx * 0.75 + sx * 0.8, 0.22, z + fz * 0.75 + sz * 0.8, 0.22, 0.14, dark, pitch: math.pi / 2);
+  /// The irrigation boom across the field at [z]: a truss on two wheeled
+  /// towers, a drop pipe and nozzle every metre (spraying, when it's
+  /// [watering]).
+  void _boom(double z, {required bool watering}) {
+    final steel = Vignette.c(0xC9CDD2), dark = Vignette.c(0x2B2E33), pipe = Vignette.c(0x6F7780), motor = Vignette.c(0xC8442F);
+    const span = 2 * _towerX;
+    pbox(0, 1.55, z, span, 0.07, 0.07, steel);
+    pbox(0, 1.17, z, span, 0.06, 0.06, steel);
+    for (var k = 0; k <= 10; k++) {
+      pbox(lerp(-_towerX, _towerX, k / 10), 1.36, z, 0.04, 0.38, 0.04, steel);
     }
+    for (var k = 0; k < 12; k++) {
+      final x = _x(2 * k) + _cell / 2;
+      pbox(x, 0.82, z, 0.03, 0.68, 0.03, pipe);
+      pbox(x, 0.46, z, 0.08, 0.06, 0.08, dark);
+      // The spray: a fine curtain down to the plants.
+      if (watering) pbox(x, 0.26, z, 0.34, 0.36, 0.02, vm.Vector4(0.62, 0.78, 0.92, 1));
+    }
+    for (final x in [-_towerX, _towerX]) {
+      pbox(x, 0.9, z, 0.12, 1.3, 0.12, steel);
+      pbox(x, 0.34, z, 0.32, 0.18, 0.66, dark);
+      for (final dz in [-0.25, 0.25]) {
+        for (final dx in [-0.2, 0.2]) {
+          pcyl(x + dx, 0.2, z + dz, 0.2, 0.08, dark, roll: math.pi / 2);
+        }
+      }
+    }
+    // The drive and its controls, on the right tower.
+    pbox(_towerX + 0.05, 0.72, z - 0.18, 0.26, 0.3, 0.2, motor);
   }
 
   // ── The camera ────────────────────────────────────────────────────────────
 
   @override
   Shot shot(double u) {
-    // Low at the field's corner with the tractor, then up into the air as
-    // it works: the glyph shows from above.
+    // Low at the field's corner as the boom sets off, then up into the air
+    // as it works: the glyph shows from above.
     final k = smooth(1.0, _scanEnd, u);
     final eye = vm.Vector3(lerp(-5.5, -0.6, k), lerp(2.2, 15.5, k), lerp(-8.5, -9.5, k));
     final tg = vm.Vector3(lerp(-2.0, 0, k), 0.2, lerp(-1.0, 0.4, k));

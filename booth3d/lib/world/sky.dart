@@ -7,22 +7,24 @@ import '../tuning.dart';
 import 'kit.dart';
 
 /// The sky over the city, always by day, in the talk's blueprint palette: a
-/// cobalt sky, white clouds drifting over. The sun goes from mid-morning to
-/// mid-afternoon and back every 8 minutes (never as far as the sunset: the
-/// city's always lit by day, easy to see). A stylised gradient sky drives
-/// the background (with the sun's disk) and, without the disk, the
-/// image-based light; the sun is the shadow-casting key light.
+/// cobalt sky, white clouds drifting over. It's always morning: the sun
+/// swings gently between early and mid-morning every 8 minutes, low in the
+/// east-south-east, so it lights everything from the side (the letters,
+/// the bricks and the people modelled, their shadows long across the
+/// plaza) rather than flat from behind the camera as at noon. A stylised
+/// gradient sky drives the background (with the sun's disk) and, without
+/// the disk, the image-based light; the sun is the shadow-casting key
+/// light.
 class Sky3D {
   Sky3D(this.scene);
 
   final Scene scene;
 
-  /// Seconds for the sun to go from the morning to the afternoon and back.
+  /// Seconds for the sun to go from early to mid-morning and back.
   static const period = 480.0;
 
-  /// The hours it goes between: the morning (at scene time 0) and the
-  /// afternoon.
-  static const startHour = 8.5, endHour = 14.5;
+  /// The hours it goes between (at scene time 0, the earlier).
+  static const startHour = 7.9, endHour = 9.7;
 
   /// 0 = day … 1 = night (windows, lamps, neon): always 0 now, the sun
   /// never going down; what lights up after dark stays off.
@@ -52,8 +54,9 @@ class Sky3D {
   final _iblKeys = <EnvironmentMap>[];
   int _iblKey = -1, _frames = 0;
 
-  /// Hours the lighting is baked for: hourly through the day.
-  static const _iblHours = <double>[8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+  /// Hours the lighting is baked for: every half hour or so through the
+  /// morning.
+  static const _iblHours = <double>[7.85, 8.3, 8.75, 9.2, 9.65];
 
   void init() {
     _sky = GradientSkySource();

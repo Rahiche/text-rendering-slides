@@ -78,6 +78,10 @@ vm.Vector4 rgbHex(int c) => v4(hex3(c));
 /// One person's instances.
 class _Body {
   _Body(this.look, this.n);
+
+  /// (Capture runs: feet off the ground, last frame; the last frames.)
+  bool aloft = false;
+  List<String>? ring;
   final FigureLook look;
 
   /// Its number (its head; its arms and legs are 2n, 2n + 1).
@@ -278,6 +282,27 @@ class Figures {
       ..seen = now;
     p.motion = b.motion;
     r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
+    if (_counting) {
+      // (Capture runs: anyone whose feet leave the ground, not sitting; the
+      // frames before it, for the first few.)
+      final foot = math.min(r.feet[0].storage[13], r.feet[1].storage[13]) - p.pos.y;
+      final aloft = foot > 0.5 && math.min(p.legPitch[0], p.legPitch[1]) < 0.9;
+      final o = b.motion.now;
+      (b.ring ??= []).add('      t=${now.toStringAsFixed(3)} posed hip ${(r.joints[FigureRig.jHipY] - o[FigureRig.jHipY]).toStringAsFixed(2)} shown ${r.joints[FigureRig.jHipY].toStringAsFixed(2)} feet ${foot.toStringAsFixed(2)} thigh ${(r.joints[FigureRig.jLeg] - o[FigureRig.jLeg]).toStringAsFixed(2)}${o[FigureRig.jLeg] >= 0 ? '+' : ''}${o[FigureRig.jLeg].toStringAsFixed(2)} knee ${(r.joints[FigureRig.jLeg + 1] - o[FigureRig.jLeg + 1]).toStringAsFixed(2)}${o[FigureRig.jLeg + 1] >= 0 ? '+' : ''}${o[FigureRig.jLeg + 1].toStringAsFixed(2)} bob ${p.bob.toStringAsFixed(2)} lean ${p.lean.toStringAsFixed(2)} stoop ${p.stoop.toStringAsFixed(2)} stride ${p.stride.toStringAsFixed(1)} y ${p.pos.y.toStringAsFixed(2)}');
+      if (b.ring!.length > 7) b.ring!.removeAt(0);
+      if (aloft) _aloftFrames++;
+      if (aloft && !b.aloft) _aloftEvents++;
+      if (aloft && !b.aloft && _events < 4) {
+        _events++;
+        _aloft.addAll(b.ring!);
+      }
+      if (aloft && !b.aloft && _aloft.length < 200) {
+        _aloft.add('#$n at t=${now.toStringAsFixed(2)}: feet ${foot.toStringAsFixed(2)} m up, hips ${r.joints[FigureRig.jHipY].toStringAsFixed(2)} (offset ${b.motion.now[FigureRig.jHipY].toStringAsFixed(2)}), bob ${p.bob.toStringAsFixed(2)} stride ${p.stride.toStringAsFixed(2)} legs ${p.legPitch[0].toStringAsFixed(2)}/${p.legPitch[1].toStringAsFixed(2)} at ${p.pos.x.toStringAsFixed(1)},${p.pos.y.toStringAsFixed(2)},${p.pos.z.toStringAsFixed(1)}${look.hardHat != null ? ' (hard hat)' : ''}');
+      } else if (!aloft && b.aloft && _aloft.length < 200) {
+        _aloft.add('  #$n down at t=${now.toStringAsFixed(2)}');
+      }
+      b.aloft = aloft;
+    }
     _put(b.torso!, b.torsoAt, r.chest, g, size, g);
     // Children's heads are big for their size.
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
@@ -347,6 +372,7 @@ class Figures {
       'FIGURES overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm at t=${_deepestAt.toStringAsFixed(1)} ($_deepestWho)\n'
       '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}\n'
       'FIGURES jumps: ${_jumps.length}${[for (final j in _jumps) '\n  $j'].join()}\n'
+      'FIGURES aloft: $_aloftEvents times, $_aloftFrames frames${[for (final j in _aloft.take(80)) '\n  $j'].join()}\n'
       'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}';
 
   /// Solid things people keep out of (and capture runs check they did), by
@@ -399,7 +425,8 @@ class Figures {
   ].join('; ');
 
   /// People who jumped somewhere between two frames (capture runs).
-  final _jumps = <String>[];
+  final _jumps = <String>[], _aloft = <String>[];
+  var _events = 0, _aloftEvents = 0, _aloftFrames = 0;
 
   /// People found inside [solids], by kind: frames, the worst (depth,
   /// when, who).

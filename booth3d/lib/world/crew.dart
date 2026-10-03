@@ -556,11 +556,15 @@ class Crew3D {
   void aimBy(FigurePose p, int s, vm.Vector3 target, double k, {double maxStoop = 0.7, double maxLean = 0.75}) {
     if (k <= 0) return;
     final pitch = p.armPitch[s], roll = p.armRoll[s], bend = p.elbow[s].isNaN ? 0.58 : p.elbow[s];
+    final stoop = p.stoop, lean = p.lean;
     _aim(p, s, target, maxStoop: maxStoop, maxLean: maxLean);
     if (k >= 1) return;
     p.armPitch[s] = lerp(pitch, p.armPitch[s], k);
     p.armRoll[s] = lerp(roll, p.armRoll[s], k);
     p.elbow[s] = lerp(bend, p.elbow[s], k);
+    // (Bending to it as far as reaching for it.)
+    p.stoop = lerp(stoop, p.stoop, k);
+    p.lean = lerp(lean, p.lean, k);
   }
 
   /// Points arm [s] of [p] towards [target] ([k] of it): the hand out
@@ -598,85 +602,101 @@ class Crew3D {
 
   final _hand = vm.Vector3.zero();
 
-  /// Laying: steps along to the next brick, bends to the pile for it, lifts
-  /// it (hands on its top, then its sides) and swings it up in front of
-  /// them, and tosses it onto the wall, the arms following it out and
-  /// dropping back.
+  /// Laying, in one rhythm: bending to the pile for the next brick while
+  /// the last one's still flying, lifting it (hands on its top, then its
+  /// sides) and coming up with it, tossing it onto the wall (the arms
+  /// following it out and dropping back) as they step along to the next
+  /// one's column. Every part of it eases into the next: no pops.
   void _lay(FigurePose p, int z, BuildPlan plan, double t, double floor, int seed) {
     final list = plan.zoneBricks[z];
     final x0 = p.pos.x;
-    // The next brick this builder handles (binary search by lay time).
+    const fly = BuildPlan.flight, lift = BuildPlan.flight * BuildPlan.release;
+    // The next brick to pick up (binary search by pick-up time); the one
+    // before it is in their hands, or flying, or laid.
     var lo = 0, hi = list.length;
     while (lo < hi) {
       final mid = (lo + hi) >> 1;
-      if (plan.layAt(list[mid]) < t - 0.15) {
+      if (plan.layAt(list[mid]) - fly <= t) {
         lo = mid + 1;
       } else {
         hi = mid;
       }
     }
-    if (lo >= list.length || plan.layAt(list[lo]) > t + 1.5) {
+    final next = lo < list.length ? list[lo] : null, prev = lo > 0 ? list[lo - 1] : null;
+    final pickNext = next == null ? double.infinity : plan.layAt(next) - fly;
+    final layPrev = prev == null ? -double.infinity : plan.layAt(prev), pickPrev = layPrev - fly;
+    if (pickNext - t > 1.0 && t - layPrev > 0.15) {
       // Nothing coming yet, or done: hands on hips, watching the wall.
       _idle(p, t, seed);
       _akimbo(p);
       return;
     }
-    // A step towards each brick's column, from where they stand.
+    // Along to each brick's column (a step towards it, from where they
+    // stand), while the last one's tossed.
     double cell(int i) => plan.cellX[i] + plan.offsetAt(plan.letter[i], plan.layAt(i));
-    double spot(int q) => x0 + (cell(list[q.clamp(0, list.length - 1)]) - x0).clamp(-0.6, 0.6) * 0.45;
-    final i = list[lo];
-    final lay = plan.layAt(i);
-    final prevLay = lo > 0 ? plan.layAt(list[lo - 1]) : lay - 1.0;
-    final f = seg(t, prevLay + 0.05, math.max(prevLay + 0.1, lay - BuildPlan.flight - 0.05));
-    final from = spot(lo - 1), to = spot(lo);
-    p.pos.x = lerp(from, to, eio(f));
-    _sideStep(p, from, to, f);
+    double spot(int i) => x0 + (cell(i) - x0).clamp(-0.6, 0.6) * 0.45;
+    var aim = cell(next ?? prev!);
+    if (next != null && prev != null) {
+      final from = spot(prev), to = spot(next);
+      final f = seg(t, math.max(pickPrev + lift, pickNext - 0.6), pickNext - 0.03);
+      p.pos.x = lerp(from, to, eio(f));
+      _sideStep(p, from, to, f);
+      aim = lerp(cell(prev), cell(next), eio(f));
+    } else {
+      p.pos.x = spot(next ?? prev!);
+    }
     // Turned a little towards it, the shoulders more than the hips.
-    final turn = (-(cell(i) - p.pos.x) * 0.25).clamp(-0.45, 0.45);
+    final turn = (-(aim - p.pos.x) * 0.25).clamp(-0.45, 0.45);
     p.yaw = 0.35 * turn;
     p.twist = 0.65 * turn;
     final m = Manner.of(seed);
     Idle.breathe(p, t, m);
-    final wait = lay - BuildPlan.flight - t; // > 0: not yet picked up
-    final hb = plan.b / 2;
-    if (wait > 0) {
-      // Bending to the pile for it: the hands to its top.
-      final bend = 1 - c01(wait / 0.35);
-      p.lean = 0.15 + 0.5 * eio(bend);
-      p.bob = -0.06 * eio(bend);
+    // How far down: bending to the pile for the next, coming up with the
+    // last; only as far as the brick is low (a full pile's top is at their
+    // chest), and with the knees more than the back.
+    final down = eio(seg(t, pickNext - 0.3, pickNext)), up = 1 - eio(c01((t - pickPrev) / lift));
+    double depth(int i) {
       plan.pileSlot(plan.pileOf[i], plan.pile[i], floor - 0.05 - SiteLayout.deckRest, _tgt);
-      for (var s = 0; s < 2; s++) {
-        _hand.setValues(_tgt.x + (s == 0 ? -0.55 : 0.55) * hb, _tgt.y + hb + 0.03, _tgt.z + 0.35 * hb);
-        aimBy(p, s, _hand, smooth(0, 0.6, bend));
-      }
-      return;
+      return smooth(1.0, 0.3, _tgt.y - floor);
     }
-    final fl = c01((t - (lay - BuildPlan.flight)) / BuildPlan.flight), held = fl / BuildPlan.release;
-    final pose = plan.brickAt(i, t, _pose);
-    // Up from the bend as it comes up.
-    final up = eio(c01(held));
-    p.lean = lerp(0.65, 0.22, up);
-    p.bob = -0.06 * (1 - up);
+    final low = math.max(next == null ? 0.0 : down * depth(next), prev == null ? 0.0 : up * depth(prev));
+    p.lean = lerp(0.2, 0.42, low);
+    p.bob = -0.36 * low;
+    // The arms, at ease (as they drop back after a toss).
+    for (var s = 0; s < 2; s++) {
+      p.armPitch[s] = 0.1;
+      p.armRoll[s] = 0.12;
+      p.elbow[s] = 0.5;
+    }
+    final hb = plan.b / 2;
+    final held = prev == null ? 1.0 : (t - pickPrev) / lift;
     if (held < 1) {
       // Holding it: on its top, then (clear of the pile) its sides.
+      final pose = plan.brickAt(prev!, t, _pose);
       final g = smooth(0, 0.4, held);
       for (var s = 0; s < 2; s++) {
         final side = s == 0 ? -1.0 : 1.0;
-        _hand.setValues(pose.pos.x + side * lerp(0.55 * hb, hb + 0.03, g), pose.pos.y + (hb + 0.03) * (1 - g), pose.pos.z + 0.35 * hb * (1 - g));
-        _aim(p, s, _hand);
+        _hand.setValues(pose.pos.x + side * lerp(0.55 * hb, hb + 0.03, g), pose.pos.y + (hb + 0.03) * (1 - g), pose.pos.z + 0.5 * hb * (1 - g));
+        _aim(p, s, _hand, maxStoop: 0.2, maxLean: 0.55);
       }
       return;
     }
-    // Let go: the hands follow it out a little, then drop back.
-    final k = seg(fl, BuildPlan.release, 1);
-    plan.releaseOf(i, _tgt);
-    for (var s = 0; s < 2; s++) {
-      _hand.setValues(_tgt.x + (s == 0 ? -1 : 1) * (hb + 0.03), _tgt.y + 0.06 * math.sin(math.pi * c01(k * 2)), _tgt.z - 0.08 * c01(k * 2));
-      _aim(p, s, _hand);
-      final drop = smooth(0.3, 1, k);
-      p.armPitch[s] = lerp(p.armPitch[s], 0.1, drop);
-      p.armRoll[s] = lerp(p.armRoll[s], 0.12, drop);
-      p.elbow[s] = lerp(p.elbow[s], 0.5, drop);
+    if (prev != null && t < layPrev + 0.15) {
+      // Let go: the hands follow it out a little, then drop back.
+      final k = seg(t, pickPrev + lift, layPrev);
+      plan.releaseOf(prev, _tgt);
+      for (var s = 0; s < 2; s++) {
+        _hand.setValues(_tgt.x + (s == 0 ? -1 : 1) * (hb + 0.03), _tgt.y + 0.06 * math.sin(math.pi * c01(k * 2)), _tgt.z - 0.08 * c01(k * 2));
+        aimBy(p, s, _hand, 1 - smooth(0.3, 1, k), maxStoop: 0.2, maxLean: 0.55);
+      }
+    }
+    if (next != null && down > 0) {
+      // Down to the pile for the next: the hands to its top.
+      plan.pileSlot(plan.pileOf[next], plan.pile[next], floor - 0.05 - SiteLayout.deckRest, _tgt);
+      for (var s = 0; s < 2; s++) {
+        _hand.setValues(_tgt.x + (s == 0 ? -0.55 : 0.55) * hb, _tgt.y + hb + 0.03, _tgt.z + 0.5 * hb);
+        aimBy(p, s, _hand, smooth(0, 0.6, down), maxStoop: 0.2, maxLean: 0.55);
+      }
     }
   }
 
@@ -794,6 +814,13 @@ class Crew3D {
       px = _fX[q];
       pz = _fZ[q];
     }
+  }
+
+  /// When the foreman's back at his corner after his rounds of [plan]'s
+  /// build (the last letter down, and the walk back), wall [w] wide.
+  double roundsDone(BuildPlan plan, double w) {
+    if (!identical(plan, _rounds)) _planRounds(plan, w);
+    return _fT.isEmpty ? double.negativeInfinity : _fT.last + _fWalk.last;
   }
 
   /// The foreman on his rounds during a build. Returns whether he's busy
@@ -922,6 +949,8 @@ class Crew3D {
           aimBy(p, 1, _front(p, 0.22, 1.12, 0.3 + 0.07 * math.sin(t * 7), _hand), k);
         }
       case Phase.reveal || Phase.celebrate:
+        // (Still on his way back to the corner from the last letter.)
+        if (plan != null && identical(plan, _rounds) && _fT.isNotEmpty && t < _fT.last + _fWalk.last && _rounding(p, plan, t, w)) break;
         // Pleased: the clipboard tapped with the other hand.
         p.bob = -0.02 * (0.5 + 0.5 * math.sin(t * 3.1 * 2 * math.pi));
         final c = 0.5 + 0.5 * math.cos(t * 2.2 * 2 * math.pi);

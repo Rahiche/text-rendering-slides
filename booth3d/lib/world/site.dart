@@ -489,6 +489,7 @@ class Site3D {
       watch: [for (var z = 0; z < Crew3D.builders; z++) crew.watchSpot(z, wallWidth)],
       corner: vm.Vector3(wallWidth / 2 + 0.75, 0, -1.55),
       paint: [for (final l in plan.letters.letters) paintOf(_hues[l.glyph % _hues.length])],
+      foremanBack: crew.roundsDone(plan, wallWidth) - (plan.t0 + plan.len),
     );
     finish.face = -b * 0.85;
     _smooth = List.filled(plan.letterCount, false);

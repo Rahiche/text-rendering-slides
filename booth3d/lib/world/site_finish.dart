@@ -80,7 +80,7 @@ class _Leg {
 /// furthest to walk). A name of one or two letters is cut into strips, so
 /// every pair has work. A pure function of the build plan.
 class FinishPlan {
-  FinishPlan(this.plan, {required this.len, required List<vm.Vector3> watch, required this.corner}) : b = plan.b, w = plan.width {
+  FinishPlan(this.plan, {required this.len, required List<vm.Vector3> watch, required this.corner, this.foremanBack = 0}) : b = plan.b, w = plan.width {
     final clock = Stopwatch()..start();
     per = math.max(1, (plan.r.rows / 12).ceil());
     _makeUnits();
@@ -99,8 +99,10 @@ class FinishPlan {
   /// The reveal's length.
   final double len;
 
-  /// The foreman's place beside the wall.
+  /// The foreman's place beside the wall, and when he's back there from
+  /// his rounds of the build (from the reveal's start).
   final vm.Vector3 corner;
+  final double foremanBack;
   final double b, w;
 
   /// Brick rows per band of the smooth letters (as the site cuts them).
@@ -598,7 +600,7 @@ class FinishPlan {
     }
     // The foreman: out to look on from the middle, back to his corner.
     final look = vm.Vector3(0, 0, -4.4), via = vm.Vector3(corner.x, 0, -3.0);
-    _foremanIn = Walk([corner, via, look], 0.8, 2.0, face: math.pi);
+    _foremanIn = Walk([corner, via, look], math.max(0.8, foremanBack + 0.2), 2.0, face: math.pi);
     final back = [look, via, corner];
     _foremanOut = Walk(back, len - 0.15 - Walk.lengthOf(back) / 2.6, 2.6, face: math.atan2(-(0 - corner.x), -(0.4 - corner.z)) * 0.8);
     arrive[Crew3D.builders] = _foremanOut.end;
@@ -660,9 +662,9 @@ class Finish3D {
   /// Plans [plan]'s finish (when its plan is ready): [len] the reveal's
   /// length, [watch] the builders' places to watch from, [corner] the
   /// foreman's, [paint] the letters' colours.
-  FinishPlan planFor(BuildPlan plan, {required double len, required List<vm.Vector3> watch, required vm.Vector3 corner, required List<vm.Vector4> paint}) {
+  FinishPlan planFor(BuildPlan plan, {required double len, required List<vm.Vector3> watch, required vm.Vector3 corner, required List<vm.Vector4> paint, double foremanBack = 0}) {
     this.paint = paint;
-    final p = _plan = FinishPlan(plan, len: len, watch: watch, corner: corner);
+    final p = _plan = FinishPlan(plan, len: len, watch: watch, corner: corner, foremanBack: foremanBack);
     _shots = _pickShots(p);
     return p;
   }
@@ -755,7 +757,8 @@ class Finish3D {
     }
     if (!_on || p == null) return;
     if (who == Crew3D.foreman) {
-      if (_u < p.arrive[Crew3D.builders]) _foreman(p, f);
+      // (Until he sets off, his own: back from his rounds, at his corner.)
+      if (_u >= p._foremanIn.start && _u < p.arrive[Crew3D.builders]) _foreman(p, f);
       return;
     }
     if (who >= Crew3D.builders || _u >= p.arrive[who]) return;

@@ -284,8 +284,8 @@ class GlyphWorks {
   double get boardWidth => _job?.boardW ?? 1.2;
   double get boardHeight => _job?.boardH ?? 0.4;
 
-  /// When maker [i] is free after their last letter, and where they are
-  /// then (at home, or behind the board if theirs was the last letter).
+  /// When maker [i] is free after their last letter (back home, as
+  /// everyone goes once their letter's on the board), and where.
   double freeAt(int i) => _freeOf(i).t;
   vm.Vector3 freeSpot(int i) => _freeOf(i).at;
 
@@ -294,9 +294,7 @@ class GlyphWorks {
     for (final s in _steps) {
       if (s.maker == i) last = s;
     }
-    if (last == null) return (t: double.negativeInfinity, at: WorksLayout.homes[i]);
-    if (identical(last, _steps.last)) return (t: last.at[7] + 0.3, at: vm.Vector3(_slotX(last.k), 0, WorksLayout.placeZ));
-    return (t: last.homeAt, at: WorksLayout.homes[i]);
+    return (t: last?.homeAt ?? double.negativeInfinity, at: WorksLayout.homes[i]);
   }
 
   /// Each step's share of a letter's way down the line.
@@ -1619,12 +1617,7 @@ class GlyphWorks {
   static const _bench = 0.12;
 
   /// Arm [s] of [p] towards [at], by [k] (0: as it was).
-  void _reach(FigurePose p, int s, vm.Vector3 at, double k) {
-    final pitch = p.armPitch[s], roll = p.armRoll[s];
-    crew.aim(p, s, at, maxStoop: _bench);
-    p.armPitch[s] = lerp(pitch, p.armPitch[s], k);
-    p.armRoll[s] = lerp(roll, p.armRoll[s], k);
-  }
+  void _reach(FigurePose p, int s, vm.Vector3 at, double k) => crew.aimBy(p, s, at, k, maxStoop: _bench);
 
   void _idle(FigurePose p, int i, double t) {
     // A word with the neighbour now and then, else watching the line.

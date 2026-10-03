@@ -49,6 +49,10 @@ class ZwjFamily extends Vignette {
   /// How fast the children run round (radians a second; the boy the other
   /// way).
   static const _spin = [1.9, -2.2];
+
+  /// The children's loops: their radii (x, z) and their middles (from
+  /// their places in the row).
+  static const _runs = [(0.7, 0.5, -0.83, -0.75), (0.85, 0.7, 0.6, -0.2)];
   static final _home = _back + (_z0 - (_z1 + 0.0)) / _speed;
   static final _loop = _home + 1.4;
 
@@ -139,12 +143,14 @@ class ZwjFamily extends Vignette {
       final p = _poses[i]..rest();
       final m = Manner.of(150 + i);
       var x = _x[i], zz = z;
-      // Apart: the parents step back a little; the children run about.
+      // Apart: the parents step back a little; the children run about (the
+      // girl in front of her parents, the boy off to the side).
       if (apart > 0) {
         if (i >= 2) {
           final a = (u - _apart) * _spin[i - 2] + i;
-          x += apart * (0.85 * math.sin(a) + (i == 2 ? -0.5 : 0.6));
-          zz += apart * (0.7 - 0.7 * math.cos(a) - 0.9);
+          final (rx, rz, cx, cz) = _runs[i - 2];
+          x += apart * (rx * math.sin(a) + cx);
+          zz += apart * (cz - rz * math.cos(a));
         } else {
           zz += apart * 0.25;
         }
@@ -159,7 +165,8 @@ class ZwjFamily extends Vignette {
         // Running round (the girl one way, the boy the other), facing the
         // way they go.
         final w = _spin[i - 2], a = (u - _apart) * w + i;
-        final vx = 0.85 * w * math.cos(a), vz = 0.7 * w * math.sin(a);
+        final (rx, rz, _, _) = _runs[i - 2];
+        final vx = rx * w * math.cos(a), vz = rz * w * math.sin(a);
         final v = math.sqrt(vx * vx + vz * vz);
         Gait.walk(p, Gait.phaseAt((u - _apart) * v, v, size, m), v, m, size: size, amount: apart);
         p.yaw = math.atan2(-vx, -vz);

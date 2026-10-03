@@ -96,6 +96,9 @@ class _Body {
 
   /// Their nudge (see [FigurePose.nudgeX]), and where it's heading.
   double nx = 0, nz = 0, tx = 0, tz = 0;
+
+  /// How fast they were going (m/s, from the frame before).
+  double vx = 0, vz = 0;
 }
 
 /// Everybody's parts in one scene: a draw per part for everybody (about
@@ -246,6 +249,14 @@ class Figures {
       ..nudgeX = p.steer && _nudgeOn ? b.nx : 0
       ..nudgeZ = p.steer && _nudgeOn ? b.nz : 0;
     if (b.seen != now) _seen.add(n);
+    final since = now - b.seen;
+    if (since > 1e-4 && since < 0.25) {
+      b
+        ..vx = (p.pos.x - b.x) / since
+        ..vz = (p.pos.z - b.z) / since;
+    } else if (!(since <= 1e-4)) {
+      b.vx = b.vz = 0;
+    }
     b
       ..x = p.pos.x
       ..y = p.pos.y
@@ -324,9 +335,59 @@ class Figures {
 
   String overlapReport() =>
       'FIGURES overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm at t=${_deepestAt.toStringAsFixed(1)} ($_deepestWho)\n'
-      '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}';
+      '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}\n'
+      'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}';
+
+  /// Solid things people keep out of (and capture runs check they did), by
+  /// kind: each a box (centre, half extents). Whoever has them sets them
+  /// (and clears them when they're gone).
+  final solids = <String, List<(vm.Vector3, vm.Vector3)>>{};
+
+  /// Whether a capture run is counting.
+  static bool get checking => _counting;
+
+  /// (x, z) moved out of every solid that spans someone [r] wide standing
+  /// at height [y] there, by as little as it takes (into [out]: x, z): out
+  /// the side they came from ([fromX], [fromZ]: where they were before
+  /// being moved there, if they weren't in it), else the nearer side.
+  void outOfSolids(double x, double y, double z, double r, List<double> out, {double? fromX, double? fromZ}) {
+    for (var pass = 0; pass < 2; pass++) {
+      for (final boxes in solids.values) {
+        for (final (c, h) in boxes) {
+          if (y > c.y + h.y - 0.05 || y + 1.6 < c.y - h.y) continue;
+          final hx = h.x + r + 0.02, hz = h.z + r + 0.02, dx = x - c.x, dz = z - c.z;
+          if (dx.abs() >= hx || dz.abs() >= hz) continue;
+          // (The side they came from, if they came from outside it.)
+          final ox = fromX == null ? 0.0 : fromX - c.x, oz = fromZ == null ? 0.0 : fromZ - c.z;
+          final outX = fromX != null && ox.abs() >= hx, outZ = fromZ != null && oz.abs() >= hz;
+          final px = hx - dx.abs(), pz = hz - dz.abs();
+          if (outX && !outZ) {
+            x = c.x + (ox >= 0 ? hx : -hx);
+          } else if (outZ && !outX) {
+            z = c.z + (oz >= 0 ? hz : -hz);
+          } else if (px < pz) {
+            x += dx >= 0 ? px : -px;
+          } else {
+            z += dz >= 0 ? pz : -pz;
+          }
+        }
+      }
+    }
+    out
+      ..[0] = x
+      ..[1] = z;
+  }
+
+  final _out = [0.0, 0.0];
+
+  /// People found inside [solids], by kind: frames, the worst (depth,
+  /// when, who).
+  final _inside = <String, (int, double, double, String)>{};
 
   static const _counting = String.fromEnvironment('BOOTH3D_TIMES') != '';
+
+  /// How far ahead (seconds) a walker looks for someone they'd walk into.
+  static const _ahead = 0.9;
 
   /// (BOOTH3D_NUDGE=0: nobody steers round anybody, to compare.)
   static const _nudgeOn = String.fromEnvironment('BOOTH3D_NUDGE', defaultValue: '1') != '0';
@@ -341,9 +402,13 @@ class Figures {
   /// more than 0.6 m out of their way, and it comes and goes over a moment.
   void _nudge(double now) {
     final dt = (now - _frameAt).isFinite ? (now - _frameAt).clamp(0.0, 0.1) : 0.0;
-    final k = 1 - math.exp(-dt / 0.09);
+    final k = 1 - math.exp(-dt / 0.06);
     final seen = _seen;
-    // Where each wants to be pushed to (from where they are, raw).
+    // Where each wants to be pushed to (from where they are, raw). A walker
+    // looks where whoever's about will be, the way both are going, up to
+    // [_ahead] seconds on: if they'd come too close, a step aside now, off
+    // their own line to the side away from the other (two meeting head-on
+    // keep left, as the city's crowd does), the sooner the more.
     for (final i in seen) {
       final a = _bodies[i];
       a
@@ -354,21 +419,32 @@ class Figures {
       for (final j in seen) {
         if (j == i) continue;
         final b = _bodies[j];
-        final dx = b.x - a.x, dz = b.z - a.z;
-        if (dx.abs() > 2.0 || dz.abs() > 2.0 || (b.y - a.y).abs() > 0.5) continue;
-        final minD = a.r + b.r + 0.06;
-        // In their way (ahead, behind or alongside): off their line,
-        // sideways.
-        final l = -dx * fz + dz * fx, f = dx * fx + dz * fz;
-        if (l.abs() >= minD || f.abs() > minD + 1.1) continue;
-        final w = smooth(minD + 1.1, minD * 0.5, f.abs());
-        final share = b.steer && b.walking ? 0.5 : 1.0;
-        final meeting = b.walking && fx * -math.sin(b.yaw) + fz * -math.cos(b.yaw) < -0.3;
-        final side = l.abs() > 0.01 ? -l.sign : (meeting ? -1.0 : (i < j ? 1.0 : -1.0));
-        final need = (minD - l.abs()) * share * w * side;
+        final rx = b.x - a.x, rz = b.z - a.z;
+        if (rx.abs() > 3.5 || rz.abs() > 3.5 || (b.y - a.y).abs() > 0.5) continue;
+        final minD = a.r + b.r + 0.08;
+        final vx = b.vx - a.vx, vz = b.vz - a.vz, v2 = vx * vx + vz * vz;
+        final tc = v2 > 1e-4 ? (-(rx * vx + rz * vz) / v2).clamp(0.0, _ahead) : 0.0;
+        // Where the other is (relative to them) when they're closest: away
+        // from there (a step aside, or back: a moment's wait), by as much as
+        // they'd overlap; dead on (meeting head-on: to their left).
+        final cx = rx + vx * tc, cz = rz + vz * tc, d = math.sqrt(cx * cx + cz * cz);
+        if (d >= minD) continue;
+        final w = 1 - 0.7 * tc / _ahead;
+        final share = b.steer && b.walking ? 0.5 : (b.steer ? 0.75 : 1.0);
+        double ux, uz;
+        if (d > 0.05) {
+          ux = -cx / d;
+          uz = -cz / d;
+        } else {
+          final meeting = b.walking && fx * -math.sin(b.yaw) + fz * -math.cos(b.yaw) < -0.3;
+          final side = meeting || i < j ? 1.0 : -1.0;
+          ux = -fz * side;
+          uz = fx * side;
+        }
+        final need = (minD - d) * share * w;
         a
-          ..tx += -fz * need
-          ..tz += fx * need;
+          ..tx += ux * need
+          ..tz += uz * need;
       }
     }
     // Still touching: apart, a few rounds.
@@ -416,6 +492,11 @@ class Figures {
       a
         ..nx += (tx - a.nx) * k
         ..nz += (tz - a.nz) * k;
+      // Never into anything solid (at once: walking into it, along it).
+      outOfSolids(a.x + a.nx, a.y, a.z + a.nz, a.r, _out, fromX: a.x, fromZ: a.z);
+      a
+        ..nx = _out[0] - a.x
+        ..nz = _out[1] - a.z;
     }
     if (_counting && seen.isNotEmpty) _count(now);
     // Whoever wasn't drawn starts afresh.
@@ -428,6 +509,25 @@ class Figures {
 
   void _count(double now) {
     _frames++;
+    // In something solid: a circle round the feet against each box's
+    // footprint, while the box spans the person's height.
+    for (final i in _seen) {
+      final a = _bodies[i];
+      final x = a.x + a.nx, z = a.z + a.nz;
+      for (final MapEntry(key: kind, value: boxes) in solids.entries) {
+        var worst = 0.0;
+        for (final (c, h) in boxes) {
+          if (a.y > c.y + h.y - 0.05 || a.y + 1.6 < c.y - h.y) continue;
+          final dx = (x - c.x).abs() - h.x, dz = (z - c.z).abs() - h.z;
+          final depth = dx <= 0 && dz <= 0 ? a.r - math.max(dx, dz) : a.r - math.sqrt(math.pow(math.max(dx, 0.0), 2) + math.pow(math.max(dz, 0.0), 2));
+          worst = math.max(worst, depth);
+        }
+        if (worst <= 0.04) continue;
+        final was = _inside[kind];
+        final who = '#${a.n}${a.walking ? ' walking' : ''}${a.steer ? '' : ' (crowd)'} at ${x.toStringAsFixed(1)},${z.toStringAsFixed(1)}';
+        _inside[kind] = was == null || worst > was.$2 ? ((was?.$1 ?? 0) + 1, worst, now, who) : (was.$1 + 1, was.$2, was.$3, was.$4);
+      }
+    }
     for (var p = 0; p < _seen.length; p++) {
       final a = _bodies[_seen[p]];
       for (var q = p + 1; q < _seen.length; q++) {

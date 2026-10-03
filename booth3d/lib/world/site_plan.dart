@@ -21,7 +21,7 @@ abstract final class SiteLayout {
 
   /// The brick yard by the crane: pallet k stands at [yard] (4 × 3, from
   /// the front row).
-  static vm.Vector3 yard(int k) => vm.Vector3(11.7 + (k % 4) * 1.55, 0, -1.5 + ((k ~/ 4) % 3) * 1.5);
+  static vm.Vector3 yard(int k) => vm.Vector3(11.7 + (k % 4) * 1.5, 0, -1.5 + ((k ~/ 4) % 3) * 1.5);
 
   /// The climbing platform behind the wall (its floor from [deckZ0] to
   /// [deckZ1]): the brick piles at [stashZ], the builders behind them at

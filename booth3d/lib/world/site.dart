@@ -15,6 +15,7 @@ import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'crew.dart';
+import 'figure.dart' show Figures;
 import 'crew_breaks.dart';
 import 'delivery.dart';
 import 'glyph_works.dart';
@@ -260,6 +261,19 @@ class Site3D {
     finish.init();
     loader.init();
     plinths.init();
+    // What people mustn't stand in (capture runs check it).
+    final a = BreakSpots.ashtray;
+    Figures.of(scene).solids
+      ..['crane footing'] = [(vm.Vector3(SiteLayout.mastX, 0.3, SiteLayout.mastZ), vm.Vector3(1.4, 0.3, 1.4))]
+      ..['vending machines'] = [
+        for (final z in BreakSpots.vendZ) (vm.Vector3(BreakSpots.vendX, 0.93, z), vm.Vector3(0.375, 0.93, 0.5)),
+        (vm.Vector3(BreakSpots.bin.x, 0.42, BreakSpots.bin.z), vm.Vector3(0.22, 0.42, 0.25)),
+      ]
+      ..['smoking corner'] = [
+        (vm.Vector3(a.x, 0.5, a.z), vm.Vector3(0.2, 0.5, 0.2)),
+        (vm.Vector3(a.x + 0.95, 0.17, a.z + 0.55), vm.Vector3(0.25, 0.17, 0.25)),
+        (vm.Vector3(a.x - 0.95, 0.95, a.z + 0.75), vm.Vector3(0.06, 0.95, 0.06)),
+      ];
     crew
       ..offDuty = breaks.pose
       ..stage = (who, p) {
@@ -674,7 +688,12 @@ class Site3D {
     // The plinths: up out of the ground as the plan's made, gone with the
     // rubble at the cleanup's cut to the swept plaza.
     final cleaning = j.phase == Phase.cleanup && j.since(t) >= 0.78 * j.phaseLen;
-    plinths.update(_plan == null || cleaning ? 0 : eio(seg(t, _plinthsAt, _plinthsAt + 2.4)));
+    final rise = _plan == null || cleaning ? 0.0 : eio(seg(t, _plinthsAt, _plinthsAt + 2.4));
+    plinths.update(rise);
+    Figures.of(scene).solids['plinths'] = [
+      if (rise > 0.5)
+        for (final r in plinths.runs) (vm.Vector3((r.x0 + r.x1) / 2, r.top / 2, 0), vm.Vector3((r.x1 - r.x0) / 2, r.top / 2, plinths.depth / 2)),
+    ];
     breaks
       ..camera.setFrom(camera)
       ..begin(t, night);
@@ -876,6 +895,7 @@ class Site3D {
     final plan = _plan;
     final late = j.phase.index > Phase.celebrate.index;
     var slung = false;
+    final yard = Figures.of(scene).solids['yard pallets'] = <(vm.Vector3, vm.Vector3)>[];
     for (var k = 0; k < _maxPallets; k++) {
       if (plan == null || k >= plan.trips) {
         _pallets.setInstanceTransform(k, hidden);
@@ -913,6 +933,7 @@ class Site3D {
       final s = 4 * b + 0.12;
       final x = base.x + (onHook ? crane.sway.x : 0), z = base.z + (onHook ? crane.sway.z : 0);
       _pallets.setInstanceTransform(k, appear <= 0 ? hidden : setTqs(_m, x, base.y + 0.07, z, _qi, s * appear, 0.14 * appear, s * appear));
+      if (appear > 0.5 && !onHook) yard.add((vm.Vector3(x, 0.25, z), vm.Vector3(s / 2, 0.25, s / 2)));
       if (onHook && !slung) {
         slung = true;
         crane.slings(vm.Vector3(x, base.y + 0.12, z), hx: s / 2 - 0.05, hz: s / 2 - 0.05);

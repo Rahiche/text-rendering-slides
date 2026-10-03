@@ -307,7 +307,7 @@ class CrewBreaks {
     // driver starts by the truck).
     final isDriver = b.who == driver;
     final start = isDriver ? b.door : vm.Vector3(plan.restX(b.who), 0, SiteLayout.crewZ);
-    final behind = isDriver ? start : vm.Vector3(start.x, 0, 2.4);
+    final behind = isDriver ? start : vm.Vector3(start.x, 0, Crew3D.behindZ);
     final step = isDriver ? 0.0 : _step;
     final minStay = switch (kind) {
       BreakKind.coffee => 9.0,
@@ -381,17 +381,17 @@ class CrewBreaks {
   /// of the platform, round the wall's end on the right for the machines.
   List<vm.Vector3> _groundRoute(vm.Vector3 from, int group, _Spot spot, {required bool isDriver}) {
     final w = _w;
-    final e = w / 2 + 1.3;
+    final e = Crew3D.endX(w);
     final pts = <vm.Vector3>[from];
     switch (group) {
       case 0:
         if (isDriver) {
           pts.add(vm.Vector3(15.55, 0, -4.0));
         } else {
+          // (Round the platform's end, then in front of the brick yard.)
           pts
             ..add(vm.Vector3(e, 0, from.z))
-            ..add(vm.Vector3(w / 2 + 1.35, 0, -0.6))
-            ..add(vm.Vector3(w / 2 + 1.7, 0, -2.62))
+            ..add(vm.Vector3(e, 0, -2.62))
             ..add(vm.Vector3(15.55, 0, -2.62));
         }
         pts.add(vm.Vector3(15.55, 0, -5.4));
@@ -624,7 +624,7 @@ class CrewBreaks {
   void _awayBreak(FigurePose me, FigurePose work, _Break b, double t, double floor) {
     final spot = b.spot!;
     final (walking, heading) = _place(b, t, me);
-    me.pos.y = b.who != driver && _onDeck(me.pos) ? floor : 0;
+    me.pos.y = b.who != driver ? Crew3D.standY(me.pos, _w, floor) : 0;
     if (walking) {
       OffDuty.walk(me, t, t < b.arrive ? _vOut : _vHome, b.seed);
       me.yaw = heading;

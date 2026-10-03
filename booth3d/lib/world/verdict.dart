@@ -572,9 +572,12 @@ class _Plan {
     final fFrom = vm.Vector3(w / 2 + 0.75, 0, -1.55);
     final fStart = d + 1.5, here = held?.call(Crew3D.foreman, fStart);
     final fWay = here == null ? [fFrom, via, fAt] : (here.x > x ? [here, via, fAt] : [here, fAt]);
+    // Back round the far side of the blueprint and behind it (not across
+    // the planners' and the builders' ways out), briskly: clear before the
+    // ball swings.
     crew[Crew3D.foreman] = (
       go: Walk(fWay, fStart, (Walk.lengthOf(fWay) / (Verdict3D._arrive - 1.5)).clamp(1.8, 2.6), face: math.pi),
-      back: Walk([fAt, via, fFrom], d + Verdict3D._disperse + 0.3, 1.9, face: 0.8),
+      back: Walk([fAt, vm.Vector3(x - 2.2, 0, z - 0.9), vm.Vector3(x - 2.2, 0, -1.75), vm.Vector3(fFrom.x, 0, -1.75), fFrom], d + Verdict3D._disperse + 0.2, 2.3, face: 0.8),
     );
   }
 

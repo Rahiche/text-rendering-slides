@@ -106,7 +106,37 @@ class Crew3D {
     );
   }
 
-  static const _deckParts = 40;
+  static const _deckParts = 72;
+
+  /// The gates in the platform's back rail: one behind each builder's rest
+  /// spot (where they step on and off it), [gateHalf] either side of it.
+  static const gateHalf = 0.45;
+  List<double> _gates = const [];
+
+  /// Where the builders walk along behind the platform (off its back).
+  static const behindZ = 2.4;
+
+  /// How far out from the middle the way round an end of the platform
+  /// goes, for a wall [w] wide: clear of its end rail, the mast's climbing
+  /// gear and (on the right) the brick yard's pallets.
+  static double endX(double w) => w / 2 + 1.4;
+
+  /// The way off the platform from a rest spot at x [restX]: back through
+  /// its gate, along behind the platform to its end [e] (−1 left, +1
+  /// right), round it to the front corner of the wall.
+  static List<vm.Vector3> offPlatform(double restX, double w, double e) => [
+    vm.Vector3(restX, 0, SiteLayout.crewZ),
+    vm.Vector3(restX, 0, behindZ),
+    vm.Vector3(e * endX(w), 0, behindZ),
+    vm.Vector3(e * endX(w), 0, -0.6),
+  ];
+
+  /// How high someone at [p] stands: on the deck (its floor at [floor]),
+  /// stepping down off its back edge, else on the ground.
+  static double standY(vm.Vector3 p, double w, double floor) {
+    if (p.x.abs() > w / 2 + 1.0 || p.z <= SiteLayout.deckZ0 || p.z >= SiteLayout.deckZ1 + 0.3) return 0;
+    return floor * smooth(SiteLayout.deckZ1 + 0.3, SiteLayout.deckZ1 - 0.05, p.z);
+  }
 
   /// What figure [i] wears: the builders a hi-vis vest in their zone's
   /// colour over a work shirt, gloves and a yellow hard hat; the foreman a
@@ -264,17 +294,35 @@ class Crew3D {
   /// Where builder [z] stands to work at the start of a build of width [w].
   vm.Vector3 _workSpot(int z, double w) => vm.Vector3(((z + 0.5) / builders - 0.5) * w, 0, SiteLayout.crewZ);
 
-  /// Where builder [z] watches from (front right of the wall).
-  vm.Vector3 _watchSpot(int z, double w) => vm.Vector3(w / 2 + 1.5 + (z % 3) * 0.8 + (z ~/ 3) * 0.4, 0, -0.9 - (z ~/ 3) * 0.85);
+  /// Where builder [z] watches from: front right of the wall, in a row in
+  /// front of the brick yard (its pallets are there till the celebration's
+  /// over), builder 0 nearest the wall.
+  vm.Vector3 _watchSpot(int z, double w) => vm.Vector3(w / 2 + 1.95 + 0.85 * z, 0, watchZ);
 
-  /// Around the right end of the wall, between the platform and the front
-  /// (from or to [from] on the platform, else their rest spot); from the
-  /// front of the wall (the finish called off), along it.
+  /// The watchers' row, and the lane in front of it they come and go by
+  /// (each turning into their place from it: nobody walks through anyone
+  /// already standing there).
+  static const watchZ = -2.75, watchLane = -3.5;
+
+  /// Between the platform and where builder [z] watches from: through
+  /// their gate in the back rail, along behind the platform, round its
+  /// right end to the front (from or to [from] on the platform: along the
+  /// deck to the gate first; else their rest spot); from the front of the
+  /// wall (the finish called off), along it.
   List<vm.Vector3> _route(int z, double w, {required bool toWall, vm.Vector3? from}) {
-    final work = from ?? _workSpot(z, w), watch = _watchSpot(z, w);
+    final rest = _workSpot(z, w), watch = _watchSpot(z, w);
+    final work = from ?? rest;
     if (work.z < 0) return toWall ? [watch, vm.Vector3(work.x, 0, -2.6), work] : [work, vm.Vector3(work.x, 0, -2.6), watch];
-    final corner = vm.Vector3(w / 2 + 1.25, 0, SiteLayout.crewZ);
-    final pts = [work, corner, vm.Vector3(w / 2 + 1.35, 0, -0.5), watch];
+    final gate = _gates.length > z ? _gates[z] : rest.x;
+    final off = offPlatform(gate, w, 1);
+    final pts = [
+      if (work.distanceTo(off.first) > 0.05) work,
+      ...off,
+      // (Down past the yard's front corner, along the lane, up into place.)
+      vm.Vector3(off.last.x, 0, watchLane),
+      vm.Vector3(watch.x, 0, watchLane),
+      watch,
+    ];
     return toWall ? pts.reversed.toList() : pts;
   }
 
@@ -302,6 +350,17 @@ class Crew3D {
   void _gait(FigurePose p, double dist, double speed, int seed, double total) {
     final m = Manner.of(seed);
     Gait.walk(p, Gait.phaseOver(dist, total, speed, 1, m), speed, m);
+  }
+
+  /// How far along [route] its way round the platform's end begins (the
+  /// gap between it and the brick yard).
+  static double _toCorner(List<vm.Vector3> route) {
+    var l = 0.0;
+    for (var i = 0; i + 1 < route.length; i++) {
+      if ((route[i].z - -0.6).abs() < 1e-6 || route[i].z > -0.6) return l;
+      l += route[i].distanceTo(route[i + 1]);
+    }
+    return l;
   }
 
   static double _lengthOf(List<vm.Vector3> pts) {
@@ -351,6 +410,7 @@ class Crew3D {
       case Phase.celebrate || Phase.cleanup:
         sink = -10;
     }
+    _gates = [for (var z = 0; z < builders; z++) plan?.restX(z) ?? _workSpot(z, w).x];
     _platform(w, deck, sink);
     final floor = math.max(0.0, deck + sink + SiteLayout.deckRest + 0.05);
 
@@ -359,9 +419,12 @@ class Crew3D {
       final seed = z * 13;
       switch (j.phase) {
         case Phase.intake:
-          final route = _route(z, w, toWall: true), start = j.phaseStart + 0.3 + z * 0.18;
+          // (Through the gap by the yard one after another, the farthest
+          // going first: nobody catches anybody up.)
+          final route = _route(z, w, toWall: true);
+          final start = j.phaseStart + 0.3 + z * 0.3 - (_toCorner(route) - _toCorner(_route(0, w, toWall: true))) / 3.4;
           final (moving, heading) = _walk(route, start, 3.4, t, p.pos);
-          p.pos.y = _onDeck(p.pos, w) ? floor : 0;
+          p.pos.y = standY(p.pos, w, floor);
           if (moving) {
             _gait(p, (t - start) * 3.4, 3.4, seed, _lengthOf(route));
             p.yaw = heading;
@@ -384,7 +447,7 @@ class Crew3D {
           final from = cut && plan != null && j.phase == Phase.demolish && j.phaseStart >= plan.t0 ? _fromCut(z, plan, j.phaseStart) : null;
           final route = _route(z, w, toWall: false, from: from);
           final (moving, heading) = _walk(route, leave, speed, t, p.pos);
-          p.pos.y = _onDeck(p.pos, w) ? floor : 0;
+          p.pos.y = standY(p.pos, w, floor);
           if (moving) {
             _gait(p, (t - leave) * speed, speed, seed, _lengthOf(route));
             p.yaw = heading;
@@ -406,7 +469,6 @@ class Crew3D {
     }
   }
 
-  bool _onDeck(vm.Vector3 p, double w) => p.z > SiteLayout.deckZ0 && p.z < SiteLayout.deckZ1 && p.x.abs() < w / 2 + 1.0;
 
   /// Standing about, facing [face] (yaw; −z by default) give or take a
   /// turn now and then: breathing, the weight on one foot then the other,
@@ -881,22 +943,28 @@ class Crew3D {
 
     final wood = _wood, rail = _rail, dark = _dark, motor = _motor;
     final half = w / 2 + 1.05;
-    // Deck planks (three boards) and the toe board along the back.
+    // Deck planks (three boards).
     for (var k = 0; k < 3; k++) {
       box(0, y - 0.05, z0 + dz * (k + 0.5) / 3, half * 2, 0.1, dz / 3 - 0.03, k.isEven ? wood : _wood2);
     }
-    box(0, y + 0.08, z1 - 0.03, half * 2, 0.16, 0.04, dark);
-    // Guard rails: back and ends, top and middle.
+    // Along the back, between the gates: the toe board, the guard rail (top
+    // and middle), a post at each end of a run and between.
+    for (final (a, b) in _backRuns(half)) {
+      final c = (a + b) / 2, l = b - a;
+      box(c, y + 0.08, z1 - 0.03, l, 0.16, 0.04, dark);
+      for (final h in [0.55, 1.05]) {
+        box(c, y + h, z1 - 0.03, l, 0.05, 0.05, rail);
+      }
+      final posts = math.max(1, (l / 1.6).ceil());
+      for (var k = 0; k <= posts; k++) {
+        box(a + l * k / posts, y + 0.53, z1 - 0.03, 0.06, 1.06, 0.06, rail);
+      }
+    }
+    // The ends' rails.
     for (final h in [0.55, 1.05]) {
-      box(0, y + h, z1 - 0.03, half * 2, 0.05, 0.05, rail);
       for (final sx in [-1.0, 1.0]) {
         box(sx * half, y + h, zc, 0.05, 0.05, dz, rail);
       }
-    }
-    // Posts.
-    final posts = math.max(2, (half * 2 / 1.6).ceil());
-    for (var k = 0; k <= posts; k++) {
-      box(-half + half * 2 * k / posts, y + 0.53, z1 - 0.03, 0.06, 1.06, 0.06, rail);
     }
     for (final sx in [-1.0, 1.0]) {
       box(sx * half, y + 0.53, z0 + 0.05, 0.06, 1.06, 0.06, rail);
@@ -906,6 +974,18 @@ class Crew3D {
     for (; n < _deckParts; n++) {
       _deck.setInstanceTransform(n, hidden);
     }
+    // Solid: its ends, the masts and their gear, the back between the
+    // gates.
+    _figures.solids['platform'] = [
+      if (visible) ...[
+        for (final sx in [-1.0, 1.0]) ...[
+          (vm.Vector3(sx * half, y + 0.6, zc), vm.Vector3(0.04, 0.6, dz / 2)),
+          (vm.Vector3(sx * mx, y + 0.28, zc), vm.Vector3(0.31, 0.23, 0.33)),
+          (vm.Vector3(sx * mx, sink + 4.8, zc), vm.Vector3(0.21, 4.8, 0.21)),
+        ],
+        for (final (a, b) in _backRuns(half)) (vm.Vector3((a + b) / 2, y + 0.6, z1 - 0.03), vm.Vector3((b - a) / 2, 0.6, 0.04)),
+      ],
+    ];
     // Festoon bulbs along the back rail, glowing after dark.
     final count = math.min(_maxBulbs, (half * 2 / 0.62).floor());
     final glow = 0.4 + 7 * c01((_night - 0.1) / 0.4);
@@ -915,12 +995,31 @@ class Crew3D {
         continue;
       }
       final x = -half + (k + 0.5) * half * 2 / count;
+      // (None over a gate: whoever goes through would walk into it.)
+      if (_gates.any((g) => (x - g).abs() < gateHalf + 0.06)) {
+        _bulbs.setInstanceTransform(k, hidden);
+        continue;
+      }
       final sag = 0.07 * math.sin(((k % 4) + 0.5) / 4 * math.pi);
       _bulbs.setInstanceTransform(k, setTrs(_m, x, y + 1.13 - sag, z1 - 0.03));
       final c = _bulbColors[k % _bulbColors.length];
       final tw = 0.85 + 0.15 * math.sin(_t * 3 + k * 1.7);
       _bulbs.setInstanceColor(k, vm.Vector4(c.x * glow * tw, c.y * glow * tw, c.z * glow * tw, 1));
     }
+  }
+
+  /// The back rail's runs between the gates (x from, to), the platform
+  /// [half] wide each side.
+  List<(double, double)> _backRuns(double half) {
+    final runs = <(double, double)>[];
+    var from = -half;
+    for (final g in [..._gates]..sort()) {
+      final a = g - gateHalf, b = g + gateHalf;
+      if (a - from > 0.1) runs.add((from, a));
+      from = math.max(from, b);
+    }
+    if (half - from > 0.1) runs.add((from, half));
+    return runs;
   }
 
   double _t = 0;

@@ -969,8 +969,14 @@ class _People {
       nz /= nl;
     }
     final off = p.side + p.dodge;
+    final wasX = p.x, wasZ = p.z;
     p.x = a.$1 + dx * f + nx * off * p.dir;
     p.z = a.$2 + dz * f + nz * off * p.dir;
+    // (Round anything solid by the way: a sign post, a pallet.)
+    _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out, fromX: wasX, fromZ: wasZ);
+    p
+      ..x = _out[0]
+      ..z = _out[1];
     p.fx = dx / l * p.dir;
     p.fz = dz / l * p.dir;
     if (!p.waiting) p.heading = _turn(p.heading, headingTo(dx * p.dir, dz * p.dir), dt);
@@ -1068,28 +1074,37 @@ class _People {
   /// Workers pace between two spots, stopping to look up at the work. The
   /// one at the corner guides the delivery truck through the gate.
   void _work(_Person p, double t, double dt, double wallWidth, Phase? phase, (double, double)? gate) {
-    final end = p.homeX * (wallWidth / 2 + 1.2);
+    final half = wallWidth / 2;
     final cycle = 16 + 6 * (p.phase % 1);
     final u = ((t + p.phase * 7) % cycle) / cycle;
     // 0–0.35 stand at home, 0.35–0.5 walk out, 0.5–0.85 stand, 0.85–1 back.
     final w = u < 0.35 ? 0.0 : (u < 0.5 ? eio((u - 0.35) / 0.15) : (u < 0.85 ? 1.0 : 1 - eio((u - 0.85) / 0.15)));
-    var hx = end, hz = p.homeZ;
-    var ax = end + p.homeX * p.awayX, az = p.awayZ;
+    // By the wall's ends: in front of it (on the right, in front of the
+    // builders' places and the brick yard), and by the platform's end (clear
+    // of its rail and mast; on the right, where the yard leaves no room,
+    // behind the platform), strolling out a little now and then.
+    final front = p.crewNo < 2, right = p.homeX > 0;
+    var hx = front ? p.homeX * (half + 1.2) : (right ? half - 0.6 : -(half + 1.75));
+    var hz = front ? (right ? p.homeZ - 2.6 : p.homeZ) : (right ? 3.2 : p.homeZ.clamp(0.4, 1.6));
+    var ax = right && !front ? hx - 0.8 - 0.5 * p.awayX : hx + p.homeX * (right ? math.min(p.awayX, 2.5) : p.awayX);
+    var az = front ? (right ? hz - 0.5 : p.awayZ) : (right ? 3.35 : hz - 0.8 * (p.awayX / 4));
     if (phase == Phase.demolish || phase == Phase.cleanup) {
       // Stand well clear while the ball swings and the rubble goes: behind
-      // the crane on the right; on the left, out of where the rubble flies
-      // (along the wall), in the plaza's front corner by the 工事中 board.
-      // (Each in a place of their own: the three on a side in a row.)
+      // the crane on the right (beside its footing); on the left, out of
+      // where the rubble flies (along the wall), in the plaza's front corner
+      // by the 工事中 board. (Each in a place of their own: the three on a
+      // side in a row.)
       final k = p.crewNo ~/ 2;
-      hx = p.homeX > 0 ? 14.0 + 0.9 * k : -15.2 - 0.75 * k;
-      hz = p.homeX > 0 ? 5.0 + 0.6 * k : -6.4 - 0.65 * k;
-      ax = hx - p.homeX * (p.homeX > 0 ? 1.0 : 0.8);
-      az = hz + (p.homeX > 0 ? 0.9 : -0.35);
-    } else if ((phase == Phase.reveal || phase == Phase.celebrate) && p.job == 0 && p.homeX < 0) {
-      // At the wall's left end, behind its front: out of the way of the
-      // Glyph Works' tray coming round to the front.
+      hx = right ? 15.1 + 0.85 * k : -15.2 - 0.75 * k;
+      hz = right ? 4.4 + 0.7 * k : -6.4 - 0.65 * k;
+      ax = right ? hx : hx + 0.8;
+      az = hz + (right ? 0.9 : -0.35);
+    } else if ((phase == Phase.reveal || phase == Phase.celebrate) && p.job == 0 && !right) {
+      // At the wall's left end, behind its front (clear of the platform's
+      // end): out of the way of the Glyph Works' tray coming round to the
+      // front.
+      hx = ax = -(half + 1.75);
       hz = az = 0.6 + 0.9 * (p.crewNo ~/ 2);
-      ax = hx;
     } else if (p.job == 1) {
       // By the safety banner, keeping an eye on the street (left of the
       // gate); while the truck comes or goes, at the gate post, guiding it.
@@ -1106,13 +1121,25 @@ class _People {
       az = 4.9;
     }
     var nx = lerp(hx, ax, w), nz = lerp(hz, az, w);
-    // Walk (never jump) to wherever the spot moved to.
+    // Walk (never jump) to wherever the spot moved to: round anything solid
+    // in the way (along it; head-on, to its side).
     final gx = nx - p.x, gz = nz - p.z;
     final gap = math.sqrt(gx * gx + gz * gz);
     final step = 1.5 * dt;
     if (gap > step && p.placed) {
       nx = p.x + gx / gap * step;
       nz = p.z + gz / gap * step;
+      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z);
+      if ((_out[0] - p.x) * gx + (_out[1] - p.z) * gz < 0.3 * step * gap) {
+        // Blocked: a step to the side instead.
+        _figures.outOfSolids(p.x - gz / gap * step, 0, p.z + gx / gap * step, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z);
+      }
+      nx = _out[0];
+      nz = _out[1];
+    } else if (p.placed) {
+      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out);
+      nx = _out[0];
+      nz = _out[1];
     }
     p.placed = true;
     final moved = math.sqrt((nx - p.x) * (nx - p.x) + (nz - p.z) * (nz - p.z));
@@ -1128,6 +1155,8 @@ class _People {
     p.x = nx;
     p.z = nz;
   }
+
+  final _out = [0.0, 0.0];
 
   static double _turn(double from, double to, double dt) {
     var d = (to - from) % (2 * math.pi);

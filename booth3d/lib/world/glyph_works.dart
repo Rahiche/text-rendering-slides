@@ -58,8 +58,10 @@ abstract final class WorksLayout {
   /// on it from behind it ([placeZ]).
   static const boardX = -9.85, boardY = 0.62, boardZ = 5.12, boardTilt = 0.5, placeZ = 5.8;
 
-  /// Where the makers wait for their next letter (behind the feeder).
-  static final homes = [vm.Vector3(-16.2, 0, 7.12), vm.Vector3(-15.62, 0, 7.32), vm.Vector3(-15.05, 0, 7.12)];
+  /// Where the makers wait for their next letter: in a row at the works'
+  /// right end, behind the board, out of the way of the lane behind the
+  /// belt (the works aren't deep enough for a row of them there too).
+  static final homes = [vm.Vector3(-9.05, 0, 7.35), vm.Vector3(-9.05, 0, 6.85), vm.Vector3(-9.05, 0, 6.35)];
 
   /// The way out of the front, past the board's left (for whoever leaves
   /// on foot).
@@ -70,6 +72,15 @@ abstract final class WorksLayout {
   /// the line.
   static List<vm.Vector3> route(vm.Vector3 from, vm.Vector3 to) {
     bool back(vm.Vector3 v) => v.z > beltZ + 0.3 && v.x < beltX1 + 0.2;
+    // (The waiting row, right of the walkway: onto the walkway beside it.)
+    bool row(vm.Vector3 v) => v.x > walkX + 0.2;
+    if (row(to) && !row(from)) return route(to, from).reversed.toList();
+    if (row(from)) {
+      final pts = [from.clone(), vm.Vector3(walkX, 0, from.z)];
+      if (row(to)) return pts..addAll([vm.Vector3(walkX, 0, to.z), to.clone()]);
+      final z = back(to) ? laneZ : placeZ;
+      return pts..addAll([vm.Vector3(walkX, 0, z), vm.Vector3(to.x, 0, z), to.clone()]);
+    }
     final pts = [from.clone()];
     if (back(from) && back(to)) {
       pts.addAll([vm.Vector3(from.x, 0, laneZ), vm.Vector3(to.x, 0, laneZ)]);
@@ -292,7 +303,7 @@ class GlyphWorks {
   static const _share = [0.08, 0.12, 0.18, 0.14, 0.13, 0.16, 0.19];
 
   /// From home to the feeder, and (about) from the board back home.
-  static const _walkIn = 1.0, _walkHome = 6.2;
+  static const _walkIn = 6.2, _walkHome = 2.6;
 
   /// Plans the build's letters down the line and the camera's visits (once,
   /// when its plan is ready), keeping clear of [busyCam] (the deliveries'
@@ -1588,7 +1599,8 @@ class GlyphWorks {
     if (s.toBoard != null && s.slotX == x) return;
     s.slotX = x;
     final home = WorksLayout.homes[s.maker], slot = vm.Vector3(x, 0, WorksLayout.placeZ);
-    s.toFeeder = Walk(WorksLayout.route(home, vm.Vector3(WorksLayout.workX[0], 0, WorksLayout.workZ)), s.walkIn, 1.2);
+    final toFeeder = WorksLayout.route(home, vm.Vector3(WorksLayout.workX[0], 0, WorksLayout.workZ));
+    s.toFeeder = Walk(toFeeder, s.walkIn, Walk.lengthOf(toFeeder) / _walkIn);
     final way = [
       vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.workZ),
       vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ),
@@ -1617,14 +1629,17 @@ class GlyphWorks {
     // A word with the neighbour now and then, else watching the line.
     final cycle = (t / 6.5).floor();
     if (rnd(cycle, i, 71) < 0.35) {
-      p.yaw = i == 0 ? -0.9 : (i == 2 ? 0.9 : (cycle.isEven ? 0.9 : -0.9));
+      // (They wait one behind another: the back one turns to the front,
+      // the front one to the back, the middle one either way.)
+      p.yaw = i == 0 ? 0.0 : (i == 2 ? math.pi : (cycle.isEven ? 0.0 : math.pi));
       if ((cycle + i).isEven) {
         OffDuty.talk(p, t, i * 5);
       } else {
         OffDuty.listen(p, t, i * 5);
       }
     } else {
-      p.yaw = Idle.facing(t, Manner.of(40 + i * 7), 0.15);
+      // Watching the line (west, along the belt).
+      p.yaw = math.pi / 2 + Idle.facing(t, Manner.of(40 + i * 7), 0.15);
       p.lean = 0.06;
       p.armRoll[0] = p.armRoll[1] = 0.85;
       p.armPitch[0] = p.armPitch[1] = -0.3;

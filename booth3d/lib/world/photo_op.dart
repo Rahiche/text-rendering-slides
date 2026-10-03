@@ -680,13 +680,18 @@ class _Now {
       packed = fold + 0.9;
       spotHome = Walk(andHome(go.pts.reversed.toList()), calledOff ? packed + 0.3 : away + 1.2, 1.5);
     }
-    // The builders and the foreman: over for the photo (behind the line of
-    // the board, then forward into place), and back.
+    // The builders and the foreman: over for the photo, and back. The
+    // builders by the lane in front of their row and up into their places
+    // (the nearest the wall going first, to the farthest place: nobody
+    // catches anybody up, nobody crosses the foreman's way behind the
+    // line); back the same way, the farthest-right place first.
+    final right = [for (final MapEntry(key: who, value: slot) in p.slots.entries) if (who != Crew3D.foreman) (who, slot.x)]..sort((a, b) => b.$2.compareTo(a.$2));
     for (final MapEntry(key: who, value: slot) in p.slots.entries) {
       final from = watch[who]!;
-      final start = c + 4.5 + (who == Crew3D.foreman ? 1.2 : 0.18 * who);
-      final via = vm.Vector3(slot.x, 0, -1.75);
-      final pts = [from, via, slot];
+      final foreman = who == Crew3D.foreman;
+      final start = c + 4.5 + (foreman ? 1.2 : 0.18 * who);
+      final via = foreman ? vm.Vector3(slot.x, 0, -1.75) : vm.Vector3(slot.x, 0, Crew3D.watchLane);
+      final pts = [from, if (!foreman) vm.Vector3(from.x, 0, Crew3D.watchLane), via, slot];
       final go = Walk(pts, start, (Walk.lengthOf(pts) / math.max(1.0, ready - 0.6 - start)).clamp(1.3, 2.6));
       if (away <= go.start) continue;
       final face = who == Crew3D.foreman ? 0.9 : 0.5;
@@ -695,8 +700,9 @@ class _Now {
         final backPts = go.backFrom(away);
         back = Walk(backPts, away, math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
       } else {
-        final backPts = [slot, via, from];
-        back = Walk(backPts, away + 0.1 + 0.12 * (who % 6), math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
+        final backPts = [slot, via, if (!foreman) vm.Vector3(from.x, 0, Crew3D.watchLane), from];
+        final rank = foreman ? 6 : right.indexWhere((e) => e.$1 == who);
+        back = Walk(backPts, away + 0.1 + 0.18 * rank, foreman ? math.max(1.4, Walk.lengthOf(backPts) / 3.6) : 2.2, face: face);
       }
       crew[who] = (go: go, back: back);
     }

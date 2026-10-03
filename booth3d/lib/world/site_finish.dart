@@ -295,17 +295,13 @@ class FinishPlan {
   final _entry = [-1.0, -1.0, 1.0];
   final _behind = [false, true, false];
 
-  /// Where builder [z] rests on the platform (they set off from there).
-  vm.Vector3 _rest(int z) => vm.Vector3(plan.restX(z), 0, SiteLayout.crewZ);
-
-  /// The way round the end [e] of the wall to (x, z), past the others if
+  /// The way off the platform (through the builder's gate, along behind
+  /// it) round the end [e] of the wall to (x, z), past the others if
   /// [behind].
   List<vm.Vector3> _round(int who, double e, double x, double z, {bool behind = false}) {
-    final front = vm.Vector3(e * (w / 2 + 1.35), 0, -0.6);
+    final off = Crew3D.offPlatform(plan.restX(who), w, e), front = off.last;
     return [
-      _rest(who),
-      vm.Vector3(e * (w / 2 + 1.25), 0, SiteLayout.crewZ),
-      front,
+      ...off,
       if (behind) ...[vm.Vector3(front.x, 0, -2.7), vm.Vector3(x, 0, -2.7)],
       vm.Vector3(x, 0, z),
     ];
@@ -314,26 +310,30 @@ class FinishPlan {
   /// When builder [z] sets off.
   static double _setOff(int z) => 0.2 + 0.06 * z;
 
-  /// The way off from (x, z) to [watch]: back to the lane, along it past
-  /// the wall's right end, then up to the place.
-  List<vm.Vector3> _off(double x, double z, vm.Vector3 watch) => [
-    vm.Vector3(x, 0, z),
-    vm.Vector3(x, 0, zLane),
-    if (x < w / 2 + 1.0) vm.Vector3(w / 2 + 1.6, 0, zLane),
-    watch,
-  ];
+  /// The way off from (x, z) to [watch]: back to the lane (the painter, at
+  /// the front, a step further: the pair walk side by side, not into each
+  /// other), along it past the wall's right end, then up to the place.
+  List<vm.Vector3> _off(double x, double z, vm.Vector3 watch) {
+    final lane = zLane - (z < zPole - 0.4 ? 0.6 : 0.0);
+    return [
+      vm.Vector3(x, 0, z),
+      vm.Vector3(x, 0, lane),
+      vm.Vector3(watch.x, 0, lane),
+      watch,
+    ];
+  }
 
   /// How long [_round] and [_off] are (without making them: the planning
   /// tries a great many).
   double _roundLength(int who, double e, double x, double z, bool behind) {
-    final rx = plan.restX(who), cx = e * (w / 2 + 1.25), fx = e * (w / 2 + 1.35);
-    final l = (cx - rx).abs() + _dist(cx, SiteLayout.crewZ, fx, -0.6);
+    final rx = plan.restX(who), fx = e * Crew3D.endX(w);
+    final l = (Crew3D.behindZ - SiteLayout.crewZ) + (fx - rx).abs() + (Crew3D.behindZ + 0.6);
     return l + (behind ? 2.1 + (x - fx).abs() + (z + 2.7).abs() : _dist(fx, -0.6, x, z));
   }
 
   double _offLength(double x, double z, vm.Vector3 watch) {
-    final lx = w / 2 + 1.6;
-    return (z - zLane).abs() + (x < w / 2 + 1.0 ? lx - x + _dist(lx, zLane, watch.x, watch.z) : _dist(x, zLane, watch.x, watch.z));
+    final lane = zLane - (z < zPole - 0.4 ? 0.6 : 0.0);
+    return (z - lane).abs() + (watch.x - x).abs() + (watch.z - lane).abs();
   }
 
   static double _dist(double ax, double az, double bx, double bz) => math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
@@ -769,10 +769,8 @@ class Finish3D {
     if (leg.walk case final walk?) {
       walk.pose(f, _u, seed);
       // On the deck at first (it's down, resting a step up), then a step
-      // down off its end.
-      if (f.pos.z > SiteLayout.deckZ0 && f.pos.z < SiteLayout.deckZ1) {
-        f.pos.y = (SiteLayout.deckRest + 0.05) * smooth(p.w / 2 + 1.3, p.w / 2 + 1.0, f.pos.x.abs());
-      }
+      // down off its back.
+      f.pos.y = Crew3D.standY(f.pos, p.w, SiteLayout.deckRest + 0.05);
       _carrying(f);
       return;
     }

@@ -384,6 +384,34 @@ class Figures {
   /// (and clears them when they're gone).
   final solids = <String, List<(vm.Vector3, vm.Vector3)>>{};
 
+  /// The ones that never move (the street furniture: hundreds of them), by
+  /// kind, and by grid cell for looking up only those nearby.
+  final fixed = <String, List<(vm.Vector3, vm.Vector3)>>{};
+  final _cells = <int, List<(vm.Vector3, vm.Vector3)>>{};
+  static const _cellSize = 4.0;
+  static int _cellOf(int i, int k) => (i + 4096) * 8192 + (k + 4096);
+
+  /// Adds [kinds] to the [fixed] solids.
+  void addFixed(Map<String, List<(vm.Vector3, vm.Vector3)>> kinds) {
+    for (final MapEntry(key: kind, value: boxes) in kinds.entries) {
+      (fixed[kind] ??= []).addAll(boxes);
+      for (final box in boxes) {
+        // (In every cell its footprint, and a person's reach, touches.)
+        final (c, h) = box;
+        final i0 = ((c.x - h.x - 0.6) / _cellSize).floor(), i1 = ((c.x + h.x + 0.6) / _cellSize).floor();
+        final k0 = ((c.z - h.z - 0.6) / _cellSize).floor(), k1 = ((c.z + h.z + 0.6) / _cellSize).floor();
+        for (var i = i0; i <= i1; i++) {
+          for (var k = k0; k <= k1; k++) {
+            (_cells[_cellOf(i, k)] ??= []).add(box);
+          }
+        }
+      }
+    }
+  }
+
+  static const _none = <(vm.Vector3, vm.Vector3)>[];
+  List<(vm.Vector3, vm.Vector3)> _fixedNear(double x, double z) => _cells[_cellOf((x / _cellSize).floor(), (z / _cellSize).floor())] ?? _none;
+
   /// Whether a capture run is counting.
   static bool get checking => _counting;
 
@@ -392,27 +420,32 @@ class Figures {
   /// the side they came from ([fromX], [fromZ]: where they were before
   /// being moved there, if they weren't in it), else the nearer side.
   void outOfSolids(double x, double y, double z, double r, List<double> out, {double? fromX, double? fromZ}) {
-    for (var pass = 0; pass < 2; pass++) {
-      for (final boxes in solids.values) {
-        for (final (c, h) in boxes) {
-          if (y > c.y + h.y - 0.05 || y + 1.6 < c.y - h.y) continue;
-          final hx = h.x + r + 0.02, hz = h.z + r + 0.02, dx = x - c.x, dz = z - c.z;
-          if (dx.abs() >= hx || dz.abs() >= hz) continue;
-          // (The side they came from, if they came from outside it.)
-          final ox = fromX == null ? 0.0 : fromX - c.x, oz = fromZ == null ? 0.0 : fromZ - c.z;
-          final outX = fromX != null && ox.abs() >= hx, outZ = fromZ != null && oz.abs() >= hz;
-          final px = hx - dx.abs(), pz = hz - dz.abs();
-          if (outX && !outZ) {
-            x = c.x + (ox >= 0 ? hx : -hx);
-          } else if (outZ && !outX) {
-            z = c.z + (oz >= 0 ? hz : -hz);
-          } else if (px < pz) {
-            x += dx >= 0 ? px : -px;
-          } else {
-            z += dz >= 0 ? pz : -pz;
-          }
+    void outOf(List<(vm.Vector3, vm.Vector3)> boxes) {
+      for (final (c, h) in boxes) {
+        if (y > c.y + h.y - 0.05 || y + 1.6 < c.y - h.y) continue;
+        final hx = h.x + r + 0.02, hz = h.z + r + 0.02, dx = x - c.x, dz = z - c.z;
+        if (dx.abs() >= hx || dz.abs() >= hz) continue;
+        // (The side they came from, if they came from outside it.)
+        final ox = fromX == null ? 0.0 : fromX - c.x, oz = fromZ == null ? 0.0 : fromZ - c.z;
+        final outX = fromX != null && ox.abs() >= hx, outZ = fromZ != null && oz.abs() >= hz;
+        final px = hx - dx.abs(), pz = hz - dz.abs();
+        if (outX && !outZ) {
+          x = c.x + (ox >= 0 ? hx : -hx);
+        } else if (outZ && !outX) {
+          z = c.z + (oz >= 0 ? hz : -hz);
+        } else if (px < pz) {
+          x += dx >= 0 ? px : -px;
+        } else {
+          z += dz >= 0 ? pz : -pz;
         }
       }
+    }
+
+    for (var pass = 0; pass < 2; pass++) {
+      for (final boxes in solids.values) {
+        outOf(boxes);
+      }
+      outOf(_fixedNear(x, z));
     }
     out
       ..[0] = x
@@ -423,7 +456,7 @@ class Figures {
 
   /// Which solids (kind and box) are within a metre of (x, z): for logs.
   String solidsAt(double x, double z) => [
-    for (final MapEntry(key: kind, value: boxes) in solids.entries)
+    for (final MapEntry(key: kind, value: boxes) in [...solids.entries, ...fixed.entries])
       for (final (c, h) in boxes)
         if ((x - c.x).abs() < h.x + 1 && (z - c.z).abs() < h.z + 1) '$kind (${c.x.toStringAsFixed(2)},${c.y.toStringAsFixed(2)},${c.z.toStringAsFixed(2)} ±${h.x.toStringAsFixed(2)},${h.y.toStringAsFixed(2)},${h.z.toStringAsFixed(2)})',
   ].join('; ');
@@ -582,7 +615,7 @@ class Figures {
       final a = _bodies[i];
       if (a.seated) continue;
       final x = a.x + a.nx, z = a.z + a.nz;
-      for (final MapEntry(key: kind, value: boxes) in solids.entries) {
+      for (final MapEntry(key: kind, value: boxes) in [...solids.entries, ...fixed.entries]) {
         var worst = 0.0;
         for (final (c, h) in boxes) {
           if (a.y > c.y + h.y - 0.05 || a.y + 1.6 < c.y - h.y) continue;

@@ -61,7 +61,7 @@ class World3D {
     await Future.wait([city.init(), site.alley.init(), site.vignettes.init()]);
     director.solids = city.towers.solids;
     // The street furniture: everyone keeps out of it.
-    Figures.of(scene).solids.addAll(city.props.solids);
+    Figures.of(scene).addFixed(city.props.solids);
     stage.value = 'people';
     await life.init();
     ready = true;

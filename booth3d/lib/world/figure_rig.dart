@@ -656,21 +656,39 @@ class FigureRig {
   /// bones, the elbow towards the pole).
   void _armPlace(int s, double side, double size, double width, double breath) {
     final o = jArm + 6 * s, j = joints;
-    final tx = j[o], ty = j[o + 1], tz = j[o + 2], px = j[o + 3], py = j[o + 4], pz = j[o + 5];
+    final px = j[o + 3], py = j[o + 4], pz = j[o + 5];
+    var tx = j[o], ty = j[o + 1], tz = j[o + 2];
     final sx = side * shoulderX * width, sy = shoulderY + 0.006 * breath;
-    var ex = tx - sx, ey = ty - sy, ez = tz;
-    var r = math.sqrt(ex * ex + ey * ey + ez * ez);
-    if (r < 1e-5) {
-      ex = 0;
-      ey = -1;
-      ez = 0;
-      r = 0.3;
-    } else {
-      ex /= r;
-      ey /= r;
-      ez /= r;
+    var ex = 0.0, ey = -1.0, ez = 0.0, r = 0.3;
+    for (var pass = 0; pass < 2; pass++) {
+      ex = tx - sx;
+      ey = ty - sy;
+      ez = tz;
+      r = math.sqrt(ex * ex + ey * ey + ez * ez);
+      if (r < 1e-5) {
+        ex = 0;
+        ey = -1;
+        ez = 0;
+        r = 0.3;
+      } else {
+        ex /= r;
+        ey /= r;
+        ez /= r;
+      }
+      r = r.clamp(0.12, upperArm + lowerArm - 0.002);
+      // Never inside the body: a hand that would be (the arms folding, a
+      // reach across or out of reach, a blend between two poses) comes out
+      // onto its front, or its side, the nearer; the arm aims there.
+      final hx = sx + ex * r, hy = sy + ey * r, hz = ez * r;
+      if (pass == 1 || hy < -0.12 || hy > 0.5) break;
+      final narrow = hy < 0 ? 0.7 + 0.3 * (hy + 0.12) / 0.12 : 1.0;
+      final hw = 0.19 * width * narrow, hd = 0.125 * width * narrow, cz = -0.008;
+      final ux = hx / hw, uz = (hz - cz) / hd, e = math.sqrt(ux * ux + uz * uz);
+      if (e >= 1) break;
+      tx = e < 1e-3 ? hx : hx / e;
+      ty = hy;
+      tz = e < 1e-3 ? cz - hd : cz + (hz - cz) / e;
     }
-    r = r.clamp(0.12, upperArm + lowerArm - 0.002);
     const a = upperArm, b = lowerArm;
     final along = (a * a - b * b + r * r) / (2 * r), off = math.sqrt(math.max(0.0, a * a - along * along));
     // The pole, square to the arm.

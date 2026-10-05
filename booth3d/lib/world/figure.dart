@@ -84,6 +84,12 @@ class _Body {
 
   /// Sitting (on a bench, a seat): on whatever they sit on, not out of it.
   bool seated = false;
+
+  /// (Capture runs: this frame's chest, inverted, and palms; its arms, for
+  /// the log.)
+  String pose = '';
+  final chestInv = vm.Matrix4.identity();
+  final palms = [vm.Vector3.zero(), vm.Vector3.zero()];
   List<String>? ring;
   final FigureLook look;
 
@@ -287,6 +293,15 @@ class Figures {
     p.motion = b.motion;
     r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
     if (_counting) {
+      b.chestInv
+        ..setFrom(r.chest)
+        ..invert();
+      b.palms[0].setFrom(r.palms[0]);
+      b.palms[1].setFrom(r.palms[1]);
+      String f(double v) => v.toStringAsFixed(2);
+      b.pose = 'pitch ${f(p.armPitch[0])}/${f(p.armPitch[1])} roll ${f(p.armRoll[0])}/${f(p.armRoll[1])} elbow ${f(p.elbow[0])}/${f(p.elbow[1])} reach ${p.reachingWith(0)}/${p.reachingWith(1)} lean ${f(p.lean)} stoop ${f(p.stoop)} twist ${f(p.twist)} stride ${p.stride.isFinite} clip ${p.clipboard}';
+    }
+    if (_counting) {
       // (Capture runs: anyone whose feet leave the ground, not sitting; the
       // frames before it, for the first few.)
       final foot = math.min(r.feet[0].storage[13], r.feet[1].storage[13]) - p.pos.y;
@@ -380,7 +395,9 @@ class Figures {
       '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}\n'
       'FIGURES jumps: ${_jumps.length}${[for (final j in _jumps) '\n  $j'].join()}\n'
       'FIGURES aloft: $_aloftEvents times, $_aloftFrames frames${[for (final j in _aloft.take(80)) '\n  $j'].join()}\n'
-      'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}';
+      'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}\n'
+      'FIGURES hands in: ${[for (final e in _hands.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}'
+      '${[for (final l in _selfLog) '\n    $l'].join()}';
 
   /// Solid things people keep out of (and capture runs check they did), by
   /// kind: each a box (centre, half extents). Whoever has them sets them
@@ -610,8 +627,70 @@ class Figures {
     _frameAt = now;
   }
 
+  /// How far (metres) a point [pt] is inside [b]'s torso (≤ 0: outside):
+  /// in its chest's frame, an elliptic tube a little inside the mesh (the
+  /// hand's own thickness: touching isn't in).
+  final _local = vm.Vector3.zero();
+  double _inTorso(_Body b, vm.Vector3 pt) {
+    _local.setFrom(pt);
+    b.chestInv.transform3(_local);
+    final size = b.look.size, g = b.look.girth * size;
+    final y = _local.y / size;
+    if (y < -0.06 || y > 0.5) return 0;
+    final hw = 0.15 * g, hd = 0.095 * g;
+    final e = math.sqrt((_local.x / hw) * (_local.x / hw) + (_local.z / hd) * (_local.z / hd));
+    return e < 1 ? (1 - e) * hd : 0;
+  }
+
+  /// Hands inside bodies (their own, someone else's) and inside solid
+  /// things: frames, worst depth, when, who.
+  final _hands = <String, (int, double, double, String)>{};
+  final _selfLog = <String>[];
+  double _selfAt = -1e9;
+  void _handIn(String kind, double depth, double now, String who) {
+    final was = _hands[kind];
+    _hands[kind] = was == null || depth > was.$2 ? ((was?.$1 ?? 0) + 1, depth, now, who) : (was.$1 + 1, was.$2, was.$3, was.$4);
+  }
+
+  void _countHands(double now) {
+    for (final i in _seen) {
+      final a = _bodies[i];
+      for (var s = 0; s < 2; s++) {
+        final pt = a.palms[s];
+        final self = _inTorso(a, pt);
+        if (self > 0.02) {
+          _handIn('own body', self, now, '#${a.n} hand $s at ${pt.x.toStringAsFixed(1)},${pt.y.toStringAsFixed(2)},${pt.z.toStringAsFixed(1)}, in its chest ${_local.x.toStringAsFixed(2)},${_local.y.toStringAsFixed(2)},${_local.z.toStringAsFixed(2)} (${a.pose})');
+          if (_selfLog.length < 12 && (now - _selfAt).abs() > 2) {
+            _selfAt = now;
+            _selfLog.add('#${a.n} hand $s t=${now.toStringAsFixed(2)} ${(self * 100).round()} cm, chest-local ${_local.x.toStringAsFixed(2)},${_local.y.toStringAsFixed(2)},${_local.z.toStringAsFixed(2)} (${a.pose})');
+          }
+        }
+        for (final j in _seen) {
+          if (j == i) continue;
+          final b = _bodies[j];
+          if ((b.x - a.x).abs() > 1.2 || (b.z - a.z).abs() > 1.2 || (b.y - a.y).abs() > 1.0) continue;
+          final d = _inTorso(b, pt);
+          if (d > 0.02) _handIn('someone else', d, now, '#${a.n} hand $s in #${b.n} at ${pt.x.toStringAsFixed(1)},${pt.z.toStringAsFixed(1)}');
+        }
+        // Solid things: deeper than a grip.
+        void boxes(String kind, List<(vm.Vector3, vm.Vector3)> list) {
+          for (final (c, h) in list) {
+            final dx = h.x - (pt.x - c.x).abs(), dy = h.y - (pt.y - c.y).abs(), dz = h.z - (pt.z - c.z).abs();
+            final d = math.min(dx, math.min(dy, dz));
+            if (d > 0.05) _handIn(kind, d, now, '#${a.n} hand $s at ${pt.x.toStringAsFixed(1)},${pt.y.toStringAsFixed(2)},${pt.z.toStringAsFixed(1)}');
+          }
+        }
+        for (final MapEntry(key: kind, value: list) in solids.entries) {
+          boxes(kind, list);
+        }
+        boxes('furniture', _fixedNear(pt.x, pt.z));
+      }
+    }
+  }
+
   void _count(double now) {
     _frames++;
+    _countHands(now);
     // In something solid: a circle round the feet against each box's
     // footprint, while the box spans the person's height.
     for (final i in _seen) {

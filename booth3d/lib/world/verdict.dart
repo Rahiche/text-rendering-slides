@@ -534,8 +534,8 @@ class _Plan {
     const gx = 13.0;
     final spots = [vm.Vector3(x - 1.4, 0, z - 0.3), vm.Vector3(x - 0.12, 0, z + 0.05), vm.Vector3(x + 0.12, 0, z + 0.05)];
     // (Along the pavement in single file by the site's barriers, out of
-    // the way of the people walking along it.)
-    const pz = -9.75;
+    // the way of the people walking along it: beside their way, not in it.)
+    const pz = -9.3;
     for (var i = 0; i < 3; i++) {
       final lag = i * 0.75, side = i == 0 ? 0.0 : (i == 1 ? -0.35 : 0.35);
       final pts = [vm.Vector3(19.4 + lag, 0, pz), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(gx + side, 0, -6.2), spots[i]];

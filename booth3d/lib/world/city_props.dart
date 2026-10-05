@@ -154,18 +154,18 @@ class CityProps {
     for (var z = Plan.parkZ0 + 5.0; z < Plan.parkZ1; z += 9) {
       if ((z - 49).abs() > 1 && !Plan.inLot(-3.4, z)) {
         benches.addInstance(trs(vm.Vector3(-3.4, 0, z), rotY: -math.pi / 2));
-        _solid('benches', -3.4, 0.45, z, 0.26, 0.45, 0.86);
+        _bench(-3.4, z, -1);
       }
       if ((z + 4 - 44).abs() > 1 && !Plan.inLot(3.4, z + 4)) {
         benches.addInstance(trs(vm.Vector3(3.4, 0, z + 4), rotY: math.pi / 2));
-        _solid('benches', 3.4, 0.45, z + 4, 0.26, 0.45, 0.86);
+        _bench(3.4, z + 4, 1);
       }
     }
     // On the plaza's flanks, facing the build.
     for (final s in [-1.0, 1.0]) {
       for (final z in [0.0, 6.6]) {
         benches.addInstance(trs(vm.Vector3(s * (Plan.lampFlank - 0.05), 0, z), rotY: s * math.pi / 2));
-        _solid('benches', s * (Plan.lampFlank - 0.05), 0.45, z, 0.26, 0.45, 0.86);
+        _bench(s * (Plan.lampFlank - 0.05), z, s);
       }
     }
     scene.add(
@@ -173,6 +173,13 @@ class CityProps {
         ..lightChannelMask = 0x01
         ..addComponent(InstancedMeshComponent(benches)),
     );
+  }
+
+  /// A bench's seat and its back (towards [back] in x: the benches all
+  /// stand along z), as solids.
+  void _bench(double x, double z, double back) {
+    _solid('benches', x, 0.25, z, 0.25, 0.25, 0.86);
+    _solid('benches', x + back * 0.22, 0.74, z, 0.04, 0.2, 0.86);
   }
 
   void _cones() {

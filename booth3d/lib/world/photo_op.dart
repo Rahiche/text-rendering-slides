@@ -57,7 +57,7 @@ class PhotoOp {
 
   /// The board's bottom edge in the carriers' hands (its sides at their
   /// waists), and raised in the cheer.
-  static const _hold = 0.85, _raised = 1.45;
+  static const _hold = 0.85, _raised = 1.05;
 
   /// Where the board is held for the photo (the middle of its bottom edge),
   /// and where the tripod stands.

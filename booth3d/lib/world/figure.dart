@@ -290,7 +290,10 @@ class Figures {
       // (Capture runs: anyone whose feet leave the ground, not sitting; the
       // frames before it, for the first few.)
       final foot = math.min(r.feet[0].storage[13], r.feet[1].storage[13]) - p.pos.y;
-      final aloft = foot > 0.5 && math.min(p.legPitch[0], p.legPitch[1]) < 0.9;
+      // (Up: half a metre; walking, not running, a third of one. Down: the
+      // ankle below the ground.)
+      final pace = math.sqrt(b.vx * b.vx + b.vz * b.vz);
+      final aloft = !b.seated && (foot > 0.5 || (foot > 0.3 && pace < 2.6) || foot < 0.0);
       final o = b.motion.now;
       (b.ring ??= []).add('      t=${now.toStringAsFixed(3)} posed hip ${(r.joints[FigureRig.jHipY] - o[FigureRig.jHipY]).toStringAsFixed(2)} shown ${r.joints[FigureRig.jHipY].toStringAsFixed(2)} feet ${foot.toStringAsFixed(2)} thigh ${(r.joints[FigureRig.jLeg] - o[FigureRig.jLeg]).toStringAsFixed(2)}${o[FigureRig.jLeg] >= 0 ? '+' : ''}${o[FigureRig.jLeg].toStringAsFixed(2)} knee ${(r.joints[FigureRig.jLeg + 1] - o[FigureRig.jLeg + 1]).toStringAsFixed(2)}${o[FigureRig.jLeg + 1] >= 0 ? '+' : ''}${o[FigureRig.jLeg + 1].toStringAsFixed(2)} bob ${p.bob.toStringAsFixed(2)} lean ${p.lean.toStringAsFixed(2)} stoop ${p.stoop.toStringAsFixed(2)} stride ${p.stride.toStringAsFixed(1)} y ${p.pos.y.toStringAsFixed(2)}');
       if (b.ring!.length > 7) b.ring!.removeAt(0);

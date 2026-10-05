@@ -311,6 +311,23 @@ class FigureRig {
     _measure(p, size, width, arms);
     motion?.filter(this, p, arms: arms, commit: commit);
     _place(p, size, width, arms, motion);
+    // The lower foot on the ground: the smoothing blends the hips and the
+    // legs each on their own (out of a crouch, setting off), and they
+    // needn't meet the ground between; the hips go up or down the
+    // difference. (In a run's flight, or a jump, only ever up: never
+    // through the ground.)
+    if (motion != null && math.min(p.legPitch[0], p.legPitch[1]) < 0.95) {
+      final walking = p.stride.isFinite, flight = p.bob > 0.02;
+      var err = double.infinity;
+      for (var s = 0; s < 2; s++) {
+        final want = p.pos.y + (_ankleY[s] + (walking ? 0 : p.footLift[s] / size)) * size;
+        err = math.min(err, feet[s].storage[13] - want);
+      }
+      if (err < -0.004 || (!flight && err > 0.004)) {
+        joints[jHipY] -= err;
+        _place(p, size, width, arms, motion);
+      }
+    }
   }
 
   void _measure(FigurePose p, double size, double width, bool arms) {
@@ -335,6 +352,7 @@ class FigureRig {
         _thigh[s] = p.legPitch[s];
         _knee[s] = p.knee[s].isNaN ? _gaitKnee(psi) : p.knee[s];
         _foot[s] = p.foot[s].isNaN ? _gaitFoot(psi) : p.foot[s];
+        _ankleY[s] = ankleOver(_foot[s]).$1;
         _splay[s] = _splayFor(side, sway, sr, cr, track, _thigh[s], _knee[s]);
         _ext[s] = extent(_thigh[s], _knee[s], _foot[s], _splay[s]);
         // The longest leg down carries the hips.

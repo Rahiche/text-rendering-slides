@@ -118,6 +118,19 @@ class TalkOverlay extends StatelessWidget {
             ),
             if (section.stops.length > 2)
               Positioned(left: BP.margin, right: BP.margin, bottom: 26, height: 52, child: _Route(stops: section.stops, stop: stop)),
+            // Blanked: the deck's navy over everything, the room's eyes on
+            // the speaker.
+            Positioned.fill(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: talk.blank,
+                builder: (context, blank, _) => AnimatedOpacity(
+                  opacity: blank ? 1 : 0,
+                  duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
+                  curve: Curves.easeInOut,
+                  child: const ColoredBox(color: BP.bg),
+                ),
+              ),
+            ),
           ],
         );
       },

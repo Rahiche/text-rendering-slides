@@ -40,7 +40,8 @@ import 'world/world.dart';
 ///
 /// F5 (or Ctrl+Shift+T) tells the talk in the city, section by section:
 /// → / PageDown / Space next, ← / PageUp back, Home / End the section's
-/// first and last stop, 0–6 a section (0 the title), Esc to leave it. To
+/// first and last stop, 0–6 a section (0 the title), B or . to blank the
+/// screen (any key back), Esc to leave it. To
 /// open straight into it: on the Mac,
 ///   open -a "Name City" --env NAME_CITY_TALK=1      (or =05: at section 05)
 /// and on the web, the page with ?talk (or ?talk=05).
@@ -176,6 +177,13 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       return true;
     }
     if (!talk.on || HardwareKeyboard.instance.isMetaPressed) return false;
+    // A clicker's blank key (B, or .): the screen to navy and back. While
+    // it's blank, the other keys only bring the talk back (Esc still ends
+    // it).
+    if (key == LogicalKeyboardKey.keyB || key == LogicalKeyboardKey.period) {
+      if (e is KeyDownEvent) talk.blank.value = !talk.blank.value;
+      return true;
+    }
     final void Function()? action = switch (key) {
       LogicalKeyboardKey.arrowRight || LogicalKeyboardKey.arrowDown || LogicalKeyboardKey.pageDown || LogicalKeyboardKey.space || LogicalKeyboardKey.enter => talk.next,
       LogicalKeyboardKey.arrowLeft || LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.pageUp || LogicalKeyboardKey.backspace => talk.back,
@@ -188,7 +196,13 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       },
     };
     if (action == null) return false;
-    if (e is KeyDownEvent) action();
+    if (e is KeyDownEvent) {
+      if (talk.blank.value && action != talk.end) {
+        talk.blank.value = false;
+      } else {
+        action();
+      }
+    }
     return true;
   }
 

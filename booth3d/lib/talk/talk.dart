@@ -44,6 +44,9 @@ class Talk extends ChangeNotifier {
   /// the camera).
   final frame = ValueNotifier<int>(0);
 
+  /// The screen blanked (a clicker's blank key), the talk held behind it.
+  final blank = ValueNotifier<bool>(false);
+
   TalkSection get section => sections[_section];
   int get sectionIndex => _section;
 
@@ -111,6 +114,7 @@ class Talk extends ChangeNotifier {
   void end() {
     if (!_on) return;
     _on = false;
+    blank.value = false;
     section.leave();
     director.talkShot = null;
     notifyListeners();
@@ -279,8 +283,8 @@ class Talk extends ChangeNotifier {
 
   /// Capture aid: --dart-define=BOOTH3D_TALK=05@2,9,15,p20,end@30,… starts
   /// the talk at scene time 2 (at section 05; without it, at the first),
-  /// then presses next (or, with p, back; with a section, jumps there) at
-  /// each time after.
+  /// then presses next (or, with p, back; with b, blank; with a section,
+  /// jumps there) at each time after.
   static const _scriptDef = String.fromEnvironment('BOOTH3D_TALK');
   static final _presses = [
     for (final s in _scriptDef.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)) s,
@@ -294,12 +298,14 @@ class Talk extends ChangeNotifier {
     while (_pressed < _presses.length) {
       final p = _presses[_pressed];
       final at = p.contains('@') ? p.split('@').first : null;
-      final when = double.parse((at == null ? p : p.split('@').last).replaceFirst('p', ''));
+      final when = double.parse((at == null ? p : p.split('@').last).replaceFirst(RegExp('^[pb]'), ''));
       if (t < when) return;
       if (_pressed == 0) {
         start(director.camera, at: at == null ? 0 : _sectionAt(at));
       } else if (at != null) {
         jump(_sectionAt(at));
+      } else if (p.startsWith('b')) {
+        blank.value = !blank.value;
       } else if (p.startsWith('p')) {
         back();
       } else {

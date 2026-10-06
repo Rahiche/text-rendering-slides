@@ -102,8 +102,6 @@ List<String> _samplesOf(JourneyData d) {
   final probe = TextProbe(TextSpan(text: w, style: journeyStyle(48)));
   final size = probe.size;
   probe.dispose();
-  final unique = {for (final g in d.glyphs) '${g.font?.name}:${g.glyphId}:${g.codePoint}'}.length;
-  final glyphCount = w.characters.length;
   return [
     "Text('${short(w)}')",
     '$units${w.length > 3 ? ' …' : ''}',
@@ -113,8 +111,8 @@ List<String> _samplesOf(JourneyData d) {
     'adv $adv …',
     '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)}',
     'DrawTextFrame',
-    'atlas ← $unique',
-    '${glyphCount * 2} triangles',
+    'atlas ← ${d.atlasGlyphs}',
+    '${d.quads * 2} triangles',
   ];
 }
 
@@ -507,8 +505,9 @@ class _Map extends FactoryInk {
 
   // ── The atlas rack and the screen ────────────────────────────────────────
 
-  /// The word's unique glyphs (one atlas tile each), at most ten.
-  List<String> get uniques => d.text.characters.toSet().take(10).toList();
+  /// The word's different glyphs as shaped (one atlas tile each: t t is
+  /// one, the font's ligature), at most ten.
+  List<String> get uniques => {for (final r in d.run) d.text.substring(r.start, r.end)}.take(10).toList();
 
   void atlasRack() {
     final y1 = _floorY(4) - 6;
@@ -623,8 +622,8 @@ class _Map extends FactoryInk {
       paintFit(wt.get(d.text, BT.mono(14, color: BP.inkDim)), body, fitHeight: true);
     }
     if (!paintLine && stage >= 5) {
-      // Shaped: a glyph id tick per glyph.
-      final n = math.max(1, d.glyphs.where((g) => !g.isJoinControl).length);
+      // Shaped: a glyph id tick per glyph (a ligature one).
+      final n = math.max(1, d.run.length);
       final ticks = Path();
       for (var k = 0; k < n; k++) {
         final x = lerp(body.left + 4, body.right - 4, n == 1 ? 0.5 : k / (n - 1));

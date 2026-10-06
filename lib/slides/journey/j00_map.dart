@@ -200,8 +200,6 @@ class _JMapSlideState extends State<JMapSlide> {
     final probe = TextProbe(TextSpan(text: w, style: journeyStyle(48)));
     final size = probe.size;
     probe.dispose();
-    final unique = {for (final g in d.glyphs) '${g.font?.name}:${g.glyphId}:${g.codePoint}'}.length;
-    final glyphCount = w.characters.length;
     return [
       "Text('${_short(w)}')",
       '$units${w.length > 3 ? ' …' : ''}',
@@ -211,8 +209,8 @@ class _JMapSlideState extends State<JMapSlide> {
       'adv $adv …',
       '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)}',
       'DrawTextFrame',
-      'atlas ← $unique',
-      '${glyphCount * 2} triangles',
+      'atlas ← ${d.atlasGlyphs}',
+      '${d.quads * 2} triangles',
     ];
   }
 

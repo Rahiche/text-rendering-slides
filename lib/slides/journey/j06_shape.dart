@@ -30,10 +30,12 @@ class _Shape extends StatefulWidget {
   State<_Shape> createState() => _ShapeState();
 }
 
-/// One row of shaping output: a cluster and its measured advance.
+/// One row of shaping output: a glyph (a ligature or an emoji cluster: one
+/// for several code points), its cluster and its measured advance.
 class _Out {
-  _Out(this.glyphs, this.start, this.end, this.advancePx, this.box);
+  _Out(this.glyph, this.glyphs, this.start, this.end, this.advancePx, this.box);
 
+  final JRunGlyph glyph;
   final List<JGlyph> glyphs;
   final int start;
   final int end;
@@ -51,22 +53,17 @@ class _ShapeState extends State<_Shape> {
     if (!_liga) const FontFeature.disable('liga'),
   ];
 
+  /// A row a glyph as shaped: the fonts' ligatures (t t, with liga on) and
+  /// emoji clusters one glyph each.
   List<_Out> _outputs(TextProbe probe) {
     final d = widget.data;
-    final out = <_Out>[];
-    // Emoji sequences shape to one cluster: group by grapheme there.
-    if (d.glyphs.any((g) => g.script == Script.emoji)) {
-      for (final (s, e) in probe.graphemes()) {
-        final r = probe.rectFor(s, e);
-        out.add(_Out([for (final g in d.glyphs) if (g.start >= s && g.end <= e) g], s, e, r?.width ?? 0, r));
-      }
-      return out;
-    }
-    for (final g in d.glyphs) {
-      final r = probe.rectFor(g.start, g.end);
-      out.add(_Out([g], g.start, g.end, r?.width ?? 0, r));
-    }
-    return out;
+    return [
+      for (final g in d.shaped(liga: _liga))
+        () {
+          final r = probe.rectFor(g.start, g.end);
+          return _Out(g, [for (final i in g.parts) d.glyphs[i]], g.start, g.end, r?.width ?? 0, r);
+        }(),
+    ];
   }
 
   @override
@@ -264,19 +261,22 @@ class _OutTable extends StatelessWidget {
   Widget _buildRow(_Out o, Widget Function(List<String>, {Color color, bool header, Color? deltaColor}) row) {
     final g = o.glyphs.isEmpty ? null : o.glyphs.first;
     final units = (o.advancePx * upem / size).round();
-    final sys = g?.font == null;
-    final nominal = o.glyphs.fold<int>(0, (a, x) => a + x.advance);
+    final f = o.glyph.font;
+    final sys = f == null;
+    // Against the glyph's own hmtx (a ligature's: the new glyph's).
+    final nominal = sys ? 0 : f.advance(o.glyph.glyphId);
     final delta = units - nominal;
     final text = o.glyphs.map((x) => x.char).join();
+    final liga = o.glyph.ligature;
     return row(
       [
         text,
-        sys ? 'sys' : '#${g!.glyphId}${g.script.rtl ? '→' : ''}',
+        sys ? 'sys' : '#${o.glyph.glyphId}${g!.script.rtl ? '→' : ''}',
         '${o.start}',
         sys ? '${o.advancePx.toStringAsFixed(1)}px' : '$units',
-        sys ? '—' : (delta == 0 ? '0' : (delta > 0 ? '+$delta' : '$delta')),
+        sys ? '—' : '${delta == 0 ? '0' : (delta > 0 ? '+$delta' : '$delta')}${liga ? ' · liga' : ''}',
       ],
-      deltaColor: sys || delta == 0 ? BP.inkFaint : BP.amber,
+      deltaColor: sys || (delta == 0 && !liga) ? BP.inkFaint : BP.amber,
     );
   }
 }
@@ -420,18 +420,23 @@ class _FallPainter extends CustomPainter {
             ..strokeWidth = 1,
         );
       }
-      // The falling glyph (drawn alone = nominal form)
+      // The falling glyph (drawn alone = nominal form; a ligature's letters
+      // each alone, falling together into the one glyph).
       if (!hold) {
-        final text = o.glyphs.map((g) => g.char).join();
-        final tp = TextPainter(
-          text: TextSpan(text: text, style: journeyStyle(size, color: ink, features: features)),
-          textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
-        )..layout();
-        final target = box?.left ?? n.left;
-        final x = n.left + (target - n.left) * fall;
-        final y = (_topBase - line.baseline) + (_botBase - _topBase) * fall;
-        tp.paint(canvas, Offset(x, y));
-        tp.dispose();
+        final parts = o.glyph.ligature ? [for (final g in o.glyphs) g.char] : [o.glyphs.map((g) => g.char).join()];
+        var from = n.left;
+        for (final (k, text) in parts.indexed) {
+          final tp = TextPainter(
+            text: TextSpan(text: text, style: journeyStyle(size, color: ink, features: features)),
+            textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+          )..layout();
+          final target = box == null ? from : box.left + box.width * k / parts.length;
+          final x = from + (target - from) * fall;
+          final y = (_topBase - line.baseline) + (_botBase - _topBase) * fall;
+          tp.paint(canvas, Offset(x, y));
+          from += o.glyph.ligature ? o.glyphs[k].advance * scale : 0;
+          tp.dispose();
+        }
       }
     }
 

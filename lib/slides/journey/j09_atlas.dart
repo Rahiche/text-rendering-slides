@@ -33,9 +33,13 @@ class _Key {
     required this.x,
     required this.color,
     this.form = '',
-  });
+    int? gid,
+  }) : gid = gid ?? glyph.glyphId;
 
   final String text;
+
+  /// Its glyph id: a ligature's own (t t: #906), not its first letter's.
+  final int gid;
 
   /// Arabic positional form (init/medi/fina/isol) — rendered via ZWJ context.
   final String form;
@@ -49,7 +53,7 @@ class _Key {
   int uses = 1;
 
   FontData? get font => glyph.font;
-  String get id => '${glyph.fontName}:${glyph.glyphId}:${color ? text : ''}:$form:$bucket';
+  String get id => '${glyph.fontName}:$gid:${color ? text : ''}:$form:$bucket';
 }
 
 class _Atlas extends StatefulWidget {
@@ -116,20 +120,21 @@ class _AtlasState extends State<_Atlas> with SingleTickerProviderStateMixin {
       }
     } else {
       final runes = d.text.runes.toList();
-      for (var gi = 0; gi < d.glyphs.length; gi++) {
+      // A key a glyph as shaped: a ligature (t t) is one glyph, one key.
+      for (final run in d.run) {
+        final gi = run.parts.first;
         final g = d.glyphs[gi];
-        final r = probe.rectFor(g.start, g.end);
+        final text = d.text.substring(run.start, run.end);
+        final r = probe.rectFor(run.start, run.end);
         // Spaces have no ink, so no tile. Glyphs from a platform fallback font
         // (e.g. kanji) are still A8 tiles, rendered from the text itself.
-        final noInk = g.font == null
-            ? g.char.trim().isEmpty
-            : g.font!.outline(g.glyphId).contours.isEmpty;
+        final noInk = run.font == null ? text.trim().isEmpty : run.font!.outline(run.glyphId).contours.isEmpty;
         if (noInk) continue;
         final x = r?.left ?? 0;
         final frac = x - x.floorToDouble();
         final bucket = (frac * 4).round() % 4;
-        final (form, display) = g.script == Script.arabic ? arabicForm(runes, gi) : ('', g.char);
-        final k = _Key(text: display, glyph: g, bucket: bucket, x: x, color: false, form: form);
+        final (form, display) = g.script == Script.arabic ? arabicForm(runes, gi) : ('', text);
+        final k = _Key(text: display, glyph: g, gid: run.glyphId, bucket: bucket, x: x, color: false, form: form);
         final existing = keys[k.id];
         if (existing != null) {
           existing.uses++;
@@ -288,7 +293,7 @@ class _KeyList extends StatelessWidget {
                           ? 'system · color'
                           : keys[i].font == null
                           ? 'system fallback · .${['00', '25', '50', '75'][keys[i].bucket]}'
-                          : '${_short(keys[i].glyph.fontName)} · #${keys[i].glyph.glyphId}${keys[i].shaped ? '→${keys[i].form}' : ''} · .${['00', '25', '50', '75'][keys[i].bucket]}',
+                          : '${_short(keys[i].glyph.fontName)} · #${keys[i].gid}${keys[i].shaped ? '→${keys[i].form}' : ''} · .${['00', '25', '50', '75'][keys[i].bucket]}',
                       style: BT.mono(13, color: i < built || paths ? BP.ink : BP.inkFaint),
                     ),
                   ),
@@ -339,7 +344,7 @@ class _Pipeline extends StatelessWidget {
               child: k.color || font == null
                   ? Center(child: Text(k.text, style: journeyStyle(110)))
                   : CustomPaint(
-                      painter: _OutlinePainter(font.outline(k.glyph.glyphId), font, paths),
+                      painter: _OutlinePainter(font.outline(k.gid), font, paths),
                     ),
             ),
           ),
@@ -742,7 +747,7 @@ class _AtlasPainter extends CustomPainter {
         tiles[i] = Size(tp.width + 3, tp.height * 0.85);
         tp.dispose();
       } else {
-        final b = f.outline(k.glyph.glyphId).bounds;
+        final b = f.outline(k.gid).bounds;
         final s = px / f.unitsPerEm;
         tiles[i] = Size(b.width * s + 3, b.height * s + 3);
       }
@@ -802,10 +807,10 @@ class _AtlasPainter extends CustomPainter {
         tp.dispose();
       } else {
         final f = k.font!;
-        final b = f.outline(k.glyph.glyphId).bounds;
+        final b = f.outline(k.gid).bounds;
         final s = px / f.unitsPerEm * scale;
         final path = f
-            .outline(k.glyph.glyphId)
+            .outline(k.gid)
             .toPath(
               scale: s,
               origin: Offset(

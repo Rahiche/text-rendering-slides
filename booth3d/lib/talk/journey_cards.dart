@@ -67,6 +67,35 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
   }
 
   String gid(String g) => font == null ? '…' : '#${font.glyphId(g.runes.first)}';
+  // The glyphs as shaped: the cmap's, the font's ligatures made one glyph
+  // (Space Grotesk: t t → #906).
+  final shaped = <(int, int)>[];
+  if (font != null) {
+    final ids = [for (final g in letters) font.glyphId(g.runes.first)];
+    for (var i = 0; i < ids.length;) {
+      final lig = font.ligatureAt(ids, i);
+      shaped.add((lig?.$1 ?? ids[i], lig?.$2 ?? 1));
+      i += lig?.$2 ?? 1;
+    }
+  }
+  final glyphs = font == null ? null : shaped.length;
+  // A cell a glyph as shaped (t t one), its advance as positioned.
+  List<(String, String, bool)> run() {
+    final m = measured;
+    if (font == null || m == null) return each((i, g) => advance(i));
+    var a = 0;
+    return [
+      for (final (_, k) in shaped)
+        () {
+          final end = a + k < m.length ? m[a + k].pen : m.last.pen + m.last.advance;
+          final cell = (letters.sublist(a, a + k).join(), ems(end - m[a].pen), a == 0);
+          a += k;
+          return cell;
+        }(),
+    ];
+  }
+
+  final ligature = [for (final (id, n) in shaped) if (n > 1) id];
   final found = font == null ? null : letters.where((g) => font.has(g.runes.first)).length;
   // How the cmap gets the first letter's glyph (format 4: a delta).
   final segment = font?.segmentIndexOf(first);
@@ -153,8 +182,11 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
       'HarfBuzz shapes the whole run at once: glyphs, advances, positions. Space Grotesk\'s liga '
           'joins t t into one glyph, its advance split between them.',
       [
-        FactLetters('x_advance · em', each((i, g) => advance(i))),
-        const FactRow('features', 'kern · liga'),
+        FactLetters('x_advance · em', run()),
+        FactRow(
+          'glyphs',
+          glyphs == null ? '…' : '$n code points → $glyphs${ligature.isEmpty ? '' : '  (liga: ${ligature.map((id) => '#$id').join(' ')})'}',
+        ),
         FactRow('run width', width == null ? '…' : '${ems(width)} em', accent: true),
       ],
     ),
@@ -177,7 +209,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
           'and positions — and the frame goes from the UI thread to the raster thread.',
       [
         const FactCode('Save\nTranslate(x, y)\nDrawTextFrame(frame, x, baseline)\nRestore'),
-        FactRow('TextFrame', font == null ? '…' : 'glyphs ${letters.take(4).map(gid).join(' ')} …'),
+        FactRow('TextFrame', font == null ? '…' : 'glyphs ${shaped.take(4).map((s) => '#${s.$1}').join(' ')} …'),
         const FactRow('thread', 'UI → raster', accent: true),
       ],
     ),
@@ -199,11 +231,11 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
     JourneyCard(
       '描画',
       'Draw',
-      'Each glyph is a quad — two triangles — its corners pointing into the atlas. The shader '
-          'multiplies the text color by the coverage: the whole word in one draw call.',
+      'Each glyph is a quad — two triangles — its corners pointing into the atlas (t t is one '
+          'glyph). The shader multiplies the text color by the coverage: one draw call.',
       [
         const FactCode('color = text_color * atlas.r;  // A8 glyphs'),
-        FactRow('quads', '$n · ${n * 2} triangles'),
+        FactRow('quads', glyphs == null ? '…' : '$glyphs · ${glyphs * 2} triangles'),
         const FactRow('draw calls', '1', accent: true),
         FactRow('framebuffer', rendered ? '${name.cols} × ${name.rows} px (the board)' : '…'),
       ],

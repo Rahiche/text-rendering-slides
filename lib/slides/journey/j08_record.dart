@@ -129,40 +129,40 @@ String _contextual(List<JGlyph> gs, int i) {
 
 List<_Run> _buildRuns(JourneyData d, TextProbe probe) {
   final logical = <_G>[];
-  for (final (s, e) in probe.graphemes()) {
-    final idx = [
-      for (var i = 0; i < d.glyphs.length; i++)
-        if (d.glyphs[i].start >= s && d.glyphs[i].start < e) i,
-    ];
-    final cluster = probe.rectFor(s, e);
-    if (idx.isEmpty || cluster == null) continue;
-    if (idx.every((i) => d.glyphs[i].font == null)) {
+  final clusters = probe.graphemes().toList();
+  // The glyphs as shaped: the font's ligatures one glyph (t t: #906), a
+  // platform cluster (an emoji) one color glyph.
+  for (final r in d.run) {
+    var box = probe.rectFor(r.start, r.end);
+    if (box == null || box.width < 0.5) {
+      for (final (s, e) in clusters) {
+        if (r.start >= s && r.start < e) box = probe.rectFor(s, e);
+      }
+    }
+    if (box == null) continue;
+    if (r.font == null) {
       // Platform fallback (e.g. an emoji font): one color glyph per cluster.
       logical.add(_G(
-        shown: d.text.substring(s, e),
+        shown: d.text.substring(r.start, r.end),
         id: null,
-        x: cluster.left,
-        box: cluster,
+        x: box.left,
+        box: box,
         font: 'system fallback',
         kind: _Kind.fallback,
       ));
       continue;
     }
-    for (final i in idx) {
-      final g = d.glyphs[i];
-      if (g.font == null) continue;
-      var r = probe.rectFor(g.start, g.end);
-      if (r == null || r.width < 0.5) r = cluster;
-      final arabic = g.script == Script.arabic;
-      logical.add(_G(
-        shown: g.codePoint == 0x20 ? '␠' : (arabic ? _contextual(d.glyphs, i) : g.char),
-        id: g.glyphId,
-        x: r.left,
-        box: r,
-        font: g.fontName,
-        kind: arabic ? _Kind.arabic : _Kind.font,
-      ));
-    }
+    final i = r.parts.first;
+    final g = d.glyphs[i];
+    final arabic = g.script == Script.arabic;
+    logical.add(_G(
+      shown: r.ligature ? d.text.substring(r.start, r.end) : (g.codePoint == 0x20 ? '␠' : (arabic ? _contextual(d.glyphs, i) : g.char)),
+      id: r.glyphId,
+      x: box.left,
+      box: box,
+      font: g.fontName,
+      kind: arabic ? _Kind.arabic : _Kind.font,
+    ));
   }
   final runs = <_Run>[];
   for (final g in logical) {

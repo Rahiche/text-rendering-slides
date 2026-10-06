@@ -201,7 +201,6 @@ class _DetectiveJourneyState extends State<DetectiveJourney> {
     final probe = TextProbe(TextSpan(text: w, style: journeyStyle(48)));
     final size = probe.size;
     probe.dispose();
-    final unique = {for (final g in d.glyphs) '${g.font?.name}:${g.glyphId}:${g.codePoint}'}.length;
     final short = w.length > 8 ? '${w.substring(0, 7)}…' : w;
     return [
       "Text('$short')",
@@ -212,8 +211,8 @@ class _DetectiveJourneyState extends State<DetectiveJourney> {
       'adv $adv …',
       '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)}',
       'DrawTextFrame',
-      'atlas ← $unique',
-      '${w.characters.length * 2} triangles',
+      'atlas ← ${d.atlasGlyphs}',
+      '${d.quads * 2} triangles',
     ];
   }
 }

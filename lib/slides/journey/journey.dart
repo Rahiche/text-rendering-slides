@@ -70,6 +70,21 @@ class JGlyph {
   bool get isJoinControl => codePoint == 0x200D || codePoint == 0xFE0F;
 }
 
+/// One glyph of the shaped run: its font (null: the platform's) and id, the
+/// code points it draws ([parts], indices into [JourneyData.glyphs]: more
+/// than one for a ligature or an emoji cluster), and their UTF-16 range.
+class JRunGlyph {
+  const JRunGlyph(this.font, this.glyphId, this.parts, this.start, this.end);
+
+  final FontData? font;
+  final int glyphId;
+  final List<int> parts;
+  final int start, end;
+
+  /// Two or more code points made one glyph by the font.
+  bool get ligature => font != null && parts.length > 1;
+}
+
 class JourneyData {
   JourneyData(this.text, this.latin, this.arabic) {
     var i = 0;
@@ -99,6 +114,57 @@ class JourneyData {
   final FontData latin;
   final FontData arabic;
   final List<JGlyph> glyphs = [];
+
+  /// The glyphs the paragraph draws: the cmap's (a glyph a code point) with
+  /// the fonts' default ligatures made (Space Grotesk: t t → one glyph), and
+  /// a cluster only the platform's fonts have (an emoji with its skin tone)
+  /// one glyph. 'Flutter': 6 glyphs.
+  late final List<JRunGlyph> run = shaped();
+
+  /// [run], or without the ligatures (liga off).
+  List<JRunGlyph> shaped({bool liga = true}) {
+    final out = <JRunGlyph>[];
+    // Where each grapheme ends (UTF-16).
+    final ends = <int>[];
+    var o = 0;
+    for (final c in text.characters) {
+      ends.add(o += c.length);
+    }
+    var i = 0;
+    while (i < glyphs.length) {
+      final g = glyphs[i];
+      final f = g.font;
+      if (f == null) {
+        // The whole grapheme, from the platform's fonts (its joiners and
+        // modifiers with it).
+        final end = ends.firstWhere((e) => e > g.start, orElse: () => text.length);
+        var j = i;
+        while (j + 1 < glyphs.length && glyphs[j + 1].start < end) {
+          j++;
+        }
+        out.add(JRunGlyph(null, 0, [for (var k = i; k <= j; k++) k], g.start, glyphs[j].end));
+        i = j + 1;
+        continue;
+      }
+      final ids = [for (var k = i; k < glyphs.length && identical(glyphs[k].font, f); k++) glyphs[k].glyphId];
+      final lig = liga ? f.ligatureAt(ids) : null;
+      final n = lig?.$2 ?? 1;
+      out.add(JRunGlyph(f, lig?.$1 ?? g.glyphId, [for (var k = i; k < i + n; k++) k], g.start, glyphs[i + n - 1].end));
+      i += n;
+    }
+    return out;
+  }
+
+  /// The quads the GPU draws for the word: a glyph of [run] each, but
+  /// those without ink (a space).
+  int get quads => run.where((r) {
+    final f = r.font;
+    return f == null ? text.substring(r.start, r.end).trim().isNotEmpty : f.outline(r.glyphId).contours.isNotEmpty;
+  }).length;
+
+  /// How many glyphs the atlas gets for the word: the different ones of
+  /// [run].
+  int get atlasGlyphs => {for (final r in run) r.font == null ? text.substring(r.start, r.end) : '${r.font!.name}:${r.glyphId}'}.length;
 
   bool get rtl => glyphs.any((g) => g.script.rtl);
   List<FontData?> get fonts => {for (final g in glyphs) g.font}.toList();

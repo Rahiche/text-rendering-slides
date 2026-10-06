@@ -187,16 +187,22 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
     final lines = _probe.lines;
     if (lines.isEmpty) return;
     final base = lines.first.baseline;
-    for (final (s, e) in _probe.graphemes()) {
-      final idx = [
-        for (var i = 0; i < d.glyphs.length; i++)
-          if (d.glyphs[i].start >= s && d.glyphs[i].start < e) i,
-      ];
-      final cluster = _probe.rectFor(s, e);
-      if (idx.isEmpty || cluster == null) continue;
-      final text = d.text.substring(s, e);
-      if (idx.every((i) => d.glyphs[i].font == null)) {
-        if (text.trim().isEmpty) continue;
+    final clusters = _probe.graphemes().toList();
+    Rect? clusterOf(int at) {
+      for (final (s, e) in clusters) {
+        if (at >= s && at < e) return _probe.rectFor(s, e);
+      }
+      return null;
+    }
+
+    // A quad a glyph as shaped: a ligature (t t: #906) is one glyph, one
+    // quad; a platform cluster (an emoji) one too.
+    for (final run in d.run) {
+      final cluster = clusterOf(run.start);
+      final text = d.text.substring(run.start, run.end);
+      final f = run.font;
+      if (f == null) {
+        if (text.trim().isEmpty || cluster == null) continue;
         _quads.add(_Quad(
           rect: cluster,
           label: text,
@@ -207,40 +213,38 @@ class _GpuState extends State<_Gpu> with SingleTickerProviderStateMixin {
         ));
         continue;
       }
-      for (final i in idx) {
-        final g = d.glyphs[i];
-        final f = g.font;
-        if (f == null) continue;
-        var r = _probe.rectFor(g.start, g.end);
-        if (r == null || r.width < 0.5) r = cluster;
-        if (g.script == Script.arabic) {
-          // Contextual forms: bounds come from the rendered pixels.
-          _quads.add(_Quad(
-            rect: r,
-            label: g.char,
-            id: g.glyphId,
-            color: false,
-            tileKey: 'ar:${g.codePoint}:${_form(d.glyphs, i)}',
-            scan: true,
-          ));
-          continue;
-        }
-        final o = f.outline(g.glyphId);
-        if (o.contours.isEmpty) continue; // a space: no ink, no quad
-        final k = _fs / f.unitsPerEm;
-        final pen = Offset(r.left, base);
-        final b = o.bounds; // font units, y up: (xMin, yMin, xMax, yMax)
-        final ink = Rect.fromLTRB(pen.dx + b.left * k, base - b.bottom * k, pen.dx + b.right * k, base - b.top * k);
-        final q = ink.inflate(1);
+      final i = run.parts.first;
+      final g = d.glyphs[i];
+      var r = _probe.rectFor(run.start, run.end);
+      if (r == null || r.width < 0.5) r = cluster;
+      if (r == null) continue;
+      if (g.script == Script.arabic) {
+        // Contextual forms: bounds come from the rendered pixels.
         _quads.add(_Quad(
-          rect: Rect.fromLTWH(q.left, q.top, q.width.ceilToDouble(), q.height.ceilToDouble()),
+          rect: r,
           label: g.char,
           id: g.glyphId,
           color: false,
-          tileKey: '${f.name}:${g.glyphId}',
-          path: o.toPath(scale: k, origin: pen),
+          tileKey: 'ar:${g.codePoint}:${_form(d.glyphs, i)}',
+          scan: true,
         ));
+        continue;
       }
+      final o = f.outline(run.glyphId);
+      if (o.contours.isEmpty) continue; // a space: no ink, no quad
+      final k = _fs / f.unitsPerEm;
+      final pen = Offset(r.left, base);
+      final b = o.bounds; // font units, y up: (xMin, yMin, xMax, yMax)
+      final ink = Rect.fromLTRB(pen.dx + b.left * k, base - b.bottom * k, pen.dx + b.right * k, base - b.top * k);
+      final q = ink.inflate(1);
+      _quads.add(_Quad(
+        rect: Rect.fromLTWH(q.left, q.top, q.width.ceilToDouble(), q.height.ceilToDouble()),
+        label: text,
+        id: run.glyphId,
+        color: false,
+        tileKey: '${f.name}:${run.glyphId}',
+        path: o.toPath(scale: k, origin: pen),
+      ));
     }
   }
 

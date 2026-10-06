@@ -164,6 +164,76 @@ class FontData {
     }
   }
 
+  /// The ligatures a shaper makes by default (GSUB liga, clig, rlig: their
+  /// plain ligature lookups), by first glyph: the other components and the
+  /// ligature glyph, in the font's order (longest first). Space Grotesk:
+  /// f f i, f i, f l … and t t → t_t.liga.
+  late final Map<int, List<(List<int>, int)>> ligatures = _parseLigatures();
+
+  /// The ligature [glyphs] start with at [at] (its glyph id and how many
+  /// glyphs it takes), or null.
+  (int, int)? ligatureAt(List<int> glyphs, [int at = 0]) {
+    for (final (rest, lig) in ligatures[glyphs[at]] ?? const <(List<int>, int)>[]) {
+      if (at + rest.length >= glyphs.length) continue;
+      var ok = true;
+      for (var k = 0; k < rest.length && ok; k++) {
+        ok = glyphs[at + 1 + k] == rest[k];
+      }
+      if (ok) return (lig, rest.length + 1);
+    }
+    return null;
+  }
+
+  Map<int, List<(List<int>, int)>> _parseLigatures() {
+    final out = <int, List<(List<int>, int)>>{};
+    final t = tables['GSUB'];
+    if (t == null) return out;
+    final g = t.$1;
+    final features = g + _d.getUint16(g + 6), lookups = g + _d.getUint16(g + 8);
+    final wanted = <int>{};
+    for (var i = 0; i < _d.getUint16(features); i++) {
+      final r = features + 2 + 6 * i;
+      final tag = String.fromCharCodes(_d.buffer.asUint8List(_d.offsetInBytes + r, 4));
+      if (tag != 'liga' && tag != 'clig' && tag != 'rlig') continue;
+      final f = features + _d.getUint16(r + 4);
+      for (var k = 0; k < _d.getUint16(f + 2); k++) {
+        wanted.add(_d.getUint16(f + 4 + 2 * k));
+      }
+    }
+    for (final i in wanted.toList()..sort()) {
+      final lookup = lookups + _d.getUint16(lookups + 2 + 2 * i);
+      final type = _d.getUint16(lookup);
+      for (var s = 0; s < _d.getUint16(lookup + 4); s++) {
+        var sub = lookup + _d.getUint16(lookup + 6 + 2 * s), subType = type;
+        if (type == 7) {
+          // (An extension: the real subtable further on.)
+          subType = _d.getUint16(sub + 2);
+          sub += _d.getUint32(sub + 4);
+        }
+        if (subType != 4 || _d.getUint16(sub) != 1) continue;
+        final firsts = _coverage(sub + _d.getUint16(sub + 2));
+        for (var k = 0; k < _d.getUint16(sub + 4) && k < firsts.length; k++) {
+          final set = sub + _d.getUint16(sub + 6 + 2 * k);
+          for (var j = 0; j < _d.getUint16(set); j++) {
+            final lig = set + _d.getUint16(set + 2 + 2 * j);
+            final n = _d.getUint16(lig + 2);
+            (out[firsts[k]] ??= []).add(([for (var q = 0; q < n - 1; q++) _d.getUint16(lig + 4 + 2 * q)], _d.getUint16(lig)));
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  /// An OpenType coverage table's glyphs, in coverage index order.
+  List<int> _coverage(int o) {
+    if (_d.getUint16(o) == 1) return [for (var k = 0; k < _d.getUint16(o + 2); k++) _d.getUint16(o + 4 + 2 * k)];
+    return [
+      for (var k = 0; k < _d.getUint16(o + 2); k++)
+        for (var gid = _d.getUint16(o + 4 + 6 * k); gid <= _d.getUint16(o + 6 + 6 * k); gid++) gid,
+    ];
+  }
+
   (int, int) _glyphRange(int gid) {
     final loca = tables['loca']!.$1;
     final glyf = tables['glyf']!.$1;

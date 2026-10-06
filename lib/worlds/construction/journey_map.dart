@@ -246,7 +246,6 @@ class _ConstructionJourneyMapState extends State<ConstructionJourneyMap> with Si
     final probe = TextProbe(TextSpan(text: w, style: journeyStyle(48)));
     final size = probe.size;
     probe.dispose();
-    final unique = {for (final g in d.glyphs) '${g.font?.name}:${g.glyphId}:${g.codePoint}'}.length;
     return [
       '',
       "Text('${short(w)}')",
@@ -257,8 +256,8 @@ class _ConstructionJourneyMapState extends State<ConstructionJourneyMap> with Si
       'adv $adv …',
       '${size.width.toStringAsFixed(0)} × ${size.height.toStringAsFixed(0)}',
       'DrawTextFrame',
-      'atlas ← $unique',
-      '${w.characters.length * 2} triangles',
+      'atlas ← ${d.atlasGlyphs}',
+      '${d.quads * 2} triangles',
     ];
   }
 }

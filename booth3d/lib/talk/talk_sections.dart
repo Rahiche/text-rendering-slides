@@ -12,11 +12,20 @@ import 'talk_section.dart';
 /// unsolved → solved, and the end. Each stop is the place in the city that
 /// shows it, its card the deck's slide in a few lines, with its numbers.
 List<TalkSection> talkSections(Site3D site) {
-  CitySection section(String number, String title, String ja, List<CityStop> stops) =>
-      CitySection(number: number, title: title, ja: ja, cityStops: stops, vignettes: site.vignettes, alley: site.alley);
+  CitySection section(String number, String title, String ja, List<String> glyphs, List<CityStop> stops) => CitySection(
+    number: number,
+    title: title,
+    ja: ja,
+    glyphs: glyphs,
+    cityStops: stops,
+    vignettes: site.vignettes,
+    alley: site.alley,
+    fx: site.fx,
+    glyphShapes: () => site.scriptShapes,
+  );
 
   return [
-    section('', 'Text rendering', 'テキストレンダリング', [
+    section('', 'Text rendering', 'テキストレンダリング', const ['Text', 'نص', 'टेक्स्ट', '文字', 'טקסט', 'ข้อความ', '텍스트', 'Текст'], [
       CityStop(
         'title',
         const TalkCard(
@@ -38,10 +47,10 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(0, 26, -50, 0, 12, 55, 52, drift: 1.0), fly: 3.2, shift: 0.18)],
+        [CityBeat.at(talkShot(0, 26, -50, 0, 12, 55, 52, drift: 1.0), fly: 6.0, shift: 0.18, cardAt: 5.6, chapter: true)],
       ),
     ]),
-    section('01', 'From code points to pixels', 'コードポイントから画素へ', [
+    section('01', 'From code points to pixels', 'コードポイントから画素へ', const ['A', 'ب', 'क', '文', 'ก', '😀'], [
       CityStop(
         'intro',
         const TalkCard(
@@ -58,6 +67,8 @@ List<TalkSection> talkSections(Site3D site) {
             talkShot(0, 58, -40, 0, 0, 40, 54, drift: 1.0),
             fly: 3.0,
             shift: 0.22,
+            cardAt: 2.8,
+            chapter: true,
             pins: [
               _pin(6.6, 2.4, 15.2, '家族', 'STRING'),
               _pin(-12.55, 3.3, 6.2, '文字工場', 'PIPELINE'),
@@ -198,7 +209,7 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.scene('farm', hold: 12.0, fly: 3.0)],
       ),
     ]),
-    section('02', 'Every script adds rules', 'すべての文字にルールがある', [
+    section('02', 'Every script adds rules', 'すべての文字にルールがある', const ['ع', 'कि', 'ปั่น', '한', '縦', '👋🏽'], [
       CityStop(
         'intro',
         const TalkCard(
@@ -216,6 +227,8 @@ List<TalkSection> talkSections(Site3D site) {
             talkShot(-45, 45, -20, 6, 8, 60, 56, drift: 0.9),
             fly: 3.0,
             shift: 0.22,
+            cardAt: 2.8,
+            chapter: true,
             pins: [
               _pin(0, 3.4, 26.06, '文字横丁', 'SCRIPT ALLEY'),
               _pin(32.2, 34, 90.4, 'ユニコード塔', 'UNICODE'),
@@ -372,7 +385,7 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.at(talkShot(0, 30, -30, 0, 18, 40, 60, drift: 0.8), fly: 3.0, shift: 0.2)],
       ),
     ]),
-    section('03', 'How others do it', 'ほかのエンジン', [
+    section('03', 'How others do it', 'ほかのエンジン', const ['Aa', 'ش', 'ह', '字'], [
       CityStop(
         'intro',
         const TalkCard(
@@ -385,7 +398,7 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(_overview, fly: 3.2, shift: 0.2)],
+        [CityBeat.at(_overview, fly: 3.2, shift: 0.2, cardAt: 2.8, chapter: true)],
       ),
       CityStop(
         'engines',
@@ -467,7 +480,7 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.at(talkShot(14, 20, 38, 34, 13, 57.6, 42), fly: 2.6, pins: [_engines[3]])],
       ),
     ]),
-    section('04', "Flutter's trade-off", 'Flutterのトレードオフ', [
+    section('04', "Flutter's trade-off", 'Flutterのトレードオフ', const ['✕', '✓'], [
       CityStop(
         'intro',
         const TalkCard(
@@ -480,7 +493,7 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(30, 26, 13, 52.6, 20.5, 33.5, 42), fly: 3.4, pins: [_engines[4]])],
+        [CityBeat.at(talkShot(30, 26, 13, 52.6, 20.5, 33.5, 42), fly: 3.4, pins: [_engines[4]], cardAt: 2.8, chapter: true)],
       ),
       CityStop(
         'missing',
@@ -536,7 +549,7 @@ List<TalkSection> talkSections(Site3D site) {
       ),
     ]),
     JourneySection(site.works),
-    section('06', 'Unsolved → solved', '未解決 → 解決', [
+    section('06', 'Unsolved → solved', '未解決 → 解決', const ['文節', '」「', '◇'], [
       CityStop(
         'intro',
         const TalkCard(
@@ -549,7 +562,7 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(0, 10, 46, 0, 2, 64, 50, drift: 0.8), fly: 3.4, shift: 0.24)],
+        [CityBeat.at(talkShot(0, 10, 46, 0, 2, 64, 50, drift: 0.8), fly: 3.4, shift: 0.24, cardAt: 2.8, chapter: true)],
       ),
       CityStop(
         'phrases',
@@ -598,7 +611,7 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.at(_glyphBelow, fly: 3.6, shift: 0.26)],
       ),
     ]),
-    section('', 'The trade-off', 'トレードオフ', [
+    section('', 'The trade-off', 'トレードオフ', const ['control', '⇄', 'native'], [
       CityStop(
         'trade-off',
         const TalkCard(
@@ -615,7 +628,7 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(0, 9, -32, 0, 4, 0, 50, drift: 0.8), fly: 3.4, shift: 0.22)],
+        [CityBeat.at(talkShot(0, 9, -32, 0, 4, 0, 50, drift: 0.8), fly: 3.4, shift: 0.22, cardAt: 2.8, chapter: true)],
       ),
       CityStop(
         'thanks',
@@ -626,7 +639,7 @@ List<TalkSection> talkSections(Site3D site) {
           [],
           true,
         ),
-        [CityBeat.at(talkShot(0, 45, -70, 0, 20, 60, 58, drift: 1.2), fly: 4.0, shift: 0.2)],
+        [CityBeat.at(talkShot(0, 7, -30, 0, 9.5, 6, 56, drift: 0.8), fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true)],
       ),
     ]),
   ];

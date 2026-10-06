@@ -35,8 +35,10 @@ class Talk extends ChangeNotifier {
   double _age = 0;
 
   /// The camera when the beat started (flown from there), the beat's own
-  /// framing (once known), the camera this frame.
+  /// framing (once known), the camera this frame; how high this flight has
+  /// to go over the buildings on its way (null: not worked out yet).
   Shot? _from, _to, _cam;
+  double? _lift;
 
   /// Counts frames while the talk's on (what's pinned to the city follows
   /// the camera).
@@ -45,6 +47,14 @@ class Talk extends ChangeNotifier {
   TalkSection get section => sections[_section];
   int get sectionIndex => _section;
   TalkBeat get _now => section.beats[_beat];
+
+  /// Whether the beat's card is up yet (a beat may hold it back until the
+  /// camera's on its way down).
+  bool get cardShown => _on && (_from == null || _age >= _now.cardAt);
+
+  /// Whether the chapter's title is up (a chapter's beat, its card not yet).
+  bool get chapter => _on && _now.chapter && !cardShown;
+  bool _cardWas = false;
 
   /// The stop on screen (of [section]'s), its card, and the beat within it
   /// (of how many).
@@ -87,7 +97,8 @@ class Talk extends ChangeNotifier {
     if (_on) return;
     _on = true;
     _section = at.clamp(0, sections.length - 1);
-    _cam = Shot(from.position.clone(), from.target.clone(), fov: from.fovRadiansY * 180 / math.pi);
+    // (From the top: down out of the sky onto the title.)
+    _cam = _section == 0 ? _sky : Shot(from.position.clone(), from.target.clone(), fov: from.fovRadiansY * 180 / math.pi);
     section.enter();
     _go(_section, 0, fly: true);
   }
@@ -145,6 +156,7 @@ class Talk extends ChangeNotifier {
     _beat = b;
     _age = 0;
     _to = null;
+    _lift = null;
     // From where the camera is now (mid-flight, if it is); or a cut.
     _from = fly ? _cam : null;
     section.arrive(b, cut: !fly);
@@ -157,12 +169,21 @@ class Talk extends ChangeNotifier {
     _script(t);
     if (!_on) return;
     _age += dt;
+    if (cardShown != _cardWas) {
+      _cardWas = cardShown;
+      notifyListeners();
+    }
     section.update(_beat, _age, t, dt);
     final b = _now;
-    final to = b.live == null ? _to ??= _framed(b.shot, b.shift) : _framed(b.live!(), b.shift);
+    var to = b.live == null ? _to ??= _framed(b.shot, b.shift) : _framed(b.live!(), b.shift);
     final from = _from;
     final u = from == null ? 1.0 : seg(_age, 0, b.fly);
-    _cam = u >= 1 ? to : _between(from!, to, u);
+    if (u >= 1 && b.live == null) {
+      // Held: creeping in a little while it's on (a frame that breathes).
+      final k = 0.04 * eo(seg(_age - (from == null ? 0 : b.fly), 0, 30));
+      to = Shot(to.eye + (to.target - to.eye) * k, to.target, fov: to.fov, settle: to.settle, drift: to.drift);
+    }
+    _cam = u >= 1 ? to : _between(from!, to, u, _lift ??= _clearance(from.eye, to.eye));
     director
       ..talkShot = _cam
       ..talkLabel = 'talk ${section.number} ${section.stops[stop]}${beats > 1 ? ' ${beat + 1}' : ''}';
@@ -204,6 +225,14 @@ class Talk extends ChangeNotifier {
   /// [s] with what it looks at moved right of the middle by [shift] of the
   /// half width (the card's on the left): the camera slid left, square to
   /// its view.
+  /// The lowest a long flight goes, over the park's trees and the scenes'
+  /// buildings.
+  static const cruise = 16.0;
+
+  /// Where the talk starts from the top: high over the city, from beyond
+  /// the avenue.
+  static final _sky = Shot(vm.Vector3(0, 150, -230), vm.Vector3(0, 35, 60), fov: 46, drift: 0.6);
+
   static Shot _framed(Shot s, double shift) {
     final f = s.target - s.eye;
     final d = f.length;
@@ -214,13 +243,33 @@ class Talk extends ChangeNotifier {
   }
 
   /// The way from [a] to [b], [u] of the way: eased in and out, lifted a
-  /// little over a long way (not through what's between).
-  static Shot _between(Shot a, Shot b, double u) {
+  /// little over a long way; and over buildings in the way, by [over]: up
+  /// first, across, then down (a crane's move, never through a wall).
+  static Shot _between(Shot a, Shot b, double u, double over) {
     final e = u * u * u * (u * (u * 6 - 15) + 10);
     final eye = a.eye + (b.eye - a.eye) * e;
-    final lift = math.min(6.0, 0.12 * (b.eye - a.eye).length);
-    eye.y += lift * math.sin(math.pi * e);
+    final arc = math.min(6.0, 0.12 * (b.eye - a.eye).length) * math.sin(math.pi * e);
+    eye.y += math.max(arc, over * smooth(0, 0.3, u) * (1 - smooth(0.7, 1, u)));
     return Shot(eye, a.target + (b.target - a.target) * e, fov: lerp(a.fov, b.fov, e), drift: lerp(a.drift, b.drift, e));
+  }
+
+  /// How far above the straight way from [a] to [b] the camera has to go
+  /// to clear the buildings under it (and the giant glyphs), with room to
+  /// spare; a long way, over the trees and the scenes' buildings too (at
+  /// [cruise] at least): 0 when nothing's in the way.
+  double _clearance(vm.Vector3 a, vm.Vector3 b) {
+    final flat = math.sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+    var need = flat > 20 ? cruise - math.min(a.y, b.y) : 0.0;
+    const n = 32, room = 3.0;
+    for (var i = 1; i < n; i++) {
+      final p = a + (b - a) * (i / n);
+      for (final (c, h) in director.solids) {
+        if ((p.x - c.x).abs() < h.x + room && (p.z - c.z).abs() < h.z + room) {
+          need = math.max(need, c.y + h.y + 4 - p.y);
+        }
+      }
+    }
+    return need;
   }
 
   // ── A capture's script ────────────────────────────────────────────────────

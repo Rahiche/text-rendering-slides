@@ -35,6 +35,8 @@ class JourneySection extends TalkSection {
   @override
   List<String> get stops => journeyStops;
   @override
+  List<String> get glyphs => const ['F', '→', '#9', '→', '▦'];
+  @override
   List<TalkBeat> get beats => _beats;
   @override
   TalkCard card(int stop) => journeyCards(word, works.talkName, works.latin)[stop];
@@ -128,6 +130,8 @@ final _beats = <TalkBeat>[
     talkShot(-2, 44, -36, -7, 0, 4, 46, drift: 1.0),
     fly: 3.2,
     shift: 0.24,
+    cardAt: 2.8,
+    chapter: true,
     pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), '文字工場', 'GLYPH WORKS')],
   ),
   // Text(): the works from outside, its sign; the maker walks in.

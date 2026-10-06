@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:vector_math/vector_math.dart' as vm;
 
 import '../world/script_alley.dart';
+import '../world/site_fx.dart' show Fx3D;
 import '../world/shot.dart';
 import '../world/vignette.dart';
 import 'talk_section.dart';
@@ -12,9 +13,18 @@ import 'talk_section.dart';
 /// turn, held [hold] seconds in while the presenter talks, else on round);
 /// or a Script Alley stall's ([stall]), its letters played and held.
 class CityBeat {
-  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const []}) : scene = null, stall = null, from = 0, hold = null;
+  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const [], this.cardAt = 0, this.fireworks = false, this.chapter = false})
+    : scene = null,
+      stall = null,
+      from = 0,
+      hold = null;
 
-  CityBeat.scene(String this.scene, {this.hold, this.from = 0, this.fly = 2.2, this.shift = 0.3, this.pins = const []}) : shot = null, stall = null;
+  CityBeat.scene(String this.scene, {this.hold, this.from = 0, this.fly = 2.2, this.shift = 0.3, this.pins = const []})
+    : shot = null,
+      stall = null,
+      cardAt = 0,
+      fireworks = false,
+      chapter = false;
 
   CityBeat.stall(int this.stall, {this.fly = 2.0, this.shift = 0.3})
     : shot = Shot(
@@ -26,7 +36,10 @@ class CityBeat {
       scene = null,
       from = 0,
       hold = null,
-      pins = const [];
+      pins = const [],
+      cardAt = 0,
+      fireworks = false,
+      chapter = false;
 
   final Shot? shot;
   final String? scene;
@@ -35,6 +48,14 @@ class CityBeat {
   final double? hold;
   final double fly, shift;
   final List<TalkPin> pins;
+
+  /// Seconds before the card comes up (flown to); fireworks over the plaza
+  /// while it's on.
+  final double cardAt;
+  final bool fireworks;
+
+  /// Opens the section (its title large in the middle first).
+  final bool chapter;
 
   /// A stall from the path, as the build's visits see it.
   static final _stallEye = vm.Vector3(0.85, 1.72, -4.0), _stallTarget = vm.Vector3(0.05, 1.42, -0.1);
@@ -60,6 +81,9 @@ class CitySection extends TalkSection {
     required this.cityStops,
     required this.vignettes,
     required this.alley,
+    this.fx,
+    this.glyphShapes,
+    this.glyphs = const [],
   }) {
     for (final (i, s) in cityStops.indexed) {
       for (final b in s.beats) {
@@ -72,6 +96,8 @@ class CitySection extends TalkSection {
             shift: b.shift,
             pins: b.pins,
             live: b.scene == null ? null : () => _live(b),
+            cardAt: b.cardAt,
+            chapter: b.chapter,
           ),
         );
       }
@@ -80,9 +106,15 @@ class CitySection extends TalkSection {
 
   @override
   final String number, title, ja;
+  @override
+  final List<String> glyphs;
   final List<CityStop> cityStops;
   final Vignettes vignettes;
   final ScriptAlley alley;
+
+  /// For a finale's fireworks: the effects, and glyphs to burst in.
+  final Fx3D? fx;
+  final List<List<vm.Vector2>> Function()? glyphShapes;
 
   final _plan = <CityBeat>[];
   final _beats = <TalkBeat>[];
@@ -148,6 +180,16 @@ class CitySection extends TalkSection {
       alley.release();
       _stall = null;
     }
+  }
+
+  @override
+  void caption(int beat, double age) {
+    final b = _plan[beat], fx = this.fx;
+    if (!b.fireworks || fx == null) return;
+    // Fireworks over the plaza, one show after another, once it's there.
+    final u = age - b.fly * 0.8;
+    // (High and wide: over the title in the middle, not behind it.)
+    if (u >= 0) fx.fireworks(u % 11.6, 22, 11, 3, const [], glyphShapes?.call() ?? const []);
   }
 
   /// A scene beat's camera now: the scene's own, where it's got to (held

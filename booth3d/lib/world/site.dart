@@ -159,6 +159,9 @@ class Site3D {
 
   // Shapes for glyph fireworks: other scripts (once) and the name (per job).
   var _scriptShapes = <List<vm.Vector2>>[];
+
+  /// Other scripts' characters as firework shapes (a talk's finale too).
+  List<List<vm.Vector2>> get scriptShapes => _scriptShapes;
   var _nameShapes = <List<vm.Vector2>>[];
 
   // ── Per job ───────────────────────────────────────────────────────────────

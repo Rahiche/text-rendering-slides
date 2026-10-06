@@ -17,6 +17,7 @@ import 'city_signs.dart' show CitySigns;
 import 'director.dart';
 import 'figure.dart' show Figures;
 import 'figure_rig.dart' show FigureMotion;
+import 'ease.dart' show approach, smooth;
 import 'kit.dart' show lerp;
 import 'life.dart';
 import 'physics.dart';
@@ -122,6 +123,8 @@ class World3D {
     FigureMotion.clock = m.t;
     // (A talk sets the works' clock and the camera before the site goes.)
     talk.update(m.t, dt);
+    // The talk's look comes in with it (and goes with it).
+    sky.talk = dt <= 0 ? (talk.on ? 1.0 : 0.0) : approach(sky.talk, talk.on ? 1.0 : 0.0, dt, 0.5);
     sky.update(m.t, dt);
     city.update(sky, m.t);
     mark('sky+city');
@@ -171,8 +174,10 @@ class World3D {
         }(),
       ].join(', ')} ms');
     }
-    // The lens: close-ups go shallow, the background soft.
-    final c = director.closeness;
+    // The lens: close-ups go shallow, the background soft; in the talk,
+    // the middle distance a little soft behind too (what it's about stands
+    // out from the city).
+    final c = math.max(director.closeness, sky.talk * 0.5 * smooth(48, 14, director.focus));
     scene.depthOfField
       ..enabled = Tuning.dof && c > 0.02
       ..focusDistance = director.focus

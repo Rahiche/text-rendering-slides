@@ -33,6 +33,15 @@ class Sky3D {
   /// 0 … 1 around sunrise and sunset (golden light): 0, as [night].
   double twilight = 0;
 
+  /// How far the talk's look is on (0 the booth's … 1 the talk's, set by
+  /// the world): calmer colour, deeper air (the city's far side fading into
+  /// a pale haze, for scale), softer glow, the light a little warmer, the
+  /// frame's edges darker. Architectural, not a toy.
+  double talk = 0;
+
+  /// The haze the far city fades into, in the talk's look.
+  static final _haze = hex3(0xC9D9EA);
+
   /// The hour of the day, 0 … 24.
   double hour = startHour;
 
@@ -221,10 +230,12 @@ class Sky3D {
     night = 1 - smooth(-0.17, 0.10, y);
     twilight = 1 - smooth(0.04, 0.32, y.abs());
 
-    // Background sky, with the sun's disk.
+    // Background sky, with the sun's disk (in the talk's look, a softer
+    // blue over a paler horizon).
+    final k = talk;
     _sky
-      ..zenithColor = look.zenith
-      ..horizonColor = look.horizon
+      ..zenithColor = mix3(look.zenith, _calm(look.zenith), 0.35 * k)
+      ..horizonColor = mix3(look.horizon, _haze, 0.3 * k)
       ..groundColor = look.ground
       ..sunDirection = sun
       ..sunSharpness = 2600
@@ -238,17 +249,21 @@ class Sky3D {
       ..intensity = look.lightPower;
 
     scene.environmentIntensity = look.ambient;
-    scene.exposure = look.exposure;
+    scene.exposure = look.exposure * lerp(1, 0.97, k);
     scene.fog
-      ..color = mix3(look.horizon, look.zenith, 0.3)
-      ..density = look.fog;
+      ..color = mix3(mix3(look.horizon, look.zenith, 0.3), _haze, 0.45 * k)
+      ..density = look.fog * lerp(1, 1.7, k);
     scene.postProcess.bloom
-      ..threshold = lerp(1.05, 0.8, night)
-      ..intensity = lerp(0.12, 0.26, night);
+      ..threshold = lerp(lerp(1.05, 0.8, night), 0.95, k)
+      ..intensity = lerp(lerp(0.12, 0.26, night), 0.16, k);
     scene.postProcess.colorGrading
-      ..saturation = lerp(1.12, 1.18, night) + 0.06 * twilight
-      ..contrast = lerp(1.08, 1.05, night)
-      ..temperature = 0.06 * twilight - 0.04 * night;
+      ..saturation = lerp(lerp(1.12, 1.18, night) + 0.06 * twilight, 0.96, k)
+      ..contrast = lerp(lerp(1.08, 1.05, night), 1.14, k)
+      ..temperature = 0.06 * twilight - 0.04 * night + 0.05 * k;
+    scene.postProcess.vignette
+      ..intensity = lerp(0.28, 0.4, k)
+      ..radius = lerp(0.8, 0.72, k);
+    scene.ambientOcclusion.intensity = lerp(0.9, 1.15, k);
 
     // Clouds drift west → east, catching the sky's colour.
     _cloudMat.emissiveFactor = v4(mix3(look.horizon, look.zenith, 0.35));
@@ -261,6 +276,12 @@ class Sky3D {
         setTrsY(list[i], x, p.y, p.z, 0, p.r);
       }
     });
+  }
+
+  /// [c] calmer: halfway to its own grey, a little lighter.
+  static vm.Vector3 _calm(vm.Vector3 c) {
+    final g = (c.x + c.y + c.z) / 3;
+    return vm.Vector3(lerp(c.x, g, 0.5) * 1.1, lerp(c.y, g, 0.5) * 1.1, lerp(c.z, g, 0.5) * 1.1);
   }
 
   /// The hour at scene time [t]: from [startHour] to [endHour] and back,

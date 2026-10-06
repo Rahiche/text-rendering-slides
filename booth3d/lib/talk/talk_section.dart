@@ -52,7 +52,7 @@ class TalkPin {
 /// of the middle what it looks at sits (of the half width: the card's on the
 /// left).
 class TalkBeat {
-  const TalkBeat(this.stop, this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const [], this.live});
+  const TalkBeat(this.stop, this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const [], this.live, this.cardAt = 0, this.chapter = false});
 
   final int stop;
   final Shot shot;
@@ -64,6 +64,13 @@ class TalkBeat {
 
   /// Named in the city while the beat's on (once the camera's there).
   final List<TalkPin> pins;
+
+  /// Seconds into the beat (flown to) before its card comes up.
+  final double cardAt;
+
+  /// Opens a chapter: the section's number, title and glyphs large in the
+  /// middle until the card comes up.
+  final bool chapter;
 }
 
 /// One section of the talk, told in the city: its number and title (as the
@@ -78,6 +85,9 @@ abstract class TalkSection {
 
   /// The stops' short names, for the way along the bottom.
   List<String> get stops;
+
+  /// Its glyphs, as the deck's divider shows them.
+  List<String> get glyphs => const [];
   List<TalkBeat> get beats;
   TalkCard card(int stop);
 

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/widgets.dart';
 import 'package:text_slides/booth/ui/ink.dart';
 import 'package:text_slides/deck/theme.dart';
@@ -36,7 +39,8 @@ class TalkOverlay extends StatelessWidget {
         return Stack(
           children: [
             // The city's bright by day: a shade behind the card.
-            Positioned(
+            if (talk.cardShown)
+              Positioned(
               left: 0,
               top: 0,
               bottom: 0,
@@ -44,13 +48,30 @@ class TalkOverlay extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [BP.bg.withValues(alpha: 0.62), BP.bg.withValues(alpha: 0.38), BP.bg.withValues(alpha: 0)],
+                    colors: [BP.bg.withValues(alpha: 0.5), BP.bg.withValues(alpha: 0.28), BP.bg.withValues(alpha: 0)],
                     stops: const [0.0, 0.55, 1.0],
                   ),
                 ),
               ),
             ),
             Positioned.fill(child: CustomPaint(painter: _PinPainter(talk))),
+            // A chapter's opening, large in the middle until its card's up.
+            Positioned.fill(
+              child: AnimatedSwitcher(
+                duration: animate ? const Duration(milliseconds: 520) : Duration.zero,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: talk.chapter
+                    ? _Chapter(
+                        key: ValueKey(('chapter', talk.sectionIndex, stop)),
+                        card: talk.card,
+                        section: section,
+                        glyphs: stop == 0,
+                        animate: animate,
+                      )
+                    : const SizedBox.shrink(key: ValueKey('no chapter')),
+              ),
+            ),
             Positioned(
               left: BP.margin,
               top: 56,
@@ -64,13 +85,16 @@ class TalkOverlay extends StatelessWidget {
                   opacity: a,
                   child: SlideTransition(position: Tween(begin: const Offset(-0.04, 0), end: Offset.zero).animate(a), child: child),
                 ),
-                child: _Card(
+                child: !talk.cardShown
+                    ? const SizedBox(key: ValueKey('none'))
+                    : _Card(
                   key: ValueKey((talk.sectionIndex, stop)),
                   card: talk.card,
                   section: section,
                   stop: stop,
                   beat: talk.beat,
                   beats: talk.beats,
+                  animate: animate,
                 ),
               ),
             ),
@@ -100,7 +124,15 @@ class TalkOverlay extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({super.key, required this.card, required this.section, required this.stop, required this.beat, required this.beats});
+  const _Card({
+    super.key,
+    required this.card,
+    required this.section,
+    required this.stop,
+    required this.beat,
+    required this.beats,
+    required this.animate,
+  });
 
   final TalkCard card;
   final TalkSection section;
@@ -109,54 +141,74 @@ class _Card extends StatelessWidget {
   /// Where in the stop (a stop with more than one beat shows a dot each).
   final int beat, beats;
 
+  /// Its parts come in one after another (not in a capture).
+  final bool animate;
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(30, 26, 30, 30),
-    decoration: BoxDecoration(
-      color: BP.panel.withValues(alpha: 0.9),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: BP.line.withValues(alpha: 0.22)),
-      boxShadow: [BoxShadow(color: BP.bg.withValues(alpha: 0.45), blurRadius: 30, offset: const Offset(0, 10))],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(14),
+    // Frosted: the city behind it, blurred, through a tinted pane.
+    child: BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(30, 26, 30, 30),
+        decoration: BoxDecoration(
+          color: BP.panel.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: BP.line.withValues(alpha: 0.2)),
+        ),
+        child: _Stagger(
+          animate: animate,
           children: [
-            Text(
-              section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
-              style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
-            ),
-            const Spacer(),
-            if (beats > 1) ...[
-              for (var i = 0; i < beats; i++)
-                Container(
-                  width: 7,
-                  height: 7,
-                  margin: const EdgeInsets.only(right: 5),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i <= beat ? BP.amber : null,
-                    border: Border.all(color: i <= beat ? BP.amber : BP.inkFaint, width: 1.2),
-                  ),
+            Row(
+              children: [
+                Text(
+                  section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
+                  style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
                 ),
-              const SizedBox(width: 8),
-            ],
-            Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
+                const Spacer(),
+                if (beats > 1) ...[
+                  for (var i = 0; i < beats; i++)
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(right: 5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i <= beat ? BP.amber : null,
+                        border: Border.all(color: i <= beat ? BP.amber : BP.inkFaint, width: 1.2),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                ],
+                Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
+              ],
+            ),
+            if (card.opener && section.number.isNotEmpty)
+              // A section's first: its number large, as the deck's divider.
+              Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
+                  const SizedBox(height: 2),
+                  Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(card.lede, style: UT.label(18.5, color: BP.inkDim, weight: 400, height: 1.42)),
+            ),
+            for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f)),
           ],
         ),
-        const SizedBox(height: 18),
-        if (card.opener && section.number.isNotEmpty)
-          // A section's first: its number large, as the deck's divider.
-          Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
-        Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
-        const SizedBox(height: 2),
-        Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
-        const SizedBox(height: 12),
-        Text(card.lede, style: UT.label(18.5, color: BP.inkDim, weight: 400, height: 1.42)),
-        for (final f in card.facts) ...[const SizedBox(height: 18), _fact(f)],
-      ],
+      ),
     ),
   );
 
@@ -224,6 +276,138 @@ class _Card extends StatelessWidget {
       ],
     ),
   };
+}
+
+/// A chapter's opening, as the deck's dividers: its number very large in
+/// outline, a rule, its title and Japanese name, a line under them, and its
+/// glyphs rising one by one; in the middle, over a soft shade.
+class _Chapter extends StatelessWidget {
+  const _Chapter({super.key, required this.card, required this.section, required this.glyphs, required this.animate});
+
+  final TalkCard card;
+  final TalkSection section;
+
+  /// With the section's glyphs (its opening: not a later chapter in it).
+  final bool glyphs;
+  final bool animate;
+
+  static const _glow = [Shadow(color: Color(0xCC081728), blurRadius: 28)];
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: RadialGradient(
+        radius: 0.75,
+        colors: [BP.bg.withValues(alpha: 0.62), BP.bg.withValues(alpha: 0.32), BP.bg.withValues(alpha: 0)],
+        stops: const [0, 0.55, 1],
+      ),
+    ),
+    child: Center(
+      child: _Stagger(
+        animate: animate,
+        center: true,
+        children: [
+          if (section.number.isNotEmpty)
+            Text(
+              section.number,
+              style: UT.name(210, weight: 400, height: 0.9).copyWith(
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 2.6
+                  ..color = BP.amber,
+              ),
+            ),
+          Container(width: 140, height: 2, margin: const EdgeInsets.only(top: 20, bottom: 26), color: BP.amber),
+          Text(card.ja, style: UT.label(24, color: BP.inkDim, weight: 500).copyWith(shadows: _glow)),
+          const SizedBox(height: 6),
+          Text(
+            card.title,
+            textAlign: TextAlign.center,
+            style: UT.name(section.number.isEmpty ? 92 : 76, color: BP.ink, weight: 600, height: 1.05).copyWith(shadows: _glow),
+          ),
+          if (section.number.isEmpty && card.lede.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: Text(card.lede, style: UT.label(24, color: BP.inkDim, weight: 400).copyWith(shadows: _glow)),
+            ),
+          if (glyphs && section.glyphs.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 34),
+              child: _Stagger(
+                animate: animate,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (i, g) in section.glyphs.indexed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Text(g, style: UT.name(46, color: i.isEven ? BP.line : BP.inkDim, weight: 500).copyWith(shadows: _glow)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// A card's parts coming in one after another, each a little up and in,
+/// as it's shown.
+class _Stagger extends StatefulWidget {
+  const _Stagger({required this.children, required this.animate, this.center = false});
+
+  final List<Widget> children;
+  final bool animate;
+
+  /// Each part in the middle (a chapter's), else on the left.
+  final bool center;
+
+  @override
+  State<_Stagger> createState() => _StaggerState();
+}
+
+class _StaggerState extends State<_Stagger> with SingleTickerProviderStateMixin {
+  late final _in = AnimationController(vsync: this, duration: Duration(milliseconds: 420 + 80 * widget.children.length));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate) {
+      _in.forward();
+    } else {
+      _in.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.children.length;
+    return Column(
+      crossAxisAlignment: widget.center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, child) in widget.children.indexed)
+          () {
+            final from = 0.55 * i / n;
+            final a = CurvedAnimation(parent: _in, curve: Interval(from, math.min(1.0, from + 0.45), curve: Curves.easeOutCubic));
+            return FadeTransition(
+              opacity: a,
+              child: SlideTransition(position: Tween(begin: const Offset(0, 0.3), end: Offset.zero).animate(a), child: child),
+            );
+          }(),
+      ],
+    );
+  }
 }
 
 /// What's pinned to the city: a dot where it is, a line up from it and its

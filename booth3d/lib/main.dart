@@ -20,6 +20,7 @@ import 'photo_chip.dart';
 import 'picture_fx.dart';
 import 'quality.dart';
 import 'scene_chip.dart';
+import 'talk/talk_overlay.dart';
 import 'world/figure.dart' show Figures;
 import 'tuning.dart';
 import 'works_chip.dart';
@@ -34,6 +35,11 @@ import 'world/world.dart';
 ///   --dart-define=BOOTH3D_NAMES=Ana,田中太郎      names typed at t=0 (capture)
 ///   --dart-define=BOOTH3D_PERF=true             log frame times, memory and scene size
 ///   --dart-define=BOOTH3D_SPEED=8               start fast-forwarded (as Ctrl+Shift+↑)
+///   --dart-define=BOOTH3D_TALK=2,9,15           a capture's talk: started at 2, next at 9, 15, …
+///
+/// F5 (or Ctrl+Shift+T) tells section 05 of the talk, one word's journey,
+/// in the city: → / PageDown / Space next, ← / PageUp back, Home / End,
+/// Esc to leave it.
 void main() => runApp(const NameCityApp());
 
 const _times = String.fromEnvironment('BOOTH3D_TIMES');
@@ -116,9 +122,10 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
     super.dispose();
   }
 
-  /// Operator keys, as in the 2D booth (Ctrl+Shift+…).
+  /// Operator keys, as in the 2D booth (Ctrl+Shift+…); the talk's keys.
   bool _onKey(KeyEvent e) {
     final k = HardwareKeyboard.instance;
+    if (_talkKey(e)) return true;
     if (!k.isControlPressed || !k.isShiftPressed || k.isAltPressed || k.isMetaPressed) return false;
     final ui = BoothUi.of(model);
     final key = e.logicalKey;
@@ -139,11 +146,48 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       action = ui.operatorReset;
     } else if (key == LogicalKeyboardKey.keyQ) {
       action = BoothPlatform.quit;
+    } else if (key == LogicalKeyboardKey.keyT) {
+      action = _toggleTalk;
     } else {
       return false;
     }
     if (e is KeyDownEvent) action();
     return e is! KeyUpEvent;
+  }
+
+  /// F5 starts (or ends) the talk; while it's on, the clicker's keys move
+  /// along it. (Held keys don't repeat: one press, one stop.)
+  bool _talkKey(KeyEvent e) {
+    final key = e.logicalKey;
+    final talk = world.talk;
+    if (key == LogicalKeyboardKey.f5) {
+      if (e is KeyDownEvent) _toggleTalk();
+      return true;
+    }
+    if (!talk.on || HardwareKeyboard.instance.isMetaPressed) return false;
+    final void Function()? action = switch (key) {
+      LogicalKeyboardKey.arrowRight || LogicalKeyboardKey.arrowDown || LogicalKeyboardKey.pageDown || LogicalKeyboardKey.space || LogicalKeyboardKey.enter => talk.next,
+      LogicalKeyboardKey.arrowLeft || LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.pageUp || LogicalKeyboardKey.backspace => talk.back,
+      LogicalKeyboardKey.home => talk.first,
+      LogicalKeyboardKey.end => talk.last,
+      LogicalKeyboardKey.escape => talk.end,
+      _ => null,
+    };
+    if (action == null) return false;
+    if (e is KeyDownEvent) action();
+    return true;
+  }
+
+  void _toggleTalk() {
+    if (!world.ready) return;
+    final talk = world.talk;
+    if (talk.on) {
+      talk.end();
+    } else {
+      // (At the booth's own pace.)
+      _speed = 1;
+      talk.start(world.director.camera);
+    }
   }
 
   Future<void> _capture() async {
@@ -171,6 +215,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         if (model.pending case final p?) await p;
         // The Glyph Works' name (its atlas, its pixels) before going on.
         if (world.site.works.pending case final p?) await p;
+        if (world.talk.pending case final p?) await p;
       }
       // Let the async letter meshes and the IBL bake catch up, then render.
       for (var i = 0; i < 6; i++) {
@@ -218,13 +263,28 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         children: [
           view,
           PictureFx(model: model),
-          BoothOverlay(model: model),
-          KernChip(model: model, caption: world.site.kern.caption),
+          // The booth's own on screen, unless the talk is on.
+          ListenableBuilder(
+            listenable: world.talk,
+            builder: (context, _) => world.talk.on
+                ? const SizedBox.shrink()
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      BoothOverlay(model: model),
+                      KernChip(model: model, caption: world.site.kern.caption),
+                      PhotoChip(model: model, cue: world.site.photo.cue),
+                      SceneChip(model: model, caption: world.site.caption),
+                    ],
+                  ),
+          ),
           WorksChip(model: model, caption: world.site.works.caption),
-          PhotoChip(model: model, cue: world.site.photo.cue),
-          SceneChip(model: model, caption: world.site.caption),
+          TalkOverlay(talk: world.talk, animate: !_capturing),
           if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
-          const EventBadge(),
+          ListenableBuilder(
+            listenable: world.talk,
+            builder: (context, _) => world.talk.on ? const SizedBox.shrink() : const EventBadge(),
+          ),
         ],
       ),
     );

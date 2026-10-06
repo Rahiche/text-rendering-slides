@@ -83,9 +83,19 @@ class Director {
   /// 0 by day … 1 at night (fireworks get the wide sky shot at night).
   double night = 0;
 
+  /// A talk's camera (talk/journey_talk.dart), while one's on: the talk
+  /// flies it (easing its own moves); the director only adds the hand-held
+  /// drift. [talkLabel] names the shot for capture logs.
+  Shot? talkShot;
+  String talkLabel = '';
+
   void update(BoothModel m, double dt, Site3D site) {
     final j = m.job;
     final t = m.t;
+    if (talkShot case final s?) {
+      _talk(s, t);
+      return;
+    }
     // A new name: cut to its establishing shot.
     final newJob = !identical(j, _job);
     if (newJob) {
@@ -172,6 +182,32 @@ class Director {
     // Focus on what it looks at; the closer in, the shallower.
     focus = (target - eye).length;
     closeness = smooth(9.5, 5.0, focus) * smooth(54, 40, _fov.value);
+  }
+
+  /// The talk's shot [s] at [t], as it has it (the springs kept on it, so
+  /// the director carries on from there when the talk ends).
+  void _talk(Shot s, double t) {
+    if (talkLabel != _label) {
+      _label = talkLabel;
+      _since = t;
+    }
+    _eye.snap(s.eye);
+    _target.snap(s.target);
+    _fov.snap(s.fov);
+    _held = s;
+    _boom = 1;
+    final d = 0.07 * s.drift;
+    final eye = s.eye.clone()
+      ..x += d * (math.sin(t * 0.31) + 0.6 * math.sin(t * 0.77 + 1.3))
+      ..y += d * 0.7 * (math.sin(t * 0.43 + 0.5) + 0.5 * math.sin(t * 1.13))
+      ..z += d * 0.8 * math.sin(t * 0.37 + 2.1);
+    final target = s.target.clone()
+      ..x += d * 0.5 * math.sin(t * 0.53 + 0.7)
+      ..y += d * 0.4 * math.sin(t * 0.61 + 1.9);
+    eye.y = math.max(eye.y, 0.9);
+    camera = PerspectiveCamera(position: eye, target: target, fovRadiansY: s.fov * math.pi / 180, fovNear: 0.2, fovFar: 900);
+    focus = (target - eye).length;
+    closeness = smooth(9.5, 5.0, focus) * smooth(54, 40, s.fov);
   }
 
   /// How much of the way from [target] to [eye] is clear of [solids] (half

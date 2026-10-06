@@ -9,6 +9,7 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import '../perf.dart' show PerfLog;
+import '../talk/journey_talk.dart';
 import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
@@ -32,6 +33,9 @@ class World3D {
   late final typing = Typing3D(scene);
   late final life = Life3D(scene);
   final director = Director();
+
+  /// 05 · One word's journey, told here (talk/journey_talk.dart).
+  late final talk = JourneyTalk(site.works, director);
   bool ready = false;
   bool _skipped = false;
 
@@ -76,7 +80,8 @@ class World3D {
     const ja = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
         'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンー'
         '日目月高自門凸本字語書店活字印刷喫茶文具工事中安全第一完成名前街田中山川'
-        '喫煙所 あきかん 旅 文字工場 文字列 デコード フォント シェーピング アウトライン ラスタライズ 画面 テキストパイプラインの中 次の建物 記念写真 はい、チーズ！ 字間';
+        '喫煙所 あきかん 旅 文字工場 文字列 デコード フォント シェーピング アウトライン ラスタライズ 画面 テキストパイプラインの中 次の建物 記念写真 はい、チーズ！ 字間'
+        ' 地図 ウィジェット エンジンへ 解析 記録 描画 レイアウト'; // (the talk's cards)
     const world = 'ب ع ا مرحبا ש שלום क ह नमस्ते ก สวัสดี 한 Ж Я Привет Ω λ Γεια σου ¶ Ⅲ ß ñ ♻ ♥';
     TextStyle style(String? locale) => TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale));
     await awaitFallbackFontsAll(
@@ -103,6 +108,8 @@ class World3D {
     void mark(String what) => marks?.add((what, watch!.elapsedMicroseconds));
 
     FigureMotion.clock = m.t;
+    // (A talk sets the works' clock and the camera before the site goes.)
+    talk.update(m.t, dt);
     sky.update(m.t, dt);
     city.update(sky, m.t);
     mark('sky+city');
@@ -112,6 +119,7 @@ class World3D {
     site.camera.setFrom(director.camera.position);
     site.cameraTarget.setFrom(director.camera.target);
     site.update(m, dt, night: sky.night);
+    talk.caption();
     mark('site');
     city
       ..gate = math.max(site.delivery.gateOpen(m.t), site.verdict.gateOpen(m.t))
@@ -125,6 +133,7 @@ class World3D {
       ..typingWeight = typing.weight
       ..night = sky.night
       ..update(m, dt, site);
+    talk.framed();
     site.captionFor(m, director.shotLabel);
     // The site's people (the crew, the new manager's party on the
     // pavement, the driver): the crowd walks round them.

@@ -20,6 +20,7 @@ import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
+import 'site_letters.dart' show NameLetters;
 import 'site_plan.dart';
 import 'walk.dart';
 import 'works_name.dart';
@@ -277,8 +278,9 @@ class GlyphWorks {
   /// [_planJourney]), or null.
   _Journey? _journey;
 
-  /// When the last letter's pixels are on the board (null before a plan).
-  double? get boardDone => _steps.isEmpty ? null : _steps.last.at[7];
+  /// When the last letter's pixels are on the board (null before a plan,
+  /// and while a talk has the works: the finale leaves its board be).
+  double? get boardDone => _steps.isEmpty || _talking ? null : _steps.last.at[7];
 
   /// The board's width and height (the finale's carriers hold its sides).
   double get boardWidth => _job?.boardW ?? 1.2;
@@ -310,6 +312,7 @@ class GlyphWorks {
   /// the line, followed (unless the camera's touring the city instead),
   /// and visits to the steps.
   void planFor(BuildPlan plan, {List<(double, double)> busyCam = const [], bool journey = true}) {
+    if (_talking) return;
     _clear();
     _plan = plan;
     final name = _name = WorksName.measure(plan.job.name, plan.letters, latin: _latin, arabic: _arabic);
@@ -321,7 +324,7 @@ class GlyphWorks {
     _schedule(plan, const {});
     _planCuts(plan, busyCam, name);
     final job = _job = _Job(name);
-    pending = _prepare(plan, name, job);
+    pending = _prepare(name, job);
     if (const String.fromEnvironment('BOOTH3D_TIMES') == '') return;
     String f(double v) => v.toStringAsFixed(1);
     for (final s in _steps) {
@@ -342,7 +345,7 @@ class GlyphWorks {
   }
 
   /// The name's atlas, its letters' pixels and outlines; then their meshes.
-  Future<void> _prepare(BuildPlan plan, WorksName name, _Job job) async {
+  Future<void> _prepare(WorksName name, _Job job) async {
     await awaitFallbackFonts(name.name, style: NameRaster.nameStyle(40));
     if (_latin == null || _arabic == null) {
       _latin ??= await FontData.spaceGrotesk();
@@ -376,6 +379,7 @@ class GlyphWorks {
     _steps.clear();
     _cuts.clear();
     _journey = null;
+    talk = null;
     camWindows.clear();
     pending = null;
     _plateK = -1;
@@ -392,6 +396,117 @@ class GlyphWorks {
     _stick.mesh = null;
     _strip.mesh = null;
     _display.mesh = null;
+  }
+
+  // ── A talk ────────────────────────────────────────────────────────────────
+
+  /// Whether a talk has the works (talk/talk.dart): a name down the line on
+  /// the presenter's clock ([talkTime]) instead of the build's. Meanwhile
+  /// the site's plans leave it be and the finale doesn't take its board.
+  bool get talking => _talking;
+  bool _talking = false;
+
+  /// The talk's clock, set before every [update] while [talking].
+  double talkTime = 0;
+
+  /// The talk's moments on its clock (once planned).
+  WorksTalk? talk;
+
+  /// The talk's name, as measured (null when not [talking]).
+  WorksName? get talkName => _talking ? _name : null;
+
+  /// The name's font (its cmap and metrics), once loaded.
+  FontData? get latin => _latin;
+
+  /// Plans [text] for a talk: its first letter down the whole line with its
+  /// maker (alone: nobody's left mid-stride while the presenter talks); the
+  /// rest of the name dropped into the stick right after it, shaped as one
+  /// run, and onto the board right after it, drawn in one go.
+  void planTalk(String text, NameLetters letters) {
+    _clear();
+    _talking = true;
+    final name = _name = WorksName.measure(text, letters, latin: _latin, arabic: _arabic);
+    _scheduleTalk(name);
+    final job = _job = _Job(name);
+    pending = _prepare(name, job);
+  }
+
+  /// Gives the works back to the site (empty until its next name).
+  void endTalk() {
+    if (!_talking) return;
+    _clear();
+    _talking = false;
+  }
+
+  /// When the talk's maker sets off from home; how long they then stand by
+  /// the feeder; the rest of the name's sorts, one after another; the line
+  /// measured.
+  static const _talkGo = 1.0, _talkWait = 1.2, _talkSort = 0.28, _talkLine = 1.8;
+
+  void _scheduleTalk(WorksName name) {
+    final n = name.letters.length;
+    if (n == 0) return;
+    final l = name.letters.first;
+    final fallback = l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0;
+    final s = _Steps(0, 0)..walkIn = _talkGo;
+    _steps.add(s);
+    var t = _talkGo + _walkIn + _talkWait;
+    void step(int i) {
+      s
+        ..at[i] = t
+        ..end[i] = t + _dwell[i] + (i == 2 && fallback ? 1.0 : 0);
+      t = s.end[i] + 0.15;
+    }
+
+    for (var i = 0; i < 4; i++) {
+      step(i);
+    }
+    // The rest of the name into the stick after it, a sort at a time.
+    final set0 = s.end[3] + 0.3;
+    for (var k = 1; k < n; k++) {
+      final g = _Steps(k, -1)..ghost = true;
+      final a = set0 + (k - 1) * _talkSort;
+      g
+        ..walkIn = a
+        ..homeAt = a;
+      g.at.fillRange(0, 4, a);
+      g.end.fillRange(0, 3, a);
+      g.end[3] = a + 0.32;
+      _steps.add(g);
+    }
+    final set = n > 1 ? _steps.last.end[3] : s.end[3];
+    // The whole line measured; a moment (the recording); then the outline.
+    final line = (set + 0.4, set + 0.4 + _talkLine);
+    t = line.$2 + 0.9;
+    for (var i = 4; i < 7; i++) {
+      step(i);
+    }
+    s
+      ..at[7] = t
+      ..homeAt = t + 0.3 + _walkHome;
+    // Onto the board right after it.
+    for (var k = 1; k < n; k++) {
+      final b = s.at[7] + 0.5 + (k - 1) * 0.06;
+      _steps[k].at.fillRange(4, 8, b);
+      _steps[k].end.fillRange(4, 7, b);
+    }
+    talk = WorksTalk(
+      go: _talkGo,
+      at: List.of(s.at),
+      end: List.of(s.end),
+      set: set,
+      line: line,
+      landed: _steps.last.at[7],
+      home: s.homeAt,
+    );
+  }
+
+  /// The caption for the talk's letter at [step], on the talk's clock.
+  void talkCaption(int step, double show) {
+    final name = _name;
+    if (!_talking || name == null || _steps.isEmpty) return;
+    _caption(name, 0, step, talkTime, show);
+    caption.journey = true;
   }
 
   /// Each letter down the line: its way from the feeder to the board takes
@@ -755,6 +870,10 @@ class GlyphWorks {
   /// on a break or on the way to one, is behind the camera).
   static final _front = Shot(vm.Vector3(-9.2, 2.6, 3.4), vm.Vector3(-13.8, 0.9, 6.4), fov: 56, settle: 0.6, drift: 0.4);
 
+  /// The visits' framings, for a talk: the whole works, and in on a step.
+  static Shot get front => _front;
+  static Shot stepShot(int step, [double drift = 0]) => _stepShot(step, drift);
+
   /// In on step [step] through the open front (clear of the smoking corner
   /// in front, past the board's left for the rasterizer).
   static Shot _stepShot(int step, double drift) {
@@ -842,7 +961,8 @@ class GlyphWorks {
     final pl = _plan;
     final cutT = pl != null && j.cutAt != null && j.phase.index >= Phase.demolish.index ? math.min(t, pl.t0 + (j.cutFrac ?? 0) * pl.len) : null;
     final stopped = cutT != null;
-    final tt = cutT ?? t;
+    // (A talk's works on the talk's clock, whatever the site's doing.)
+    final tt = _talking ? talkTime : cutT ?? t;
     final ready = job != null && name != null && job.mat != null;
     if (ready) _meshes(job, name, tt);
     for (var i = 0; i < 3; i++) {
@@ -873,7 +993,7 @@ class GlyphWorks {
   /// to being back home), or null.
   _Steps? _makerJob(int i, double tt) {
     for (final s in _steps) {
-      if (s.maker == i && tt >= s.walkIn && tt < math.max(s.homeAt, s.toHome?.end ?? 0)) return s;
+      if (!s.ghost && s.maker == i && tt >= s.walkIn && tt < math.max(s.homeAt, s.toHome?.end ?? 0)) return s;
     }
     return null;
   }
@@ -889,7 +1009,7 @@ class GlyphWorks {
         _labels(job, name, s.k);
         built = true;
       }
-      if (piece.wire == null && name.rendered && (tt >= s.at[4] - 2 || !built)) {
+      if (!s.ghost && piece.wire == null && name.rendered && (tt >= s.at[4] - 2 || !built)) {
         _wireOf(job, name, s.k);
         built = true;
       }
@@ -914,7 +1034,7 @@ class GlyphWorks {
   void _string(_Job job, WorksName name, double tt, bool stopped) {
     if (stopped) return;
     for (final s in _steps) {
-      if (tt < s.at[0] - 0.2 || tt >= s.at[2]) continue;
+      if (s.ghost || tt < s.at[0] - 0.2 || tt >= s.at[2]) continue;
       final r = job.atlas!.letterGroup[s.k];
       if (r == null) continue;
       final k = math.min(1.0, seg(tt, s.at[0] - 0.2, s.at[0] + 0.2)) * (1 - seg(tt, s.at[2] - 0.3, s.at[2]));
@@ -932,6 +1052,15 @@ class GlyphWorks {
       final piece = job.pieces[s.k];
       final step = stopped ? 7 : s.stepAt(tt);
       piece.hideAll();
+      if (s.ghost) {
+        // (A talk's: only dropped into the stick, in its place.)
+        if (piece.sort case final sort? when tt >= s.at[3] && tt < s.end[3]) {
+          final l = name.letters[s.k];
+          final f = eio(seg(tt, s.at[3], s.end[3]));
+          _place(sort, _stickXOf(name, s.k, l.pen) + l.advance * _em / 2, _railY + 0.6 * _em + 0.16 * (1 - f), _sortZ);
+        }
+        continue;
+      }
       if (step < 0 || step >= 7 || piece.crates == null) continue;
       final l = name.letters[s.k];
       _cratesAt(piece, s, tt);
@@ -1381,12 +1510,15 @@ class GlyphWorks {
     _display.visible = false;
     if (name != null && !stopped && _job?.mat != null) {
       for (final s in _steps) {
-        pull = math.max(pull, math.sin(math.pi * seg(tt, s.at[0] - 0.1, s.at[0] + 0.6)));
-        _lamps(s, name.letters[s.k], tt);
-        _marks(s, name.letters[s.k], tt);
+        if (!s.ghost) {
+          pull = math.max(pull, math.sin(math.pi * seg(tt, s.at[0] - 0.1, s.at[0] + 0.6)));
+          _lamps(s, name.letters[s.k], tt);
+          _marks(s, name.letters[s.k], tt);
+        }
         _bracket(s, name, tt);
       }
       _decoderDisplay(tt);
+      if (_talking) _measure(name, tt);
     }
     final lx = _feedOut - 0.06, ly = by + 0.2, lz = z - 0.29;
     final a = -0.5 + 1.0 * pull;
@@ -1399,12 +1531,41 @@ class GlyphWorks {
     var crank = 0.0;
     if (!stopped) {
       for (final s in _steps) {
-        final p = _trace(s, tt);
-        if (p > 0 && p < 1) crank = t * 7;
+        final c = _crank(s, tt);
+        if (c != 0) crank = c;
       }
     }
     final cx = WorksLayout.stepX[4] + 0.42, cy = by + 0.32, cz = z + 0.16;
     props.cyl(cx + 0.02 * math.cos(crank), cy + 0.09 * math.sin(crank), cz - 0.09 * math.cos(crank), 0.012, 0.08, _brass, roll: math.pi / 2);
+  }
+
+  /// The bender's crank's turn for [s] at [tt]: whole turns while it bends
+  /// (from rest, and back to rest), else none.
+  double _crank(_Steps s, double tt) {
+    final a = s.at[4] + 0.35, e = s.end[4] - 0.45;
+    if (s.ghost || tt <= a || tt >= e) return 0;
+    final turns = math.max(1, ((e - a) * 7 / (2 * math.pi)).round());
+    return 2 * math.pi * turns * (tt - a) / (e - a);
+  }
+
+  /// A talk's layout: the whole line in the stick measured end to end (a
+  /// bracket drawn along it from the pen's start), held, and put away
+  /// before the outline.
+  void _measure(WorksName name, double tt) {
+    final tk = talk;
+    if (tk == null || name.letters.isEmpty) return;
+    final (a, e) = tk.line;
+    final out = tk.at[4] - 0.3;
+    if (tt < a || tt >= out) return;
+    final last = name.letters.last;
+    final on = seg(tt, a, a + 0.2) * (1 - seg(tt, out - 0.4, out));
+    final x0 = math.max(_stickX0, _stickX0 - _stickScroll * _em), x1 = _stickX0 + (last.pen + last.advance - _stickScroll) * _em;
+    final xe = lerp(x0, x1, eio(seg(tt, a, e)));
+    final y = _railY + 1.2 * _em + 0.05, z = _sortZ - 0.03;
+    props
+      ..glow((x0 + xe) / 2, y, z, xe - x0, 0.01, 0.008, _greenGlow * on)
+      ..glow(x0, y - 0.016, z, 0.006, 0.042, 0.008, _greenGlow * on)
+      ..glow(xe, y - 0.016, z, 0.006, 0.042, 0.008, _greenGlow * on);
   }
 
   /// The decoder's lamps: one per byte as it goes in, the leading byte
@@ -1431,7 +1592,7 @@ class GlyphWorks {
   void _decoderDisplay(double tt) {
     _Steps? last;
     for (final s in _steps) {
-      if (tt >= s.at[1]) last = s;
+      if (!s.ghost && tt >= s.at[1]) last = s;
     }
     if (last == null || tt < last.at[1] + 0.4 * (last.end[1] - last.at[1])) return;
     final k = last.k;
@@ -1492,6 +1653,13 @@ class GlyphWorks {
     final seed = 40 + s.maker * 7;
     _walksOf(s);
     if (tt < math.max(s.at[0], s.toFeeder!.end)) {
+      if (tt >= s.toFeeder!.end) {
+        // There early (a talk's maker): standing by the feeder.
+        p.pos.setValues(WorksLayout.workX[0], 0, WorksLayout.workZ);
+        OffDuty.stand(p, t, seed);
+        p.yaw = 0;
+        return;
+      }
       s.toFeeder!.pose(p, tt, seed);
       if (tt >= s.toFeeder!.end - 0.05) p.yaw = 0;
       return;
@@ -1571,8 +1739,8 @@ class GlyphWorks {
         }
         p.yaw = (-(at.x - p.pos.x) * 0.6).clamp(-0.5, 0.5);
       case 4:
-        // Turning the bender's crank.
-        final c = t * 7;
+        // Turning the bender's crank (a hand on it once it's still).
+        final c = _crank(s, tt);
         _p.setValues(WorksLayout.stepX[4] + 0.44, WorksLayout.beltY + 0.32 + 0.09 * math.sin(c), WorksLayout.beltZ + 0.16 - 0.09 * math.cos(c));
         crew.aim(p, 1, _p, maxStoop: _bench);
         p.lean = 0.22;
@@ -1616,7 +1784,9 @@ class GlyphWorks {
       _walksOf(pm);
       feedGo = math.max(feedGo, pm.toHome!.end + 0.1);
     }
-    s.toFeeder = Walk(toFeeder, feedGo, math.min(2.2, Walk.lengthOf(toFeeder) / math.max(0.5, s.at[0] - feedGo)));
+    // (A talk's maker gets there a moment early, and waits.)
+    final arrive = s.at[0] - (_talking ? _talkWait : 0);
+    s.toFeeder = Walk(toFeeder, feedGo, math.min(2.2, Walk.lengthOf(toFeeder) / math.max(0.5, arrive - feedGo)));
     // Round to the board once the walkway's clear: the last letter's maker
     // goes home along it, and it's a corridor for one (they wait their
     // turn at the rasterizer; no faster than a brisk walk after).
@@ -2287,6 +2457,10 @@ class _Steps {
   Walk? stepBack;
   double slotX = double.nan;
 
+  /// A talk's letter that isn't carried down the line: it only drops into
+  /// the stick (at [at] 3) and lands on the board (at [at] 7), with nobody.
+  bool ghost = false;
+
   /// The step it's at, at [t]: −1 before, 7 once on the board.
   int stepAt(double t) {
     if (t < at[0]) return -1;
@@ -2295,6 +2469,26 @@ class _Steps {
     }
     return 7;
   }
+}
+
+/// A talk's moments on its clock (see [GlyphWorks.planTalk]): its maker
+/// setting off, its letter at each step ([at] 7: on the board), the whole
+/// name set in the stick, the line measured, the whole name on the board,
+/// and the maker home again.
+class WorksTalk {
+  const WorksTalk({
+    required this.go,
+    required this.at,
+    required this.end,
+    required this.set,
+    required this.line,
+    required this.landed,
+    required this.home,
+  });
+
+  final double go, set, landed, home;
+  final List<double> at, end;
+  final (double, double) line;
 }
 
 /// A letter followed all the way down the line: when it's at each step

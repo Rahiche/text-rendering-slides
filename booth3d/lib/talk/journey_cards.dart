@@ -4,48 +4,14 @@ import 'package:characters/characters.dart';
 import 'package:text_slides/deck/font_data.dart';
 
 import '../world/works_name.dart';
+import 'talk_section.dart';
 
 /// The talk's stops, as the deck names them (lib/slides/journey).
 const journeyStops = ['map', 'widget', 'string', 'engine', 'unicode', 'fonts', 'shape', 'layout', 'record', 'raster', 'draw'];
 
-/// What the talk's card says at a stop: its name (Japanese, as the city's
-/// signs have it, and English), what happens there, and the word's values.
-/// The same story and numbers as the deck's journey slides.
-class JourneyCard {
-  const JourneyCard(this.ja, this.title, this.lede, [this.facts = const []]);
-
-  final String ja, title, lede;
-  final List<CardFact> facts;
-}
-
-sealed class CardFact {
-  const CardFact();
-}
-
-/// A value with its label ([accent]: the one to look at).
-class FactRow extends CardFact {
-  const FactRow(this.label, this.value, {this.accent = false});
-  final String label, value;
-  final bool accent;
-}
-
-/// A few lines of code.
-class FactCode extends CardFact {
-  const FactCode(this.code);
-  final String code;
-}
-
-/// The word letter by letter, a value under each ([lit]: the letter the
-/// works is taking down the line).
-class FactLetters extends CardFact {
-  const FactLetters(this.label, this.cells);
-  final String label;
-  final List<(String, String, bool)> cells;
-}
-
 /// The cards for [word], with what the works measured of it ([name]: null
 /// before it has) and its font ([font]: its cmap).
-List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
+List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
   final letters = word.characters.toList();
   // The letter the works takes down the line: the first.
   List<(String, String, bool)> each(String Function(int i, String g) value) => [
@@ -103,7 +69,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
       ? null
       : '0x${hex(first, 4)} ${font.segments[segment].delta < 0 ? '−' : '+'} ${font.segments[segment].delta.abs()} = #${font.glyphId(first)}';
   return [
-    JourneyCard(
+    TalkCard(
       '地図',
       "One word's journey",
       "Text('$word') on its way to pixels. layout() takes it down through the framework and dart:ui "
@@ -115,7 +81,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         FactRow('Impeller · gpu', 'raster · draw', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'ウィジェット',
       "Text('$word')",
       'A widget only describes: a string and a style. Its RenderParagraph owns a TextPainter, '
@@ -126,7 +92,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         const FactRow('builds', 'TextPainter → ui.Paragraph', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       '文字列',
       'A Dart String',
       "A Dart String is UTF-16: 16-bit code units. Every letter of '$word' is one unit, one code "
@@ -138,7 +104,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         FactRow('s.codeUnitAt(0)', '0x${hex(word.codeUnitAt(0), 4)} = ${word.codeUnitAt(0)}', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'エンジンへ',
       'Into the engine',
       'TextPainter.layout() builds a ui.Paragraph. Across dart:ui, the engine\'s ParagraphBuilder '
@@ -152,7 +118,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         FactRow('text', '$units units → $bytes bytes', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'Unicode 解析',
       'Unicode analysis',
       'SkUnicode (ICU) marks the boundaries — graphemes, words, line breaks — and each code '
@@ -165,7 +131,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         const FactRow('runs', '1', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'フォント',
       'Find the glyphs',
       "Each code point is looked up in the style's fonts in order: fontFamily, fontFamilyFallback, "
@@ -176,7 +142,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         FactRow('fallback', found == null ? '…' : (found == n ? 'not needed: $n of $n found' : '${n - found} of $n'), accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'シェーピング',
       'Shape',
       'HarfBuzz shapes the whole run at once: glyphs, advances, positions. Space Grotesk\'s liga '
@@ -190,7 +156,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         FactRow('run width', width == null ? '…' : '${ems(width)} em', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'レイアウト',
       'Lay out',
       'The paragraph wraps the shaped run into lines for the width it\'s given — shaped once, '
@@ -202,7 +168,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         const FactRow('size ↑', 'to the RenderParagraph'),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       '記録',
       'Record',
       "paint() doesn't draw yet. canvas.drawParagraph is recorded into a display list — glyph ids "
@@ -213,7 +179,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         const FactRow('thread', 'UI → raster', accent: true),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       'ラスタライズ',
       'Rasterize',
       'On the raster thread each glyph key — font · glyph · size · subpixel x — not yet in the '
@@ -228,7 +194,7 @@ List<JourneyCard> journeyCards(String word, WorksName? name, FontData? font) {
         ),
       ],
     ),
-    JourneyCard(
+    TalkCard(
       '描画',
       'Draw',
       'Each glyph is a quad — two triangles — its corners pointing into the atlas (t t is one '

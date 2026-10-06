@@ -20,6 +20,7 @@ import 'photo_chip.dart';
 import 'picture_fx.dart';
 import 'quality.dart';
 import 'scene_chip.dart';
+import 'talk/journey_section.dart';
 import 'talk/talk_overlay.dart';
 import 'world/figure.dart' show Figures;
 import 'tuning.dart';
@@ -37,11 +38,12 @@ import 'world/world.dart';
 ///   --dart-define=BOOTH3D_SPEED=8               start fast-forwarded (as Ctrl+Shift+↑)
 ///   --dart-define=BOOTH3D_TALK=2,9,15           a capture's talk: started at 2, next at 9, 15, …
 ///
-/// F5 (or Ctrl+Shift+T) tells section 05 of the talk, one word's journey,
-/// in the city: → / PageDown / Space next, ← / PageUp back, Home / End,
-/// Esc to leave it. To open straight into it: on the Mac,
-///   open -a "Name City" --env NAME_CITY_TALK=1
-/// and on the web, the page with ?talk.
+/// F5 (or Ctrl+Shift+T) tells the talk in the city, section by section:
+/// → / PageDown / Space next, ← / PageUp back, Home / End the section's
+/// first and last stop, 0–6 a section (0 the title), Esc to leave it. To
+/// open straight into it: on the Mac,
+///   open -a "Name City" --env NAME_CITY_TALK=1      (or =05: at section 05)
+/// and on the web, the page with ?talk (or ?talk=05).
 void main() => runApp(const NameCityApp());
 
 const _times = String.fromEnvironment('BOOTH3D_TIMES');
@@ -49,7 +51,10 @@ const _names = String.fromEnvironment('BOOTH3D_NAMES');
 const _tag = String.fromEnvironment('BOOTH3D_TAG', defaultValue: 'city');
 
 /// Whether to open into the talk once the city's ready (see above).
-bool get _talkAtLaunch => Uri.base.queryParameters.containsKey('talk') || launchEnv('NAME_CITY_TALK') == '1';
+String? get _talkAtLaunch {
+  final q = Uri.base.queryParameters['talk'], env = launchEnv('NAME_CITY_TALK');
+  return q ?? (env == null || env.isEmpty || env == '0' ? null : env);
+}
 
 class NameCityApp extends StatefulWidget {
   const NameCityApp({super.key});
@@ -93,7 +98,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
           ..attach()
           ..addListener(() => setState(() {}));
         _ticker = createTicker(_tick)..start();
-        if (_talkAtLaunch) _toggleTalk();
+        if (_talkAtLaunch case final at?) _toggleTalk(at: at);
       }
     });
   }
@@ -177,14 +182,31 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       LogicalKeyboardKey.home => talk.first,
       LogicalKeyboardKey.end => talk.last,
       LogicalKeyboardKey.escape => talk.end,
-      _ => null,
+      _ => switch (_digit(key)) {
+        final d? => () => talk.jump(_sectionOf(d.toString().padLeft(2, '0'))),
+        null => null,
+      },
     };
     if (action == null) return false;
     if (e is KeyDownEvent) action();
     return true;
   }
 
-  void _toggleTalk() {
+  /// The digit [key] is (top row or keypad), or null.
+  static int? _digit(LogicalKeyboardKey key) {
+    for (var d = 0; d <= 9; d++) {
+      if (key == LogicalKeyboardKey(LogicalKeyboardKey.digit0.keyId + d) || key == LogicalKeyboardKey(LogicalKeyboardKey.numpad0.keyId + d)) return d;
+    }
+    return null;
+  }
+
+  /// The talk's section numbered [n] ('05'); the first (the title) for
+  /// '00' or none.
+  int _sectionOf(String n) => world.talk.sections.indexWhere((s) => s.number == n).clamp(0, world.talk.sections.length - 1);
+
+  /// Starts the talk (at section [at], '05'; else from the start), or ends
+  /// it.
+  void _toggleTalk({String? at}) {
     if (!world.ready) return;
     final talk = world.talk;
     if (talk.on) {
@@ -192,7 +214,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
     } else {
       // (At the booth's own pace.)
       _speed = 1;
-      talk.start(world.director.camera);
+      // (=1 or a bare ?talk: from the start; =05: at section 05.)
+      final from = at == null || at.length < 2 ? 0 : _sectionOf(at);
+      talk.start(world.director.camera, at: from);
     }
   }
 
@@ -284,7 +308,13 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
                     ],
                   ),
           ),
-          WorksChip(model: model, caption: world.site.works.caption),
+          // (In the talk, only while its journey has the works.)
+          ListenableBuilder(
+            listenable: world.talk,
+            builder: (context, _) => world.talk.on && world.talk.section is! JourneySection
+                ? const SizedBox.shrink()
+                : WorksChip(model: model, caption: world.site.works.caption),
+          ),
           TalkOverlay(talk: world.talk, animate: !_capturing),
           if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
           ListenableBuilder(

@@ -94,7 +94,8 @@ class LineTram extends Vignette {
 
   @override
   Future<void> init() async {
-    makePool(boxes: 16, glows: 12);
+    // (Three carriages of 11 boxes each.)
+    makePool(boxes: 36, glows: 12);
     _build();
     final ink = pbr(Vignette.c(0x1E2A4A), roughness: 0.45, emissive: Vignette.c(0x1E2A4A), emissiveStrength: 0.05);
     _glyphs = await letters([for (final (i, w) in _words.indexed) (w, _style(i >= _jaFrom))], ink, unitsPerPx: 0.36 / 160, depth: 0.09);

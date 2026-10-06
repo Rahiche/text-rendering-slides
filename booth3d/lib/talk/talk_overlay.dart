@@ -2,12 +2,12 @@ import 'package:flutter/widgets.dart';
 import 'package:text_slides/booth/ui/ink.dart';
 import 'package:text_slides/deck/theme.dart';
 
-import 'journey_cards.dart';
-import 'journey_talk.dart';
+import 'talk.dart';
+import 'talk_section.dart';
 
 /// The talk's slide over the city: the stop's card on the left (what
-/// happens there, with the word's real values) over a shade, and the whole
-/// way along the bottom, this stop lit.
+/// happens there, with the talk's real values) over a shade, and the
+/// section's way along the bottom, this stop lit.
 ///
 ///   05 · ONE WORD'S JOURNEY                    4 / 11
 ///   デコード
@@ -21,7 +21,7 @@ import 'journey_talk.dart';
 class TalkOverlay extends StatelessWidget {
   const TalkOverlay({super.key, required this.talk, this.animate = true});
 
-  final JourneyTalk talk;
+  final Talk talk;
 
   /// Cross-fade the cards (not in a capture: frames are taken at once).
   final bool animate;
@@ -32,7 +32,7 @@ class TalkOverlay extends StatelessWidget {
       listenable: talk,
       builder: (context, _) {
         if (!talk.on) return const SizedBox.shrink();
-        final stop = talk.stop;
+        final stop = talk.stop, section = talk.section;
         return Stack(
           children: [
             // The city's bright by day: a shade behind the card.
@@ -64,7 +64,14 @@ class TalkOverlay extends StatelessWidget {
                   opacity: a,
                   child: SlideTransition(position: Tween(begin: const Offset(-0.04, 0), end: Offset.zero).animate(a), child: child),
                 ),
-                child: _Card(key: ValueKey(stop), card: talk.card, stop: stop, stops: talk.stops, beat: talk.beat, beats: talk.beats),
+                child: _Card(
+                  key: ValueKey((talk.sectionIndex, stop)),
+                  card: talk.card,
+                  section: section,
+                  stop: stop,
+                  beat: talk.beat,
+                  beats: talk.beats,
+                ),
               ),
             ),
             // (And under the way along the bottom.)
@@ -83,7 +90,8 @@ class TalkOverlay extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned(left: BP.margin, right: BP.margin, bottom: 26, height: 52, child: _Route(stop: stop)),
+            if (section.stops.length > 2)
+              Positioned(left: BP.margin, right: BP.margin, bottom: 26, height: 52, child: _Route(stops: section.stops, stop: stop)),
           ],
         );
       },
@@ -92,10 +100,11 @@ class TalkOverlay extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({super.key, required this.card, required this.stop, required this.stops, required this.beat, required this.beats});
+  const _Card({super.key, required this.card, required this.section, required this.stop, required this.beat, required this.beats});
 
-  final JourneyCard card;
-  final int stop, stops;
+  final TalkCard card;
+  final TalkSection section;
+  final int stop;
 
   /// Where in the stop (a stop with more than one beat shows a dot each).
   final int beat, beats;
@@ -115,7 +124,10 @@ class _Card extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text("05 · ONE WORD'S JOURNEY", style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6)),
+            Text(
+              section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
+              style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
+            ),
             const Spacer(),
             if (beats > 1) ...[
               for (var i = 0; i < beats; i++)
@@ -131,13 +143,16 @@ class _Card extends StatelessWidget {
                 ),
               const SizedBox(width: 8),
             ],
-            Text('${stop + 1} / $stops', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
+            Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
           ],
         ),
         const SizedBox(height: 18),
+        if (card.opener && section.number.isNotEmpty)
+          // A section's first: its number large, as the deck's divider.
+          Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
         Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
         const SizedBox(height: 2),
-        Text(card.title, style: UT.name(46, color: BP.ink, weight: 600, height: 1.05)),
+        Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
         const SizedBox(height: 12),
         Text(card.lede, style: UT.label(18.5, color: BP.inkDim, weight: 400, height: 1.42)),
         for (final f in card.facts) ...[const SizedBox(height: 18), _fact(f)],
@@ -145,12 +160,15 @@ class _Card extends StatelessWidget {
     ),
   );
 
+  /// A label in capitals, but code as it's written (s.length).
+  static String _caps(String label) => label.contains(RegExp(r'[.(_]')) ? label : label.toUpperCase();
+
   Widget _fact(CardFact f) => switch (f) {
     FactRow(:final label, :final value, :final accent) => Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        SizedBox(width: 132, child: Text(label.toUpperCase(), style: UT.mono(11.5, color: BP.inkFaint, weight: 600, ls: 1.2))),
+        SizedBox(width: 132, child: Text(_caps(label), style: UT.mono(11.5, color: BP.inkFaint, weight: 600, ls: 1.2))),
         Expanded(child: Text(value, style: UT.mono(16, color: accent ? BP.amber : BP.ink, weight: 600))),
       ],
     ),
@@ -167,8 +185,10 @@ class _Card extends StatelessWidget {
     FactLetters(:final label, :final cells) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: UT.mono(11.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
-        const SizedBox(height: 8),
+        if (label.isNotEmpty) ...[
+          Text(_caps(label), style: UT.mono(11.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
             for (final (i, (letter, value, lit)) in cells.indexed) ...[
@@ -183,12 +203,17 @@ class _Card extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Text(letter, style: UT.name(26, color: lit ? BP.amber : BP.ink, weight: 500, height: 1.1)),
-                      const SizedBox(height: 3),
                       FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text(value, maxLines: 1, style: UT.mono(12, color: lit ? BP.amber : BP.inkDim, weight: 600)),
+                        child: Text(letter, maxLines: 1, style: UT.name(26, color: lit ? BP.amber : BP.ink, weight: 500, height: 1.1)),
                       ),
+                      if (value.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(value, maxLines: 1, style: UT.mono(12, color: lit ? BP.amber : BP.inkDim, weight: 600)),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -206,35 +231,22 @@ class _Card extends StatelessWidget {
 class _PinPainter extends CustomPainter {
   _PinPainter(this.talk) : super(repaint: talk.frame);
 
-  final JourneyTalk talk;
+  final Talk talk;
 
   @override
   void paint(Canvas canvas, Size size) {
     final shown = talk.pinsShown;
     if (shown <= 0.01) return;
     final k = Curves.easeOutCubic.transform(shown);
-    for (final (at, ja, en) in talk.pins) {
-      final o = talk.project(at);
-      if (o == null) continue;
-      final amber = BP.amber.withValues(alpha: k);
-      canvas
-        ..drawCircle(o, 5, Paint()..color = amber)
-        ..drawCircle(
-          o,
-          9 + 5 * (1 - k),
-          Paint()
-            ..color = BP.amber.withValues(alpha: 0.5 * k)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6,
-        );
-      final top = o.dy - 58 * k;
-      canvas.drawLine(
-        o - const Offset(0, 9),
-        Offset(o.dx, top),
-        Paint()
-          ..color = amber
-          ..strokeWidth = 1.6,
-      );
+    final amber = BP.amber.withValues(alpha: k);
+    // Each name above its place; one that would cover another goes up until
+    // it doesn't (the lowest on screen, the nearest, placed first).
+    final pins = [
+      for (final p in talk.pins)
+        if (talk.project(p.at) case final o?) (o, p),
+    ]..sort((a, b) => b.$1.dy.compareTo(a.$1.dy));
+    final placed = <Rect>[];
+    for (final (o, TalkPin(:ja, :en)) in pins) {
       final label = TextPainter(
         text: TextSpan(
           children: [
@@ -244,8 +256,32 @@ class _PinPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      final box = Rect.fromLTWH(o.dx - label.width / 2 - 14, top - label.height - 16, label.width + 28, label.height + 16);
-      final rr = RRect.fromRectAndRadius(box, const Radius.circular(8));
+      final w = label.width + 28, h = label.height + 16;
+      var lift = 58.0;
+      Rect box() => Rect.fromLTWH(o.dx - w / 2, o.dy - lift * k - h, w, h);
+      while (lift < 420 && placed.any((r) => r.overlaps(box().inflate(5)))) {
+        lift += 6;
+      }
+      final b = box();
+      placed.add(b);
+      canvas
+        ..drawCircle(o, 5, Paint()..color = amber)
+        ..drawCircle(
+          o,
+          9 + 5 * (1 - k),
+          Paint()
+            ..color = BP.amber.withValues(alpha: 0.5 * k)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6,
+        )
+        ..drawLine(
+          o - const Offset(0, 9),
+          Offset(o.dx, b.bottom),
+          Paint()
+            ..color = amber
+            ..strokeWidth = 1.6,
+        );
+      final rr = RRect.fromRectAndRadius(b, const Radius.circular(8));
       canvas
         ..drawRRect(rr, Paint()..color = BP.panel.withValues(alpha: 0.92 * k))
         ..drawRRect(
@@ -256,7 +292,7 @@ class _PinPainter extends CustomPainter {
             ..strokeWidth = 1.4,
         );
       label
-        ..paint(canvas, Offset(box.left + 14, box.top + 8))
+        ..paint(canvas, Offset(b.left + 14, b.top + 8))
         ..dispose();
     }
   }
@@ -267,24 +303,26 @@ class _PinPainter extends CustomPainter {
 
 /// The way: a dot per stop on a line, those passed lit, this one ringed.
 class _Route extends StatelessWidget {
-  const _Route({required this.stop});
+  const _Route({required this.stops, required this.stop});
 
+  final List<String> stops;
   final int stop;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _RoutePainter(stop));
+  Widget build(BuildContext context) => CustomPaint(painter: _RoutePainter(stops, stop));
 }
 
 class _RoutePainter extends CustomPainter {
-  _RoutePainter(this.stop);
+  _RoutePainter(this.stops, this.stop);
 
+  final List<String> stops;
   final int stop;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final n = journeyStops.length;
+    final n = stops.length;
     const y = 12.0;
-    final dx = size.width / (n - 1);
+    final dx = n < 2 ? 0.0 : size.width / (n - 1);
     final dim = Paint()
       ..color = BP.inkFaint.withValues(alpha: 0.55)
       ..strokeWidth = 1.6;
@@ -323,7 +361,7 @@ class _RoutePainter extends CustomPainter {
       }
       final label = TextPainter(
         text: TextSpan(
-          text: journeyStops[i].toUpperCase(),
+          text: stops[i].toUpperCase(),
           style: UT.mono(11, color: i == stop ? BP.amber : (i < stop ? BP.inkDim : BP.inkFaint), weight: i == stop ? 700 : 600, ls: 1.1),
         ),
         textDirection: TextDirection.ltr,
@@ -336,5 +374,5 @@ class _RoutePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RoutePainter old) => old.stop != stop;
+  bool shouldRepaint(_RoutePainter old) => old.stop != stop || !identical(old.stops, stops);
 }

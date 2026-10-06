@@ -386,13 +386,59 @@ class Vignettes {
     return null;
   }
 
+  // ── A talk's call (talk/) ─────────────────────────────────────────────────
+
+  /// The scene a talk's on (its index), when its turn started, where in it
+  /// it's held until then, and where it's held at the end (null: on round
+  /// its loop); where it got to last frame.
+  (int, double, double, double?)? _played;
+  double _playedU = 0, _playedT = 0;
+
+  /// Plays scene [name] as if visited, from [from] seconds into a turn at
+  /// [at] (scene time; held there until then), until [release]d; held
+  /// [hold] seconds in, if given (the presenter talks over how it ends),
+  /// else on round its loop. A build's own visits wait meanwhile.
+  void play(String name, double at, {double from = 0, double? hold}) {
+    final k = all.indexWhere((v) => v.name == name);
+    if (k >= 0) _played = (k, at - from, from, hold);
+  }
+
+  /// Lets the scene a talk had go on from where it is (nobody jumps).
+  void release() {
+    if (_played case (final k, _, _, _)) _phase[k] = _playedU - _playedT;
+    _played = null;
+  }
+
+  /// Where the scene a talk's on is in its turn at [t] (null: none).
+  double? playedAt(double t) {
+    final p = _played;
+    if (p == null) return null;
+    final u = math.max(p.$3, t - p.$2);
+    return p.$4 == null ? u % all[p.$1].loop : math.min(u, p.$4!);
+  }
+
+  /// Scene [name], or null.
+  Vignette? byName(String name) {
+    for (final v in all) {
+      if (v.name == name) return v;
+    }
+    return null;
+  }
+
+  /// [v]'s camera [u] seconds into a turn, in the world.
+  static Shot shotOf(Vignette v, double u) {
+    final s = v.shot(u);
+    return Shot(v.frame.transform3(s.eye.clone()), v.frame.transform3(s.target.clone()), fov: s.fov, settle: s.settle, drift: s.drift);
+  }
+
   /// Poses them at [t] (each on its own turn; the one the camera's on,
   /// from the start of one); those far from the [camera] keep their last
   /// pose (a few pixels from there).
   void update(double t, double night, {vm.Vector3? camera}) {
     if (!_ready) return;
     kit.walkers.clear();
-    final v = _visitAt(t), on = v == null ? null : (v.scene, v.a);
+    final v = _visitAt(t), played = _played;
+    final on = played != null ? (played.$1, played.$2) : (v == null ? null : (v.scene, v.a));
     for (final m in kit.signs) {
       m.emissiveStrength = 0.25 + 0.9 * smooth(0.2, 0.7, night);
     }
@@ -411,7 +457,14 @@ class Vignettes {
         ..visited = visited
         ..detail.visible = visited || d2 < 40 * 40;
       if (!visited && d2 > 75 * 75) continue;
-      final u = visited ? t - on.$2 : (t + _phase[i]) % v.loop;
+      var u = visited ? t - on.$2 : (t + _phase[i]) % v.loop;
+      if (visited && played != null) {
+        // (A talk's: held where it's to start until it does; then held at
+        // its end, or on round.)
+        u = playedAt(t)!;
+        _playedU = u;
+        _playedT = t;
+      }
       v.pose(u, t, night);
     }
   }

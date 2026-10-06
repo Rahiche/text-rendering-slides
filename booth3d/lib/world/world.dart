@@ -9,7 +9,8 @@ import 'package:text_slides/booth/ui/booth_ui.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import '../perf.dart' show PerfLog;
-import '../talk/journey_talk.dart';
+import '../talk/talk.dart';
+import '../talk/talk_sections.dart';
 import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
@@ -34,8 +35,9 @@ class World3D {
   late final life = Life3D(scene);
   final director = Director();
 
-  /// 05 · One word's journey, told here (talk/journey_talk.dart).
-  late final talk = JourneyTalk(site.works, director);
+  /// The talk, told here (talk/talk.dart): its sections, in the deck's
+  /// order.
+  late final talk = Talk(director, talkSections(site));
   bool ready = false;
   bool _skipped = false;
 
@@ -85,7 +87,17 @@ class World3D {
     const world = 'ب ع ا مرحبا ש שלום क ह नमस्ते ก สวัสดี 한 Ж Я Привет Ω λ Γεια σου ¶ Ⅲ ß ñ ♻ ♥';
     TextStyle style(String? locale) => TextStyle(fontFamily: 'SpaceGrotesk', fontSize: 40, locale: locale == null ? null : Locale(locale));
     await awaitFallbackFontsAll(
-      [(ja, style('ja')), (world, style(null)), ('你好', style('zh')), ('안녕', style('ko')), ...ScriptAlley.fontRuns, ...site.vignettes.fontRuns, ...CitySigns.fontRuns],
+      [
+        (ja, style('ja')),
+        (world, style(null)),
+        ('你好', style('zh')),
+        ('안녕', style('ko')),
+        ...ScriptAlley.fontRuns,
+        ...site.vignettes.fontRuns,
+        ...CitySigns.fontRuns,
+        // The talk's cards (in the UI's faces, Japanese forms for Han).
+        (talk.allText, style('ja')),
+      ],
       firstWait: const Duration(seconds: 4),
       quiet: const Duration(milliseconds: 700),
       max: const Duration(seconds: 15),

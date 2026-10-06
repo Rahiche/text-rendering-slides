@@ -381,13 +381,39 @@ class ScriptAlley {
     }
   }
 
-  /// Where stall [i] is in its loop at [t]: from a visit's start while the
+  /// Where stall [i] is in its loop at [t]: a talk's (from when it called
+  /// on it, held once it's done), or from a visit's start while the
   /// camera's there, else on its own clock.
   double _loopAt(int i, double t) {
+    if (_played case (final k, final at) when k == i) {
+      _playedU = (t - at).clamp(0.0, _done);
+      _playedT = t;
+      return _playedU;
+    }
     for (final v in _visits) {
       if (v.stall == i && t >= v.a - 1.0 && t < v.e + 0.5) return t - v.start;
     }
-    return (t + 1.37 * i) % _period;
+    return (t + _phase[i]) % _period;
+  }
+
+  /// Each stall's own clock (out of step with the others).
+  final _phase = [for (var i = 0; i < 6; i++) 1.37 * i];
+
+  /// Every stall's letters are done by now, and held until the loop's end.
+  static const _done = 7.2;
+
+  /// The stall a talk's on, and when it called on it; where it got to.
+  (int, double)? _played;
+  double _playedU = 0, _playedT = 0;
+
+  /// Plays stall [i] from the start at [at] (scene time), its outcome held
+  /// until [release]d (a talk's call, talk/).
+  void play(int i, double at) => _played = (i, at);
+
+  /// Lets the stall a talk had go on round from where it is.
+  void release() {
+    if (_played case (final k, _)) _phase[k] = _playedU - _playedT;
+    _played = null;
   }
 
   static double _back(double x) {

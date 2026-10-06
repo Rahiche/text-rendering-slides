@@ -46,6 +46,9 @@ class Talk extends ChangeNotifier {
 
   TalkSection get section => sections[_section];
   int get sectionIndex => _section;
+
+  /// The beat on screen, of the section's (for the talk's progress).
+  int get beatIndex => _beat;
   TalkBeat get _now => section.beats[_beat];
 
   /// Whether the beat's card is up yet (a beat may hold it back until the

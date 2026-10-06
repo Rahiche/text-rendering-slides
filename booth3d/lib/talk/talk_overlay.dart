@@ -54,6 +54,8 @@ class TalkOverlay extends StatelessWidget {
                 ),
               ),
             ),
+            // How far through the whole talk: a section a stretch, along the top.
+            Positioned(left: 0, right: 0, top: 0, height: 4, child: CustomPaint(painter: _ProgressPainter(talk))),
             Positioned.fill(child: CustomPaint(painter: _PinPainter(talk))),
             // A chapter's opening, large in the middle until its card's up.
             Positioned.fill(
@@ -75,7 +77,7 @@ class TalkOverlay extends StatelessWidget {
             Positioned(
               left: BP.margin,
               top: 56,
-              width: 520,
+              width: 548,
               child: AnimatedSwitcher(
                 duration: animate ? const Duration(milliseconds: 380) : Duration.zero,
                 switchInCurve: Curves.easeOutCubic,
@@ -203,7 +205,7 @@ class _Card extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(card.lede, style: UT.label(18.5, color: BP.inkDim, weight: 400, height: 1.42)),
+              child: Text(card.lede, style: UT.label(19.5, color: BP.inkDim, weight: 400, height: 1.42)),
             ),
             for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f)),
           ],
@@ -220,8 +222,12 @@ class _Card extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        SizedBox(width: 132, child: Text(_caps(label), style: UT.mono(11.5, color: BP.inkFaint, weight: 600, ls: 1.2))),
-        Expanded(child: Text(value, style: UT.mono(16, color: accent ? BP.amber : BP.ink, weight: 600))),
+        SizedBox(width: 138, child: Text(_caps(label), style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1))),
+        Expanded(
+          child: accent
+              ? _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
+              : Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+        ),
       ],
     ),
     FactCode(:final code) => Container(
@@ -232,7 +238,7 @@ class _Card extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: BP.lineFaint),
       ),
-      child: Text(code, style: UT.mono(14, color: BP.ink, weight: 500).copyWith(height: 1.5)),
+      child: Text(code, style: UT.mono(15, color: BP.ink, weight: 500).copyWith(height: 1.5)),
     ),
     FactLetters(:final label, :final cells) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,6 +359,71 @@ class _Chapter extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A value whose first number (10 or more) counts up as its card comes in.
+class _CountUp extends StatelessWidget {
+  const _CountUp(this.value, {required this.style, required this.animate});
+
+  final String value;
+  final TextStyle style;
+  final bool animate;
+
+  static final _number = RegExp(r'\d[\d,]*');
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _number.firstMatch(value);
+    final digits = m?.group(0);
+    final n = digits == null ? null : int.tryParse(digits.replaceAll(',', ''));
+    if (!animate || m == null || digits == null || n == null || n < 10) return Text(value, style: style);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: n.toDouble()),
+      duration: const Duration(milliseconds: 1500),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, _) => Text(value.replaceRange(m.start, m.end, _grouped(v.round(), digits.contains(','))), style: style),
+    );
+  }
+
+  /// [v] with thousands commas, if [commas].
+  static String _grouped(int v, bool commas) {
+    final s = '$v';
+    if (!commas) return s;
+    final out = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
+      out.write(s[i]);
+    }
+    return out.toString();
+  }
+}
+
+/// The whole talk along the top: a stretch a section (as long as its
+/// beats), those done lit, this one lit as far as it's got.
+class _ProgressPainter extends CustomPainter {
+  _ProgressPainter(this.talk);
+
+  final Talk talk;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final secs = talk.sections;
+    final total = secs.fold<int>(0, (a, s) => a + s.beats.length);
+    const gap = 6.0;
+    final w = size.width - gap * (secs.length - 1);
+    var x = 0.0;
+    for (final (i, s) in secs.indexed) {
+      final len = w * s.beats.length / total;
+      final r = Rect.fromLTWH(x, 0, len, size.height);
+      canvas.drawRect(r, Paint()..color = BP.inkFaint.withValues(alpha: 0.28));
+      final done = i < talk.sectionIndex ? 1.0 : (i == talk.sectionIndex ? (talk.beatIndex + 1) / s.beats.length : 0.0);
+      if (done > 0) canvas.drawRect(Rect.fromLTWH(x, 0, len * done, size.height), Paint()..color = BP.amber.withValues(alpha: i == talk.sectionIndex ? 0.95 : 0.55));
+      x += len + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ProgressPainter old) => true;
 }
 
 /// A card's parts coming in one after another, each a little up and in,

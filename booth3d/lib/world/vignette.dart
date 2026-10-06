@@ -48,6 +48,11 @@ abstract class Vignette {
   /// Whether the camera's visiting it now (set every frame).
   bool visited = false;
 
+  /// Only a talk calls on it: a build's tours never visit it, and it shows
+  /// itself only once called (its clock then runs on from where the talk
+  /// let it go, round no loop: it plays out and goes).
+  bool get talkOnly => false;
+
   Future<void> init();
 
   /// Poses it [u] seconds into a turn (scene time [t], [night] 0 day … 1).
@@ -455,9 +460,9 @@ class Vignettes {
       }
       v
         ..visited = visited
-        ..detail.visible = visited || d2 < 40 * 40;
-      if (!visited && d2 > 75 * 75) continue;
-      var u = visited ? t - on.$2 : (t + _phase[i]) % v.loop;
+        ..detail.visible = visited || v.talkOnly || d2 < 40 * 40;
+      if (!visited && !v.talkOnly && d2 > 75 * 75) continue;
+      var u = visited ? t - on.$2 : (v.talkOnly ? t + _phase[i] : (t + _phase[i]) % v.loop);
       if (visited && played != null) {
         // (A talk's: held where it's to start until it does; then held at
         // its end, or on round.)
@@ -499,9 +504,13 @@ class Vignettes {
       for (final (a, e) in busyCam) (a - 3.5, e + 3.5),
     ];
     final want = sample ? 3 : (plan.len > 80 ? 2 : 1), end = plan.t0 + plan.len - 2.0;
+    final toured = [
+      for (var i = 0; i < all.length; i++)
+        if (!all[i].talkOnly) i,
+    ];
     var from = plan.t0 + (sample ? 12.0 : 22.0);
     for (var n = 0; n < want; n++) {
-      final k = (plan.job.serial * 3 + n) % all.length, len = all[k].visit;
+      final k = toured[(plan.job.serial * 3 + n) % toured.length], len = all[k].visit;
       var a = from;
       for (var moved = true; moved;) {
         moved = false;

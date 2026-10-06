@@ -52,6 +52,7 @@ import 'v_ruby.dart';
 import 'v_tofu.dart';
 import 'v_tower.dart';
 import 'v_tram.dart';
+import 'v_word.dart';
 import 'verdict.dart';
 import 'vignette.dart';
 
@@ -128,6 +129,7 @@ class Site3D {
       LocaleOffice(kit),
       RubyCable(kit),
       HyphenMill(kit),
+      TalkWord(kit),
     ],
   );
 

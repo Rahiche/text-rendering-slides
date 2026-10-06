@@ -277,14 +277,18 @@ class Talk extends ChangeNotifier {
 
   // ── A capture's script ────────────────────────────────────────────────────
 
-  /// Capture aid: --dart-define=BOOTH3D_TALK=05@2,9,15,p20,… starts the talk
-  /// at scene time 2 (at section 05; without it, at the first), then
-  /// presses next (or, with p, back) at each time after.
+  /// Capture aid: --dart-define=BOOTH3D_TALK=05@2,9,15,p20,end@30,… starts
+  /// the talk at scene time 2 (at section 05; without it, at the first),
+  /// then presses next (or, with p, back; with a section, jumps there) at
+  /// each time after.
   static const _scriptDef = String.fromEnvironment('BOOTH3D_TALK');
   static final _presses = [
     for (final s in _scriptDef.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)) s,
   ];
   int _pressed = 0;
+
+  /// A section by its number ('end': the last).
+  int _sectionAt(String n) => n == 'end' ? sections.length - 1 : math.max(0, sections.indexWhere((s) => s.number == n));
 
   void _script(double t) {
     while (_pressed < _presses.length) {
@@ -293,7 +297,9 @@ class Talk extends ChangeNotifier {
       final when = double.parse((at == null ? p : p.split('@').last).replaceFirst('p', ''));
       if (t < when) return;
       if (_pressed == 0) {
-        start(director.camera, at: at == null ? 0 : math.max(0, sections.indexWhere((s) => s.number == at)));
+        start(director.camera, at: at == null ? 0 : _sectionAt(at));
+      } else if (at != null) {
+        jump(_sectionAt(at));
       } else if (p.startsWith('p')) {
         back();
       } else {

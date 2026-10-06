@@ -529,7 +529,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('3D', 'Matrix4, no relayout'),
           ],
         ),
-        [CityBeat.scene('gym', hold: 7.6, fly: 3.0), CityBeat.at(_glyphTower, fly: 3.4, shift: 0.26)],
+        [CityBeat.scene('gym', hold: 7.6, fly: 3.0), CityBeat.scene('word', hold: 7.0, fly: 3.0, shift: 0.26)],
       ),
       CityStop(
         'web',
@@ -608,7 +608,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('patent', 'public domain since March 2026'),
           ],
         ),
-        [CityBeat.at(_glyphBelow, fly: 3.6, shift: 0.26)],
+        [CityBeat.scene('word', from: 20, hold: 33.5, fly: 3.6, shift: 0.26)],
       ),
     ]),
     section('', 'The trade-off', 'トレードオフ', const ['control', '⇄', 'native'], [
@@ -661,6 +661,3 @@ final _engines = [
   _pin(52.6, 22.6, 33.5, 'フラッター', 'FLUTTER'),
 ];
 
-/// Glyphs of the skyline (あ, A and 字, 15–27 m tall) together; and the A
-/// from below, in perspective.
-final _glyphTower = talkShot(-52, 16, 41, -91, 13, 56, 58, drift: 0.6), _glyphBelow = talkShot(-80, 4, 24, -106, 16, 32, 56, drift: 0.5);

@@ -303,7 +303,9 @@ class _Chapter extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       gradient: RadialGradient(
-        radius: 0.75,
+        // (Tighter for the title and the end: their words in the air round
+        // it stay clear.)
+        radius: section.number.isEmpty ? 0.52 : 0.75,
         colors: [BP.bg.withValues(alpha: 0.62), BP.bg.withValues(alpha: 0.32), BP.bg.withValues(alpha: 0)],
         stops: const [0, 0.55, 1],
       ),
@@ -334,7 +336,14 @@ class _Chapter extends StatelessWidget {
           if (section.number.isEmpty && card.lede.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 18),
-              child: Text(card.lede, style: UT.label(24, color: BP.inkDim, weight: 400).copyWith(shadows: _glow)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: Text(
+                  card.lede,
+                  textAlign: TextAlign.center,
+                  style: UT.label(24, color: BP.inkDim, weight: 400, height: 1.4).copyWith(shadows: _glow),
+                ),
+              ),
             ),
           if (glyphs && section.glyphs.isNotEmpty)
             Padding(

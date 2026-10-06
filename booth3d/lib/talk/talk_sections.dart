@@ -25,7 +25,8 @@ List<TalkSection> talkSections(Site3D site) {
   );
 
   return [
-    section('', 'Text rendering', 'テキストレンダリング', const ['Text', 'نص', 'टेक्स्ट', '文字', 'טקסט', 'ข้อความ', '텍스트', 'Текст'], [
+    // (Its eight scripts are in the air round the title: the scene 'scripts'.)
+    section('', 'Text rendering', 'テキストレンダリング', const [], [
       CityStop(
         'title',
         const TalkCard(
@@ -47,7 +48,7 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(0, 26, -50, 0, 12, 55, 52, drift: 1.0), fly: 6.0, shift: 0.18, cardAt: 5.6, chapter: true)],
+        [CityBeat.scene('scripts', hold: 10.0, fly: 6.0, lead: 4.6, shift: 0, cardAt: 1e9, chapter: true)],
       ),
     ]),
     section('01', 'From code points to pixels', 'コードポイントから画素へ', const ['A', 'ب', 'क', '文', 'ก', '😀'], [
@@ -639,7 +640,7 @@ List<TalkSection> talkSections(Site3D site) {
           [],
           true,
         ),
-        [CityBeat.at(talkShot(0, 7, -30, 0, 9.5, 6, 56, drift: 0.8), fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true)],
+        [CityBeat.scene('scripts', from: 100, hold: 110, fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true)],
       ),
     ]),
   ];

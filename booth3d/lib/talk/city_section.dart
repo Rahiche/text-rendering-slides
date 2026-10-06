@@ -17,14 +17,22 @@ class CityBeat {
     : scene = null,
       stall = null,
       from = 0,
-      hold = null;
+      hold = null,
+      lead = null;
 
-  CityBeat.scene(String this.scene, {this.hold, this.from = 0, this.fly = 2.2, this.shift = 0.3, this.pins = const []})
-    : shot = null,
-      stall = null,
-      cardAt = 0,
-      fireworks = false,
-      chapter = false;
+  CityBeat.scene(
+    String this.scene, {
+    this.hold,
+    this.from = 0,
+    this.fly = 2.2,
+    this.shift = 0.3,
+    this.pins = const [],
+    this.cardAt = 0,
+    this.fireworks = false,
+    this.chapter = false,
+    this.lead,
+  }) : shot = null,
+       stall = null;
 
   CityBeat.stall(int this.stall, {this.fly = 2.0, this.shift = 0.3})
     : shot = Shot(
@@ -39,7 +47,8 @@ class CityBeat {
       pins = const [],
       cardAt = 0,
       fireworks = false,
-      chapter = false;
+      chapter = false,
+      lead = null;
 
   final Shot? shot;
   final String? scene;
@@ -56,6 +65,10 @@ class CityBeat {
 
   /// Opens the section (its title large in the middle first).
   final bool chapter;
+
+  /// How long before the camera gets there its scene starts (else as it's
+  /// nearly there: the last third of the way).
+  final double? lead;
 
   /// A stall from the path, as the build's visits see it.
   static final _stallEye = vm.Vector3(0.85, 1.72, -4.0), _stallTarget = vm.Vector3(0.05, 1.42, -0.1);
@@ -158,7 +171,7 @@ class CitySection extends TalkSection {
     if (b.scene case final name?) {
       if (name != _scene) _letGo(scene: true);
       _letGo(stall: true);
-      final at = _cut ? t - ((b.hold ?? b.from) - b.from) : t + b.fly * 0.7;
+      final at = _cut ? t - ((b.hold ?? b.from) - b.from) : t + b.fly - (b.lead ?? b.fly * 0.3);
       vignettes.play(name, at, from: b.from, hold: b.hold);
       _scene = name;
     } else if (b.stall case final i?) {
@@ -189,7 +202,7 @@ class CitySection extends TalkSection {
     // Fireworks over the plaza, one show after another, once it's there.
     final u = age - b.fly * 0.8;
     // (High and wide: over the title in the middle, not behind it.)
-    if (u >= 0) fx.fireworks(u % 11.6, 22, 11, 3, const [], glyphShapes?.call() ?? const []);
+    if (u >= 0) fx.fireworks(u % 11.6, 30, 15, 3, const [], glyphShapes?.call() ?? const []);
   }
 
   /// A scene beat's camera now: the scene's own, where it's got to (held

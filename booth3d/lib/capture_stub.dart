@@ -10,3 +10,6 @@ class CaptureSink {
 
   void finish() {}
 }
+
+/// The launch's environment: none on the web.
+String? launchEnv(String name) => null;

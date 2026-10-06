@@ -21,3 +21,6 @@ class CaptureSink {
     exit(0);
   }
 }
+
+/// A variable of the environment the app was launched with.
+String? launchEnv(String name) => Platform.environment[name];

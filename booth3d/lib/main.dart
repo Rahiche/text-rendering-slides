@@ -39,12 +39,17 @@ import 'world/world.dart';
 ///
 /// F5 (or Ctrl+Shift+T) tells section 05 of the talk, one word's journey,
 /// in the city: → / PageDown / Space next, ← / PageUp back, Home / End,
-/// Esc to leave it.
+/// Esc to leave it. To open straight into it: on the Mac,
+///   open -a "Name City" --env NAME_CITY_TALK=1
+/// and on the web, the page with ?talk.
 void main() => runApp(const NameCityApp());
 
 const _times = String.fromEnvironment('BOOTH3D_TIMES');
 const _names = String.fromEnvironment('BOOTH3D_NAMES');
 const _tag = String.fromEnvironment('BOOTH3D_TAG', defaultValue: 'city');
+
+/// Whether to open into the talk once the city's ready (see above).
+bool get _talkAtLaunch => Uri.base.queryParameters.containsKey('talk') || launchEnv('NAME_CITY_TALK') == '1';
 
 class NameCityApp extends StatefulWidget {
   const NameCityApp({super.key});
@@ -88,6 +93,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
           ..attach()
           ..addListener(() => setState(() {}));
         _ticker = createTicker(_tick)..start();
+        if (_talkAtLaunch) _toggleTalk();
       }
     });
   }

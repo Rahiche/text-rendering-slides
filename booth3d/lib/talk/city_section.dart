@@ -13,7 +13,7 @@ import 'talk_section.dart';
 /// turn, held [hold] seconds in while the presenter talks, else on round);
 /// or a Script Alley stall's ([stall]), its letters played and held.
 class CityBeat {
-  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const [], this.cardAt = 0, this.fireworks = false, this.chapter = false})
+  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pull = 1, this.pins = const [], this.cardAt = 0, this.fireworks = false, this.chapter = false})
     : scene = null,
       stall = null,
       from = 0,
@@ -26,6 +26,7 @@ class CityBeat {
     this.from = 0,
     this.fly = 2.2,
     this.shift = 0.3,
+    this.pull = 1,
     this.pins = const [],
     this.cardAt = 0,
     this.fireworks = false,
@@ -44,6 +45,7 @@ class CityBeat {
       scene = null,
       from = 0,
       hold = null,
+      pull = 1,
       pins = const [],
       cardAt = 0,
       fireworks = false,
@@ -55,7 +57,7 @@ class CityBeat {
   final int? stall;
   final double from;
   final double? hold;
-  final double fly, shift;
+  final double fly, shift, pull;
   final List<TalkPin> pins;
 
   /// Seconds before the card comes up (flown to); fireworks over the plaza
@@ -107,6 +109,7 @@ class CitySection extends TalkSection {
             b.shot ?? _nowhere,
             fly: b.fly,
             shift: b.shift,
+            pull: b.pull,
             pins: b.pins,
             live: b.scene == null ? null : () => _live(b),
             cardAt: b.cardAt,

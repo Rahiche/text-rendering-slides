@@ -111,6 +111,14 @@ class PropPool {
     _nCyl++;
   }
 
+  /// A glowing unit box placed by [m] (any turn).
+  void glowAt(vm.Matrix4 m, vm.Vector4 color) {
+    if (_nGlow >= maxGlows) return;
+    _glows.setInstanceTransform(_nGlow, m);
+    _glows.setInstanceColor(_nGlow, color);
+    _nGlow++;
+  }
+
   /// A glowing box (unlit: [color] is linear HDR, brighter than 1 blooms).
   void glow(double x, double y, double z, double sx, double sy, double sz, vm.Vector4 color, {double yaw = 0, double pitch = 0, double roll = 0}) {
     if (_nGlow >= maxGlows || sx <= 0 || sy <= 0 || sz <= 0) return;

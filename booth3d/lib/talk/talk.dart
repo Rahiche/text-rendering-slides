@@ -40,6 +40,15 @@ class Talk extends ChangeNotifier {
   Shot? _from, _to, _cam;
   double? _lift;
 
+  /// A step back (Back, Home, End): a quick flight there, the scene shown
+  /// as it ends, the card at once.
+  bool _back = false;
+
+  /// A scene's own camera as the talk follows it: eased after it (its
+  /// cuts, made for the booth's director, become quick moves).
+  vm.Vector3? _liveEye, _liveTarget;
+  double _liveFov = 0;
+
   /// Counts frames while the talk's on (what's pinned to the city follows
   /// the camera).
   final frame = ValueNotifier<int>(0);
@@ -56,7 +65,7 @@ class Talk extends ChangeNotifier {
 
   /// Whether the beat's card is up yet (a beat may hold it back until the
   /// camera's on its way down).
-  bool get cardShown => _on && (_from == null || _age >= _now.cardAt);
+  bool get cardShown => _on && (_from == null || _back || _age >= _now.cardAt);
 
   /// Whether the chapter's title is up (a chapter's beat, its card not yet).
   bool get chapter => _on && _now.chapter && !cardShown;
@@ -86,7 +95,8 @@ class Talk extends ChangeNotifier {
           c.lede,
           for (final f in c.facts)
             switch (f) {
-              FactRow(:final label, :final value) => '$label $value',
+              FactRow(:final label, :final value, :final example) => '$label $value ${example ?? ''}',
+              FactTable(:final columns, :final rows) => [...columns, for (final r in rows) ...r].join(' '),
               FactCode(:final code) => code,
               FactLetters(:final label, :final cells) => '$label ${cells.map((c) => '${c.$1} ${c.$2}').join(' ')}',
             },
@@ -106,7 +116,7 @@ class Talk extends ChangeNotifier {
     // (From the top: down out of the sky onto the title.)
     _cam = _section == 0 ? _sky : Shot(from.position.clone(), from.target.clone(), fov: from.fovRadiansY * 180 / math.pi);
     section.enter();
-    _go(_section, 0, fly: true);
+    _go(_section, 0);
   }
 
   /// Ends the talk: the camera goes back to the director, the world to the
@@ -124,37 +134,37 @@ class Talk extends ChangeNotifier {
   void next() {
     if (!_on) return;
     if (_beat < section.beats.length - 1) {
-      _go(_section, _beat + 1, fly: true);
+      _go(_section, _beat + 1);
     } else if (_section < sections.length - 1) {
-      _go(_section + 1, 0, fly: true);
+      _go(_section + 1, 0);
     }
   }
 
-  /// The beat before, as it was left (a cut).
+  /// The beat before, as it was left (a quick flight back).
   void back() {
     if (!_on) return;
     if (_beat > 0) {
-      _go(_section, _beat - 1, fly: false);
+      _go(_section, _beat - 1, back: true);
     } else if (_section > 0) {
-      _go(_section - 1, sections[_section - 1].beats.length - 1, fly: false);
+      _go(_section - 1, sections[_section - 1].beats.length - 1, back: true);
     }
   }
 
-  /// This section's first beat, or its last, as left (a cut).
+  /// This section's first beat, or its last, as left (a quick flight).
   void first() {
-    if (_on) _go(_section, 0, fly: false);
+    if (_on) _go(_section, 0, back: true);
   }
 
   void last() {
-    if (_on) _go(_section, section.beats.length - 1, fly: false);
+    if (_on) _go(_section, section.beats.length - 1, back: true);
   }
 
   /// Section [i]'s first beat, flown to.
   void jump(int i) {
-    if (_on && i >= 0 && i < sections.length) _go(i, 0, fly: true);
+    if (_on && i >= 0 && i < sections.length) _go(i, 0);
   }
 
-  void _go(int s, int b, {required bool fly}) {
+  void _go(int s, int b, {bool back = false}) {
     if (s != _section) {
       section.leave();
       _section = s;
@@ -164,9 +174,11 @@ class Talk extends ChangeNotifier {
     _age = 0;
     _to = null;
     _lift = null;
-    // From where the camera is now (mid-flight, if it is); or a cut.
-    _from = fly ? _cam : null;
-    section.arrive(b, cut: !fly);
+    _liveEye = _liveTarget = null;
+    // From where the camera is now (mid-flight, if it is).
+    _from = _cam;
+    _back = back;
+    section.arrive(b, cut: back);
     notifyListeners();
   }
 
@@ -182,18 +194,62 @@ class Talk extends ChangeNotifier {
     }
     section.update(_beat, _age, t, dt);
     final b = _now;
-    var to = b.live == null ? _to ??= _framed(b.shot, b.shift) : _framed(b.live!(), b.shift);
+    var to = b.live == null ? _to ??= _framed(b.shot, b.shift, b.pull) : _live(_framed(b.live!(), b.shift, b.pull), dt);
     final from = _from;
-    final u = from == null ? 1.0 : seg(_age, 0, b.fly);
+    // (A step back: quickly.)
+    final u = from == null ? 1.0 : seg(_age, 0, _back ? math.min(b.fly, 1.1) : b.fly);
     if (u >= 1 && b.live == null) {
       // Held: creeping in a little while it's on (a frame that breathes).
       final k = 0.04 * eo(seg(_age - (from == null ? 0 : b.fly), 0, 30));
       to = Shot(to.eye + (to.target - to.eye) * k, to.target, fov: to.fov, settle: to.settle, drift: to.drift);
     }
     _cam = u >= 1 ? to : _between(from!, to, u, _lift ??= _clearance(from.eye, to.eye));
+    if (_logCuts) _cutCheck(t, dt);
     director
       ..talkShot = _cam
       ..talkLabel = 'talk ${section.number} ${section.stops[stop]}${beats > 1 ? ' ${beat + 1}' : ''}';
+  }
+
+  /// Capture aid (a capture build): a hard cut logged with the beat it's
+  /// in — the camera jumping (or turning, or zooming) in one frame several
+  /// times as far as it did the frame before (a fast flight speeds up
+  /// smoothly; a cut doesn't).
+  static const _logCuts = String.fromEnvironment('BOOTH3D_TIMES') != '';
+  Shot? _was;
+  double _wasMove = 0, _wasTurn = 0;
+
+  void _cutCheck(double t, double dt) {
+    final was = _was, now = _cam!;
+    _was = now;
+    if (was == null || dt <= 0) return;
+    final move = (now.eye - was.eye).length;
+    final a = (was.target - was.eye).normalized(), b = (now.target - now.eye).normalized();
+    final turn = math.acos(a.dot(b).clamp(-1.0, 1.0)) * 180 / math.pi;
+    final zoom = (now.fov - was.fov).abs();
+    if ((move > 0.8 && move > 4 * _wasMove + 0.4) || (turn > 5 && turn > 4 * _wasTurn + 2) || zoom > 3) {
+      debugPrint('CUT t=${t.toStringAsFixed(2)} talk ${section.number} ${section.stops[stop]} beat $_beat age ${_age.toStringAsFixed(2)}: '
+          '${move.toStringAsFixed(2)} m (was ${_wasMove.toStringAsFixed(2)}), ${turn.toStringAsFixed(1)}° (was ${_wasTurn.toStringAsFixed(1)}), '
+          'fov ${zoom.toStringAsFixed(1)}°${_back ? ' (back)' : ''}');
+    }
+    _wasMove = move;
+    _wasTurn = turn;
+  }
+
+  /// [s], a scene's own camera this frame, eased after: within a quarter
+  /// second as it moves on, its cuts turned into quick moves.
+  Shot _live(Shot s, double dt) {
+    final eye = _liveEye, target = _liveTarget;
+    if (eye == null || target == null || dt <= 0) {
+      _liveEye = s.eye.clone();
+      _liveTarget = s.target.clone();
+      _liveFov = s.fov;
+    } else {
+      final k = 1 - math.exp(-dt / 0.25);
+      eye.add((s.eye - eye) * k);
+      target.add((s.target - target) * k);
+      _liveFov += (s.fov - _liveFov) * k;
+    }
+    return Shot(_liveEye!.clone(), _liveTarget!.clone(), fov: _liveFov, settle: s.settle, drift: s.drift);
   }
 
   /// After the site's update (the captions it clears).
@@ -240,7 +296,9 @@ class Talk extends ChangeNotifier {
   /// the avenue.
   static final _sky = Shot(vm.Vector3(0, 150, -230), vm.Vector3(0, 35, 60), fov: 46, drift: 0.6);
 
-  static Shot _framed(Shot s, double shift) {
+  static Shot _framed(Shot shot, double shift, double pull) {
+    // (Pulled back from what it looks at, by [pull]: room for all of it.)
+    final s = pull == 1 ? shot : Shot(shot.target + (shot.eye - shot.target) * pull, shot.target, fov: shot.fov, settle: shot.settle, drift: shot.drift);
     final f = s.target - s.eye;
     final d = f.length;
     final right = vm.Vector3(0, 1, 0).cross(f)..normalize();

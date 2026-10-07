@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart';
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
@@ -471,8 +472,19 @@ class Vignettes {
         _playedT = t;
       }
       v.pose(u, t, night);
+      if (_debugTalkOnly && v.talkOnly && (t * 2).floor() != ((t - 1 / 60) * 2).floor()) {
+        final shown = [
+          for (final n in v.detail.children)
+            if (n.visible && n.mesh != null) n.localTransform.getTranslation().storage.map((x) => x.toStringAsFixed(1)).join(','),
+        ];
+        if (shown.isNotEmpty) debugPrint('SHOWN t=${t.toStringAsFixed(1)} ${v.name}: ${shown.join(' | ')}');
+      }
     }
   }
+
+  /// Capture aid: --dart-define=BOOTH3D_DEBUG_TALKONLY=true logs, twice a
+  /// second, where a talk-only scene's shown parts are.
+  static const _debugTalkOnly = bool.fromEnvironment('BOOTH3D_DEBUG_TALKONLY');
 
   /// Plans this build's visits, in stretches the camera's free (clear of
   /// the filmed kerning steps and [busyCam]): one (two in a long build)

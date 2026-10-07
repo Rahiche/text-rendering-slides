@@ -81,3 +81,8 @@ flutter:
     - family: CaseSC
       fonts:
         - asset: assets/fonts/NotoSansSC-case.ttf
+    # The talk's phones (v_phones.dart): Android's own face, beside the
+    # iPhone's system font (Apache License 2.0: Roboto_LICENSE.txt).
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf

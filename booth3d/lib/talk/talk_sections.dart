@@ -1,6 +1,5 @@
 import 'package:vector_math/vector_math.dart' as vm;
 
-import '../world/glyph_works.dart';
 import '../world/site.dart';
 import 'city_section.dart';
 import 'journey_section.dart';
@@ -91,10 +90,18 @@ List<TalkSection> talkSections(Site3D site) {
           "Dart's String.length counts UTF-16 units, not what you see. The family is one grapheme: "
               'four people joined by three zero-width joiners. Let go, it is four.',
           [
-            FactRow('graphemes', 's.characters.length → 1', accent: true),
-            FactRow('code points', 's.runes.length → 7'),
-            FactRow('UTF-16 units', 's.length → 11'),
-            FactRow('UTF-8 bytes', 'utf8.encode(s).length → 25'),
+            // (What a reader sees, code points, UTF-16 units, UTF-8 bytes.)
+            FactTable(
+              ['', '.characters', '.runes', '.length', 'utf8.encode'],
+              [
+                ['e\u0301', '1', '2', '2', '3'],
+                ['\u{1F1EF}\u{1F1F5}', '1', '2', '4', '8'],
+                ['\u{1F44D}\u{1F3FD}', '1', '2', '4', '8'],
+                ['\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}', '1', '7', '11', '25'],
+                ['Flutter', '7', '7', '7', '7'],
+              ],
+              lit: 1,
+            ),
           ],
         ),
         [CityBeat.scene('family', hold: 6.1, fly: 2.6), CityBeat.scene('family', from: 6.1, hold: 10.75, fly: 0.8)],
@@ -113,7 +120,8 @@ List<TalkSection> talkSections(Site3D site) {
             ),
           ],
         ),
-        [CityBeat.at(GlyphWorks.front, fly: 2.6)],
+        // (Head on: the whole line, every stage, under its sign.)
+        [CityBeat.at(talkShot(-11.8, 3.2, -5.5, -12.8, 1.5, 6.0, 48, drift: 0.5), fly: 2.6)],
       ),
       CityStop(
         'itemize',
@@ -127,7 +135,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('fonts', 'Space Grotesk · Noto Kufi Arabic · CJK · Emoji'),
           ],
         ),
-        [CityBeat.scene('itemize', hold: 8.6, fly: 3.0)],
+        [CityBeat.scene('itemize', hold: 8.6, fly: 3.0, pull: 1.7, shift: 0.38)],
       ),
       CityStop(
         'fallback',
@@ -144,7 +152,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('U+0378', '.notdef → □ tofu', accent: true),
           ],
         ),
-        [CityBeat.scene('tofu', hold: 16.0, fly: 2.8)],
+        [CityBeat.scene('tofu', hold: 16.0, fly: 2.8, pull: 1.3, shift: 0.36)],
       ),
       CityStop(
         'shaping',
@@ -171,13 +179,15 @@ List<TalkSection> talkSections(Site3D site) {
           'Greedy: fill each line up to maxWidth, then start the next. Where a line may break depends '
               'on the script.',
           [
-            FactRow('spaces', 'UAX #14 break opportunities'),
-            FactRow('Thai', 'no spaces: ICU dictionary'),
-            FactRow('CJK', 'almost anywhere, but 。 never starts a line (禁則)', accent: true),
-            FactRow('too long', 'an emergency break inside the word'),
+            FactRow('spaces', 'UAX #14 break opportunities', example: 'the|quick|brown|fox'),
+            FactRow('Thai', 'no spaces: ICU dictionary', example: 'สวัสดี|ครับ'),
+            FactRow('CJK', 'almost anywhere, but 。 never starts a line (禁則)', accent: true, example: '行|頭|に|来|ま|せ|ん。'),
+            FactRow('too long', 'an emergency break inside the word', example: 'Donaudampfsch|ifffahrt'),
           ],
         ),
-        [CityBeat.scene('tram', hold: 11.6, fly: 3.0)],
+        // (The tram's paragraph; then a phone turned on its side: the same
+        // words, a new maxWidth, new lines.)
+        [CityBeat.scene('tram', hold: 11.6, fly: 3.0, pull: 1.5, shift: 0.38), CityBeat.scene('phones', hold: 7.0, fly: 3.0)],
       ),
       CityStop(
         'bidi',
@@ -192,7 +202,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('so', 'index i in memory ≠ position i on screen'),
           ],
         ),
-        [CityBeat.scene('bidi', hold: 9.5, fly: 3.0)],
+        [CityBeat.scene('bidi', hold: 9.5, fly: 3.0, shift: 0.36)],
       ),
       CityStop(
         'raster',
@@ -283,6 +293,7 @@ List<TalkSection> talkSections(Site3D site) {
           [
             FactLetters('memory', [('ש', '0', true), ('ל', '1', false), ('ו', '2', false), ('ם', '3', false)]),
             FactRow('screen', 'שלום', accent: true),
+            FactRow('also', 'Arabic \u2067مرحبا\u2069 · Persian \u2067سلام\u2069 · Urdu \u2067اردو\u2069'),
           ],
         ),
         [CityBeat.stall(0)],
@@ -296,7 +307,7 @@ List<TalkSection> talkSections(Site3D site) {
           [
             FactRow('letters', '\u2067ب ي ت\u2069'),
             FactRow('joined', 'بيت', accent: true),
-            FactRow('forms', 'isol · init · medi · fina'),
+            FactLetters('one letter, four forms', [('ع', 'isol', false), ('عـ', 'init', false), ('ـعـ', 'medi', true), ('ـع', 'fina', false)]),
           ],
         ),
         [CityBeat.stall(1)],
@@ -310,6 +321,7 @@ List<TalkSection> talkSections(Site3D site) {
           [
             FactLetters('memory', [('क', 'U+0915', false), ('ि', 'U+093F', true)]),
             FactRow('screen', 'कि', accent: true),
+            FactLetters('the same in three scripts', [('कि', 'Hindi', true), ('কি', 'Bengali', false), ('ਕਿ', 'Punjabi', false)]),
           ],
         ),
         [CityBeat.stall(2)],
@@ -324,6 +336,7 @@ List<TalkSection> talkSections(Site3D site) {
           [
             FactLetters('ป + ั + ่', [('ป', 'base', false), ('ั', 'vowel', false), ('่', 'tone', true)]),
             FactRow('result', 'ปั่น', accent: true),
+            FactRow('also', 'Vietnamese ệ = e + \u25CC\u0302 + \u25CC\u0323'),
           ],
         ),
         [CityBeat.stall(3)],
@@ -337,6 +350,7 @@ List<TalkSection> talkSections(Site3D site) {
           [
             FactLetters('ㅎ + ㅏ + ㄴ', [('ㅎ', '', false), ('ㅏ', '', false), ('ㄴ', '', false)]),
             FactRow('syllable', '한 · U+D55C', accent: true),
+            FactLetters('한글: two blocks, six letters', [('한', 'ㅎ ㅏ ㄴ', true), ('글', 'ㄱ ㅡ ㄹ', false)]),
           ],
         ),
         [CityBeat.stall(4)],
@@ -349,6 +363,7 @@ List<TalkSection> talkSections(Site3D site) {
           'Japanese can be set top to bottom, its columns right to left.',
           [
             FactRow('reads', '縦書きは右から左へ読む'),
+            FactRow('also', 'Chinese · Mongolian (its columns left to right)'),
             FactRow('in Flutter', 'not built in (section 04)', accent: true),
           ],
         ),
@@ -366,7 +381,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('fix', "locale: Locale('ja')", accent: true),
           ],
         ),
-        [CityBeat.scene('locale', hold: 12.5, fly: 3.2)],
+        [CityBeat.scene('locale', hold: 12.5, fly: 3.2, pull: 1.3, shift: 0.38)],
       ),
       CityStop(
         'mixing',
@@ -383,7 +398,9 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('combinations', '1,890', accent: true),
           ],
         ),
-        [CityBeat.at(talkShot(0, 30, -30, 0, 18, 40, 60, drift: 0.8), fly: 3.0, shift: 0.2)],
+        // (The mixed paragraph itself, hung over the city: its runs, their
+        // cuts, their directions.)
+        [CityBeat.scene('mix', hold: 8.0, fly: 3.0, shift: 0)],
       ),
     ]),
     section('03', 'How others do it', 'ほかのエンジン', const ['Aa', 'ش', 'ह', '字'], [
@@ -530,7 +547,13 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('3D', 'Matrix4, no relayout'),
           ],
         ),
-        [CityBeat.scene('gym', hold: 7.6, fly: 3.0), CityBeat.scene('word', hold: 7.0, fly: 3.0, shift: 0.26)],
+        // (The same everywhere: two phones, native then Flutter; a variable
+        // font; every glyph a box, turned in 3D.)
+        [
+          CityBeat.scene('phones', from: 20, hold: 31.0, fly: 3.0),
+          CityBeat.scene('gym', hold: 7.6, fly: 3.0),
+          CityBeat.scene('word', hold: 7.0, fly: 3.0, shift: 0.26),
+        ],
       ),
       CityStop(
         'web',
@@ -546,7 +569,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('engine', 'canvaskit · skwasm; breaks from Intl.Segmenter'),
           ],
         ),
-        [CityBeat.at(talkShot(-0.3, 2.6, 45.4, -6.6, 1.8, 50.6, 52), fly: 3.2)],
+        [CityBeat.at(talkShot(-0.3, 2.6, 45.4, -6.6, 1.8, 50.6, 52), fly: 3.2, pull: 1.25, shift: 0.38)],
       ),
     ]),
     JourneySection(site.works),
@@ -579,7 +602,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactCode("KumihanText('Flutterで日本語の改行を\n  きれいにする方法', balance: true)"),
           ],
         ),
-        [CityBeat.scene('tram', hold: 11.6, fly: 2.4)],
+        [CityBeat.scene('tram', hold: 11.6, fly: 2.4, pull: 1.5, shift: 0.38)],
       ),
       CityStop(
         'punctuation',

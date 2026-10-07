@@ -159,88 +159,157 @@ class _Card extends StatelessWidget {
   /// Its parts come in one after another (not in a capture).
   final bool animate;
 
+  /// Capture aid: --dart-define=BOOTH3D_CARD_GHOST=true draws the card
+  /// faint and outlined, over what it would hide.
+  static const _ghost = bool.fromEnvironment('BOOTH3D_CARD_GHOST');
+
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(14),
-    // Frosted: the city behind it, blurred, through a tinted pane.
-    child: BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(30, 26, 30, 30),
-        decoration: BoxDecoration(
-          color: BP.panel.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: BP.line.withValues(alpha: 0.2)),
+  Widget build(BuildContext context) {
+    if (_ghost) {
+      return Opacity(
+        opacity: 0.3,
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFFF3B30), width: 4)),
+          child: _body(),
         ),
-        child: _Stagger(
-          animate: animate,
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      // Frosted: the city behind it, blurred, through a tinted pane.
+      child: BackdropFilter(filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22), child: _body()),
+    );
+  }
+
+  Widget _body() => Container(
+    padding: const EdgeInsets.fromLTRB(30, 26, 30, 30),
+    decoration: BoxDecoration(
+      color: BP.panel.withValues(alpha: 0.78),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: BP.line.withValues(alpha: 0.2)),
+    ),
+    child: _Stagger(
+      animate: animate,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Text(
-                  section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
-                  style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
+            Text(
+              section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
+              style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
+            ),
+            const Spacer(),
+            if (beats > 1) ...[
+              for (var i = 0; i < beats; i++)
+                Container(
+                  width: 7,
+                  height: 7,
+                  margin: const EdgeInsets.only(right: 5),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i <= beat ? BP.amber : null,
+                    border: Border.all(color: i <= beat ? BP.amber : BP.inkFaint, width: 1.2),
+                  ),
                 ),
-                const Spacer(),
-                if (beats > 1) ...[
-                  for (var i = 0; i < beats; i++)
-                    Container(
-                      width: 7,
-                      height: 7,
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i <= beat ? BP.amber : null,
-                        border: Border.all(color: i <= beat ? BP.amber : BP.inkFaint, width: 1.2),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                ],
-                Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
-              ],
-            ),
-            if (card.opener && section.number.isNotEmpty)
-              // A section's first: its number large, as the deck's divider.
-              Padding(
-                padding: const EdgeInsets.only(top: 18),
-                child: Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(top: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
-                  const SizedBox(height: 2),
-                  Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(card.lede, style: UT.label(19.5, color: BP.inkDim, weight: 400, height: 1.42)),
-            ),
-            for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f)),
+              const SizedBox(width: 8),
+            ],
+            Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
           ],
         ),
-      ),
+        if (card.opener && section.number.isNotEmpty)
+          // A section's first: its number large, as the deck's divider.
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
+              const SizedBox(height: 2),
+              Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(card.lede, style: UT.label(19.5, color: BP.inkDim, weight: 400, height: 1.42)),
+        ),
+        for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f)),
+      ],
     ),
   );
+
+  /// An example line, each | in it an amber mark where a line may break.
+  static Widget _breaks(String s) {
+    final style = UT.label(16, color: BP.inkDim, weight: 500);
+    final parts = s.split('|');
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (final (i, p) in parts.indexed) ...[
+            if (i > 0) TextSpan(text: ' | ', style: style.copyWith(color: BP.amber, fontWeight: FontWeight.w700)),
+            TextSpan(text: p, style: style),
+          ],
+        ],
+      ),
+    );
+  }
 
   /// A label in capitals, but code as it's written (s.length).
   static String _caps(String label) => label.contains(RegExp(r'[.(_]')) ? label : label.toUpperCase();
 
   Widget _fact(CardFact f) => switch (f) {
-    FactRow(:final label, :final value, :final accent) => Row(
+    FactRow(:final label, :final value, :final accent, :final example) => Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
         SizedBox(width: 138, child: Text(_caps(label), style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1))),
         Expanded(
-          child: accent
-              ? _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
-              : Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              accent
+                  ? _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
+                  : Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+              if (example != null) Padding(padding: const EdgeInsets.only(top: 5), child: _breaks(example)),
+            ],
+          ),
         ),
+      ],
+    ),
+    FactTable(:final columns, :final rows, :final lit) => Table(
+      columnWidths: const {0: FlexColumnWidth(1.35)},
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      children: [
+        TableRow(
+          children: [
+            for (final (i, c) in columns.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Text(
+                  _caps(c),
+                  textAlign: i == 0 ? TextAlign.left : TextAlign.right,
+                  style: UT.mono(11.5, color: i == lit ? BP.amber : BP.inkFaint, weight: 600, ls: 0.6),
+                ),
+              ),
+          ],
+        ),
+        for (final r in rows)
+          TableRow(
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: BP.lineFaint.withValues(alpha: 0.7)))),
+            children: [
+              for (final (i, c) in r.indexed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: i == 0
+                      ? Text(c, style: UT.name(21, color: BP.ink, weight: 500, height: 1.15))
+                      : Text(c, textAlign: TextAlign.right, style: UT.mono(16.5, color: i == lit ? BP.amber : BP.ink, weight: 600)),
+                ),
+            ],
+          ),
       ],
     ),
     FactCode(:final code) => Container(

@@ -18,11 +18,22 @@ sealed class CardFact {
   const CardFact();
 }
 
-/// A value with its label ([accent]: the one to look at).
+/// A value with its label ([accent]: the one to look at), and an
+/// [example] under it (a | in it is a place a line may break).
 class FactRow extends CardFact {
-  const FactRow(this.label, this.value, {this.accent = false});
+  const FactRow(this.label, this.value, {this.accent = false, this.example});
   final String label, value;
   final bool accent;
+  final String? example;
+}
+
+/// A few samples measured several ways: the columns' names (the first is
+/// the samples'), a row a sample, the column to look at ([lit]).
+class FactTable extends CardFact {
+  const FactTable(this.columns, this.rows, {this.lit});
+  final List<String> columns;
+  final List<List<String>> rows;
+  final int? lit;
 }
 
 /// A few lines of code.
@@ -52,11 +63,15 @@ class TalkPin {
 /// of the middle what it looks at sits (of the half width: the card's on the
 /// left).
 class TalkBeat {
-  const TalkBeat(this.stop, this.shot, {this.fly = 2.2, this.shift = 0.3, this.pins = const [], this.live, this.cardAt = 0, this.chapter = false});
+  const TalkBeat(this.stop, this.shot, {this.fly = 2.2, this.shift = 0.3, this.pull = 1, this.pins = const [], this.live, this.cardAt = 0, this.chapter = false});
 
   final int stop;
   final Shot shot;
   final double fly, shift;
+
+  /// How far back from what it looks at the camera stands (of the shot's
+  /// own distance): room for a wide subject beside the card.
+  final double pull;
 
   /// Where the camera is this frame, when it follows something (a scene's
   /// own camera): instead of [shot].

@@ -52,6 +52,8 @@ import 'v_ruby.dart';
 import 'v_tofu.dart';
 import 'v_tower.dart';
 import 'v_tram.dart';
+import 'v_mix.dart';
+import 'v_phones.dart';
 import 'v_scripts.dart';
 import 'v_word.dart';
 import 'verdict.dart';
@@ -132,6 +134,8 @@ class Site3D {
       HyphenMill(kit),
       TalkWord(kit),
       TalkScripts(kit),
+      TalkPhones(kit),
+      TalkMix(kit),
     ],
   );
 

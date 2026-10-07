@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:vector_math/vector_math.dart' as vm;
 
 import '../world/shot.dart';
@@ -126,5 +128,17 @@ abstract class TalkSection {
 }
 
 /// A framing from its eye and target (and fov), drifting a little.
+/// The shot that a beat's framing (Talk: pulled back [pull] times from
+/// what it looks at, then slid left by [shift] of the half width) turns
+/// into [s]: a camera that ends up exactly where [s] is.
+Shot unframed(Shot s, double shift, double pull) {
+  final f = s.target - s.eye;
+  final d = f.length;
+  final right = vm.Vector3(0, 1, 0).cross(f)..normalize();
+  final by = right * (shift * d * math.tan(s.fov * math.pi / 360) * 16 / 9);
+  final eye = s.eye + by, target = s.target + by;
+  return Shot(target + (eye - target) / pull, target, fov: s.fov, settle: s.settle, drift: s.drift);
+}
+
 Shot talkShot(double ex, double ey, double ez, double tx, double ty, double tz, double fov, {double drift = 0.35}) =>
     Shot(vm.Vector3(ex, ey, ez), vm.Vector3(tx, ty, tz), fov: fov, drift: drift);

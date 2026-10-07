@@ -312,7 +312,9 @@ class LineTram extends Vignette {
     // The conductor on the platform: watching the boarding, the flag held
     // out for each move up and for the off.
     final p = _p..rest();
-    p.pos.setValues(_zoneX - 1.9, _platY, _platZ - 0.75);
+    // (At the gap behind the carriage at the platform: in front of no
+    // line's words, from the lawn or the path.)
+    p.pos.setValues(_zoneX - 0.58, _platY, _platZ - 0.75);
     final m = Manner.of(130);
     p.yaw = -1.85;
     Idle.stand(p, t, m, look: 0.4, at: vm.Vector3(_zoneX + 1.2, 1.2, 0));

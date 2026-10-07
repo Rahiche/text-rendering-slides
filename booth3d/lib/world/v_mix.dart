@@ -178,10 +178,52 @@ class TalkMix extends Vignette {
     }
     _width = width;
     _height = height;
+    await _buildPanel();
     _ready = true;
   }
 
   double _width = 1, _height = 1;
+
+  /// A navy board behind the paragraph: the runs read against it, not
+  /// against the skyline.
+  late final Node _panel;
+
+  Future<void> _buildPanel() async {
+    final pw = _width * _upp + 2.4, ph = _height * _upp + 1.8;
+    final tex = await paintedTexture(1024, (1024 * ph / pw).round(), (c, s) {
+      final r = Offset.zero & s;
+      c
+        ..drawRRect(
+          RRect.fromRectAndRadius(r, const Radius.circular(28)),
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF17283F), Color(0xFF0B1626)],
+            ).createShader(r),
+        )
+        ..drawRRect(
+          RRect.fromRectAndRadius(r.deflate(6), const Radius.circular(24)),
+          Paint()
+            ..color = const Color(0x665FB8FF)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4,
+        );
+    });
+    final mat = PhysicallyBasedMaterial()
+      ..baseColorTexture = tex
+      ..alphaMode = AlphaMode.mask
+      ..alphaCutoff = 0.5
+      ..metallicFactor = 0
+      ..roughnessFactor = 0.85
+      ..emissiveTexture = tex
+      ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
+      ..emissiveStrength = 0.35;
+    _panel = Node(name: 'talk mix panel', mesh: Mesh(boardGeometry(pw, ph, thick: 0.05), mat))
+      ..castsShadows = false
+      ..visible = false;
+    detail.add(_panel);
+  }
 
   Node _node(GlyphMesh m, Material face, Material side) {
     final f = <int>[], s = <int>[];
@@ -214,6 +256,15 @@ class TalkMix extends Vignette {
     pool.begin();
     final on = _act == 1 && u < _end;
     final out = 1 - eio(seg(u, _hold, _hold + 0.9));
+    // The board first, then the runs onto it.
+    final pe = eo(seg(u, 0.05, 0.7)) * out;
+    _panel.visible = on && pe > 0.002;
+    if (_panel.visible) {
+      _m
+        ..setFrom(_facing)
+        ..setTranslation(_world(_width / 2, _height / 2, (_depth + 0.35) / _upp));
+      _panel.localTransform = _m * vm.Matrix4.diagonal3Values(pe, pe, 1);
+    }
     for (var i = 0; i < _nodes.length; i++) {
       final n = _nodes[i];
       final k = seg(u, 0.4 + 0.28 * i, 1.2 + 0.28 * i);

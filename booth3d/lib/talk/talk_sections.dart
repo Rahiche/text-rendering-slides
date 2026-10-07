@@ -1,5 +1,6 @@
 import 'package:vector_math/vector_math.dart' as vm;
 
+import '../world/shot.dart';
 import '../world/site.dart';
 import 'city_section.dart';
 import 'journey_section.dart';
@@ -187,7 +188,21 @@ List<TalkSection> talkSections(Site3D site) {
         ),
         // (The tram's paragraph; then a phone turned on its side: the same
         // words, a new maxWidth, new lines.)
-        [CityBeat.scene('tram', hold: 11.6, fly: 3.0, pull: 1.5, shift: 0.38), CityBeat.scene('phones', hold: 7.0, fly: 3.0)],
+        [
+          // (Back at the end for the whole train: all three lines beside
+          // the card.)
+          CityBeat.scene(
+            'tram',
+            hold: 11.6,
+            fly: 3.0,
+            pull: 1.5,
+            shift: 0.38,
+            // (From the park's path, clear of the cable car.)
+            view: Shot(vm.Vector3(0, 4.5, -22), vm.Vector3(-6.94, 1.0, 0), fov: 27, drift: 0.3),
+            viewFrom: 9.8,
+          ),
+          CityBeat.scene('phones', hold: 7.0, fly: 3.0),
+        ],
       ),
       CityStop(
         'bidi',
@@ -551,7 +566,9 @@ List<TalkSection> talkSections(Site3D site) {
         // font; every glyph a box, turned in 3D.)
         [
           CityBeat.scene('phones', from: 20, hold: 31.0, fly: 3.0),
-          CityBeat.scene('gym', hold: 7.6, fly: 3.0),
+          // (Wider, from in front of the park bench: the letters and the
+          // wght board beside them.)
+          CityBeat.scene('gym', hold: 7.6, fly: 3.0, shift: 0.34, view: Shot(vm.Vector3(-1.58, 1.5, -2.94), vm.Vector3(-0.58, 1.3, 1.26), fov: 46, drift: 0.4)),
           CityBeat.scene('word', hold: 7.0, fly: 3.0, shift: 0.26),
         ],
       ),
@@ -569,7 +586,8 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('engine', 'canvaskit · skwasm; breaks from Intl.Segmenter'),
           ],
         ),
-        [CityBeat.at(talkShot(-0.3, 2.6, 45.4, -6.6, 1.8, 50.6, 52), fly: 3.2, pull: 1.25, shift: 0.38)],
+        // (Two browsers: the font arriving late, then find on each page.)
+        [CityBeat.scene('phones', from: 60, hold: 68.0, fly: 3.2, shift: 0.4)],
       ),
     ]),
     JourneySection(site.works),

@@ -54,6 +54,16 @@ abstract class Vignette {
   /// let it go, round no loop: it plays out and goes).
   bool get talkOnly => false;
 
+  /// A solid board behind what it shows, risen while a talk's on it (its
+  /// bottom middle in the frame, its size; null: none): the letters read
+  /// against it, not against the park or whoever's walking behind.
+  ({vm.Vector3 at, double w, double h})? get backdrop => null;
+
+  /// The talk's board (built by [Vignettes] for a [backdrop]), and how
+  /// far up it is.
+  Node? backdropNode;
+  double backdropUp = 0;
+
   Future<void> init();
 
   /// Poses it [u] seconds into a turn (scene time [t], [night] 0 day … 1).
@@ -375,8 +385,66 @@ class Vignettes {
         ..add(v.detail)
         ..add(v.shell);
     }
-    await Future.wait([for (final v in all) v.init()]);
+    await Future.wait([for (final v in all) v.init(), _buildBackdrops()]);
     _ready = true;
+  }
+
+  /// The talk's boards: navy, a fine light rule round the edge.
+  Future<void> _buildBackdrops() async {
+    final tex = await paintedTexture(512, 512, (c, s) {
+      final r = Offset.zero & s;
+      c
+        ..drawRect(
+          r,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF17283F), Color(0xFF0B1626)],
+            ).createShader(r),
+        )
+        ..drawRect(
+          r.deflate(6),
+          Paint()
+            ..color = const Color(0x665FB8FF)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4,
+        );
+    });
+    final mat = PhysicallyBasedMaterial()
+      ..baseColorTexture = tex
+      ..metallicFactor = 0
+      ..roughnessFactor = 0.85
+      ..emissiveTexture = tex
+      ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
+      ..emissiveStrength = 0.35;
+    for (final v in all) {
+      final b = v.backdrop;
+      if (b == null) continue;
+      final n = Node(name: '${v.name} backdrop', mesh: Mesh(boardGeometry(b.w, b.h, thick: 0.04), mat))
+        ..castsShadows = false
+        ..visible = false;
+      v.detail.add(n);
+      v.backdropNode = n;
+    }
+  }
+
+  double _lastT = 0;
+
+  /// The talk's boards up (the scene it's on) or down, rising out of the
+  /// ground (or the counter) behind what's shown.
+  void _poseBackdrops(double t) {
+    final dt = (t - _lastT).clamp(0.0, 0.1);
+    _lastT = t;
+    for (final (i, v) in all.indexed) {
+      final n = v.backdropNode, b = v.backdrop;
+      if (n == null || b == null) continue;
+      final up = _played?.$1 == i;
+      v.backdropUp = up ? math.min(1.0, v.backdropUp + dt / 0.6) : math.max(0.0, v.backdropUp - dt / 0.45);
+      final e = eio(v.backdropUp);
+      n.visible = e > 0.002;
+      if (n.visible) n.localTransform = v.frame * vm.Matrix4.translation(vm.Vector3(b.at.x, b.at.y + b.h / 2 - b.h * (1 - e), b.at.z));
+    }
   }
 
   /// The texts they shape, for the web's font warm-up.
@@ -450,6 +518,7 @@ class Vignettes {
     for (final m in kit.signs) {
       m.emissiveStrength = 0.25 + 0.9 * smooth(0.2, 0.7, night);
     }
+    _poseBackdrops(t);
     for (final (i, v) in all.indexed) {
       final visited = on != null && on.$1 == i;
       if (visited) _phase[i] = -on.$2;

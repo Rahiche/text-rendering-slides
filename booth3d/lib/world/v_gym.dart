@@ -39,6 +39,10 @@ class WeightGym extends Vignette {
 
   static const _weights = [100, 275, 450, 625, 800];
 
+  /// For a talk: a board behind the letters (left of the wght board).
+  @override
+  ({vm.Vector3 at, double w, double h})? get backdrop => (at: vm.Vector3(-0.9, 0, 1.15), w: 2.2, h: 2.7);
+
   /// The reps (each at its own second), the flex, the way back down.
   static const _reps = [1.3, 2.9, 4.5, 6.1], _rep = 1.2, _flex = 7.4, _ease = 8.7;
 

@@ -32,7 +32,11 @@ import 'vignette.dart';
 ///   break between them (the same words, whole, in green);
 /// * punctuation (48–56 s): the first phone turns on its side for
 ///   「こんにちは」「世界」。 twice, as Text() spaces it and with the font's
-///   'halt' where 」 meets 「: the gap between the marks, 1 em, then ½.
+///   'halt' where 」 meets 「: the gap between the marks, 1 em, then ½;
+/// * the web (60–68 s): two browser windows, an HTML page and a Flutter
+///   web page (its text pixels on a canvas). The Flutter page's Japanese
+///   is tofu until its font arrives from fonts.gstatic.com; then find
+///   (Ctrl+F) for "text": the HTML page finds it, the canvas doesn't.
 class TalkPhones extends Vignette {
   TalkPhones(super.kit);
 
@@ -50,9 +54,9 @@ class TalkPhones extends Vignette {
 
   /// (The talk holds its camera within a visit: every turn.)
   @override
-  double get loop => 60;
+  double get loop => 72;
   @override
-  double get visit => 58;
+  double get visit => 70;
 
   /// Over the lawn behind the site, facing the plaza.
   @override
@@ -72,11 +76,26 @@ class TalkPhones extends Vignette {
   /// carries on from it, the same phones), the punctuation's.
   static const _from3 = 40.0, _from4 = 48.0, _hold4 = 55.5, _end4 = 56.4;
 
+  /// The web's turn: from [_from5]; the font arrives at [_fontAt]; find at
+  /// [_findAt]; held at [_hold5].
+  static const _from5 = 60.0, _fontAt = 63.6, _findAt = 65.2, _hold5 = 68.0, _end5 = 68.9;
+
+  /// A browser window's size (m), its body's, its pixels; where the two
+  /// hang (their middles, across).
+  static const _bw = 2.6, _bh = 1.6, _bpx = 1300, _bpy = 800, _bx = 1.42;
+
   static const _lineText = 'Each line is filled up to maxWidth; the next word that won\'t fit starts a new one.';
   static const _sameText = 'These words wrap at different places on each phone\'s own text engine.';
 
   late final Node _a, _b, _aScreen, _bScreen, _aWide;
   late final PhysicallyBasedMaterial _aMat, _bMat, _wideMat;
+
+  /// The browsers: their bodies, their windows, the windows' pictures
+  /// (the HTML page, found; the canvas page in tofu, with its font, found
+  /// nothing).
+  late final Node _html, _canvas, _htmlWin, _canvasWin;
+  late final PhysicallyBasedMaterial _htmlMat, _canvasMat;
+  late final Texture2D _htmlPage, _htmlFound, _canvasTofu, _canvasFont, _canvasFound;
   late final Texture2D _tall, _wideLines, _iosNative, _androidNative, _flutter, _jaPlain, _jaGlued, _punct;
   bool _ready = false;
   int _act = 0;
@@ -85,6 +104,7 @@ class TalkPhones extends Vignette {
   List<(String, TextStyle)> get fontRuns => [
     (_sameText, const TextStyle(fontFamily: 'Roboto', fontSize: 40)),
     ('$_plainJa$_punctText', _ja.copyWith(fontSize: 40)),
+    ('Hello text □ ⟳ ✓ Noto Sans JP · fonts.gstatic.com… <canvas> <p> example.com', const TextStyle(fontFamily: BP.display, fontSize: 40)),
   ];
 
   @override
@@ -107,6 +127,11 @@ class TalkPhones extends Vignette {
       _phraseScreen(glued: false, split: split, size: jaSize),
       _phraseScreen(glued: true, split: split, size: jaSize),
       _punctScreen(84),
+      _browser(canvas: false),
+      _browser(canvas: false, find: true),
+      _browser(canvas: true, tofu: true),
+      _browser(canvas: true),
+      _browser(canvas: true, find: true),
     ]);
     _tall = textures[0];
     _wideLines = textures[1];
@@ -116,6 +141,19 @@ class TalkPhones extends Vignette {
     _jaPlain = textures[5];
     _jaGlued = textures[6];
     _punct = textures[7];
+    _htmlPage = textures[8];
+    _htmlFound = textures[9];
+    _canvasTofu = textures[10];
+    _canvasFont = textures[11];
+    _canvasFound = textures[12];
+    _htmlMat = screenMat(_htmlPage);
+    _canvasMat = screenMat(_canvasTofu);
+    final monitor = slab(_bw + 0.14, _bh + 0.14, 0.08, 0.08);
+    final dark = pbr(Vignette.c(0x22262E), metallic: 0.6, roughness: 0.4);
+    _html = _phone(monitor, dark);
+    _canvas = _phone(monitor, dark);
+    _htmlWin = _screenNode(_htmlMat, _bw, _bh);
+    _canvasWin = _screenNode(_canvasMat, _bw, _bh);
     _aMat = screenMat(_tall);
     _bMat = screenMat(_androidNative);
     _wideMat = screenMat(_wideLines);
@@ -435,10 +473,11 @@ class TalkPhones extends Vignette {
   @override
   void pose(double u, double t, double night) {
     if (!_ready) return;
-    if (visited) _act = u < 15 ? 1 : (u < 35 ? 2 : (u < _from4 ? 3 : 4));
-    for (final n in [_a, _b, _aScreen, _bScreen, _aWide]) {
+    if (visited) _act = u < 15 ? 1 : (u < 35 ? 2 : (u < _from4 ? 3 : (u < 58 ? 4 : 5)));
+    for (final n in [_a, _b, _aScreen, _bScreen, _aWide, _html, _canvas, _htmlWin, _canvasWin]) {
       n.visible = false;
     }
+    if (_act == 5 && u >= _from5 && u < _end5) _browsing(u, t);
     if (_act == 1 && u < _end1) _rotate(u, t);
     if (_act == 2 && u >= _from2 && u < _end2) _same(u, t);
     if (_act == 3 && u >= _from3 && u < _from4) _phrasing(u, t);
@@ -467,15 +506,15 @@ class TalkPhones extends Vignette {
 
   /// A phone and its screen, its middle at (x, y): the body stands on its
   /// bottom edge (the slab's ink), the screen just in front of its face.
-  void _phoneAt(Node body, Node screen, double x, double y, {double s = 1, double yaw = 0, double roll = 0, bool face = true}) {
+  void _phoneAt(Node body, Node screen, double x, double y, {double s = 1, double yaw = 0, double roll = 0, bool face = true, double h = _h, double depth = _depth}) {
     if (s <= 0.001) return;
     // (Offsets turned by the matrix the nodes get: vector_math's
     // Quaternion.rotated turns the other way.)
     final r = vm.Quaternion.euler(yaw, 0, roll).asRotationMatrix();
-    final down = r.transformed(vm.Vector3(0, -_h * s / 2, 0));
+    final down = r.transformed(vm.Vector3(0, -h * s / 2, 0));
     _put(body, x + down.x, y + down.y, down.z, s: s, yaw: yaw, roll: roll);
     if (!face) return;
-    final front = r.transformed(vm.Vector3(0, 0, -(_depth / 2 + 0.008) * s));
+    final front = r.transformed(vm.Vector3(0, 0, -(depth / 2 + 0.008) * s));
     _put(screen, x + front.x, y + front.y, front.z, s: s, yaw: yaw, roll: roll);
   }
 
@@ -520,6 +559,78 @@ class TalkPhones extends Vignette {
     }
   }
 
+  /// The two browsers: in; the canvas page's font arriving; find.
+  void _browsing(double u, double t) {
+    final s = _overshoot(seg(u, _from5 + 0.2, _from5 + 1.0)) * (1 - eio(seg(u, _hold5, _hold5 + 0.5)));
+    final apart = eio(seg(u, _from5 + 0.1, _from5 + 1.1));
+    _htmlMat.baseColorTexture = _htmlMat.emissiveTexture = u < _findAt ? _htmlPage : _htmlFound;
+    _canvasMat.baseColorTexture = _canvasMat.emissiveTexture = u < _fontAt ? _canvasTofu : (u < _findAt ? _canvasFont : _canvasFound);
+    for (final (i, (body, win)) in [(_html, _htmlWin), (_canvas, _canvasWin)].indexed) {
+      final side = i == 0 ? -1.0 : 1.0;
+      _phoneAt(body, win, side * _bx * apart, _y + 0.05 * math.sin(t * 1.2 + i * 1.7), s: s, h: _bh + 0.14, depth: 0.08);
+    }
+  }
+
+  /// A browser window: a tab ([canvas]: the Flutter web page, its text
+  /// pixels on a canvas; else an HTML page), the address bar, two lines
+  /// of text — the Japanese in [tofu] until its font's arrived — and
+  /// ([find]) the find bar, searching for "text".
+  Future<Texture2D> _browser({required bool canvas, bool tofu = false, bool find = false}) => paintedTexture(_bpx, _bpy, (c, s) {
+    final r = RRect.fromRectAndRadius(Offset.zero & s, const Radius.circular(22));
+    c
+      ..clipRRect(r)
+      ..drawRect(Offset.zero & s, Paint()..color = const Color(0xFFFFFFFF))
+      ..drawRect(Rect.fromLTWH(0, 0, s.width, 150), Paint()..color = const Color(0xFFDEE1E6));
+    // The tab, the address bar.
+    final tab = RRect.fromRectAndCorners(Rect.fromLTWH(40, 14, 560, 62), topLeft: const Radius.circular(16), topRight: const Radius.circular(16));
+    c
+      ..drawRRect(tab, Paint()..color = const Color(0xFFFFFFFF))
+      ..drawRect(Rect.fromLTWH(0, 76, s.width, 74), Paint()..color = const Color(0xFFFFFFFF))
+      ..drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(40, 86, s.width - 80, 54), const Radius.circular(27)), Paint()..color = const Color(0xFFF1F3F4));
+    label(c, canvas ? 'Flutter web · <canvas>' : 'HTML page · <p>', const Offset(66, 22), 40, const Color(0xFF202124), weight: FontWeight.w700);
+    label(c, 'example.com', const Offset(80, 96), 30, const Color(0xFF5F6368), weight: FontWeight.w500);
+    // The text.
+    const big = TextStyle(fontFamily: BP.display, fontSize: 118, color: Color(0xFF202124), fontWeight: FontWeight.w600);
+    final mark = TextStyle(background: Paint()..color = const Color(0xFFFFE066));
+    final line1 = TextPainter(
+      text: TextSpan(
+        style: big,
+        children: [const TextSpan(text: 'Hello '), TextSpan(text: 'text', style: find && !canvas ? mark : null)],
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    line1.paint(c, const Offset(80, 210));
+    line1.dispose();
+    final line2 = TextPainter(
+      text: TextSpan(text: tofu ? '□□□□□' : 'こんにちは', style: big.copyWith(locale: const Locale('ja'), color: tofu ? const Color(0xFF9AA0A6) : null)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    line2.paint(c, const Offset(80, 380));
+    line2.dispose();
+    if (canvas) {
+      // The font: on its way, then here.
+      final pill = RRect.fromRectAndRadius(Rect.fromLTWH(60, 610, 1060, 96), const Radius.circular(48));
+      c.drawRRect(pill, Paint()..color = tofu ? const Color(0xFFFFF4E0) : const Color(0xFFE6F4EA));
+      label(c, tofu ? '⟳ Noto Sans JP · fonts.gstatic.com…' : '✓ Noto Sans JP arrived', const Offset(100, 628), 48, tofu ? const Color(0xFFB06000) : const Color(0xFF1E8E3E), weight: FontWeight.w700);
+    }
+    if (find) {
+      // The find bar, top right.
+      final bar = RRect.fromRectAndRadius(Rect.fromLTWH(s.width - 620, 166, 580, 104), const Radius.circular(16));
+      c
+        ..drawRRect(bar.shift(const Offset(0, 6)), Paint()..color = const Color(0x22000000))
+        ..drawRRect(bar, Paint()..color = const Color(0xFFFFFFFF))
+        ..drawRRect(
+          bar,
+          Paint()
+            ..color = const Color(0xFFDADCE0)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3,
+        );
+      label(c, 'text', Offset(s.width - 590, 182), 54, const Color(0xFF202124), weight: FontWeight.w600);
+      label(c, canvas ? '0 of 0' : '1 of 1', Offset(s.width - 290, 186), 50, canvas ? const Color(0xFFD93025) : const Color(0xFF1E8E3E), weight: FontWeight.w800, family: BP.mono);
+    }
+  });
+
   /// The second phone away; the first to the middle, on its side.
   void _punctuating(double u, double t) {
     final away = eio(seg(u, _from4, _from4 + 0.45)), mid = eio(seg(u, _from4 + 0.2, _from4 + 1.3));
@@ -545,6 +656,8 @@ class TalkPhones extends Vignette {
       return Shot(vm.Vector3(-1.1, lerp(7.5, 7.7, k), lerp(-6.4, -6.0, k)), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);
     }
     if (u < _from4) return Shot(vm.Vector3(-0.9, 7.6, -7.6), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);
+    // Back for the two browsers.
+    if (u >= 58) return Shot(vm.Vector3(-0.5, 8.1, -7.4), vm.Vector3(0, 8.45, 0), fov: 42, settle: 1.0, drift: 0.4);
     // In for the phone on its side.
     final k = smooth(_from4 + 0.2, _from4 + 1.6, u);
     return Shot(vm.Vector3(lerp(-0.9, -1.1, k), lerp(7.6, 7.7, k), lerp(-7.6, -6.0, k)), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);

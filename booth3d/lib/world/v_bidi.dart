@@ -225,12 +225,13 @@ class BidiWorks extends Vignette {
   @override
   Shot shot(double u) {
     // From the plaza's edge across the street: the works, then in on the
-    // two rows.
+    // two rows (from high enough to see them over the heads of whoever's
+    // walking past on the pavement).
     final k = smooth(0.4, 2.0, u);
     return Shot(
-      vm.Vector3(lerp(2.9, 2.4, k), lerp(4.6, 2.7, k), lerp(-9.5, -8.6, k)),
-      vm.Vector3(lerp(0.4, 0.2, k), lerp(3.4, 1.75, k), lerp(1.0, _rowZ, k)),
-      fov: lerp(52, 46, k),
+      vm.Vector3(lerp(2.9, 2.0, k), lerp(5.2, 6.4, k), lerp(-9.5, -9.2, k)),
+      vm.Vector3(lerp(0.4, 0.2, k), lerp(3.4, 1.8, k), lerp(1.0, _rowZ, k)),
+      fov: lerp(52, 44, k),
       settle: 1.1,
       drift: 0.4,
     );

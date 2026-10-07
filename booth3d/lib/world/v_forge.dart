@@ -151,8 +151,10 @@ class LigatureForge extends Vignette {
     // A smith as you'd picture one (and see in the shade of the trees): a
     // linen shirt, sleeves rolled up, a leather apron, tan gloves.
     _smith = person(
+      // (A dark shirt under the leather apron: the gold letters read against
+      // it as they're forged.)
       FigureLook()
-        ..top = rgbHex(0xE2D6C2)
+        ..top = rgbHex(0x2F3338)
         ..bareArms = true
         ..legs = rgbHex(0x4A5568)
         ..skirt = rgbHex(0x8A5A36)

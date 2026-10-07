@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color, FontVariation, FontWeight, Locale, Paint, PaintingStyle, Rect;
 
-import 'package:flutter/painting.dart' show Canvas, Offset, TextAlign, TextDirection, TextPainter, TextSelection, TextSpan, TextStyle;
+import 'package:flutter/painting.dart' show Alignment, Canvas, LinearGradient, Offset, TextAlign, TextDirection, TextPainter, TextSelection, TextSpan, TextStyle;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -133,11 +133,100 @@ class ScriptAlley {
   Future<void> init() async {
     _lanterns = pbr(lin(const Color(0xFFFF5A3C)), roughness: 0.6, emissive: lin(const Color(0xFFFF7A45)), emissiveStrength: 0.6);
     _buildStalls();
-    await Future.wait([_buildSigns(), _buildLetters()]);
+    await Future.wait([_buildSigns(), _buildLetters(), _buildBoards()]);
     _ready = true;
   }
 
+  // ── The talk's display boards ─────────────────────────────────────────────
+
+  /// Behind each stall's letters, a board that rises out of the counter
+  /// while a talk shows the stall: a solid ground the glyphs read against
+  /// (the stall's own wall is its colour, as the letters are), and the
+  /// keeper out of sight behind it. Its size, and how far back it stands
+  /// (stall frame; the letters stand at [AlleyLayout.stageZ]).
+  static const boardW = 1.9, boardH = 1.35, boardZ = 0.2;
+
+  /// With the board up, the letters step up onto a baseline drawn on it
+  /// (this high over the counter): what hangs below the line — the dots
+  /// under ب and ي — no longer sinks into the counter. (Not the vertical
+  /// stall's: its letters are on their own board.)
+  static const baseline = 0.2;
+  final _boards = <Node>[], _roots = <Node>[];
+  final _boardUp = List.filled(6, 0.0);
+  double _lastT = 0;
+
+  Future<void> _buildBoards() async {
+    for (var i = 0; i < 6; i++) {
+      final c = alleyRules[i].color;
+      final tex = await paintedTexture(760, 540, (canvas, s) {
+        final r = Offset.zero & s;
+        canvas
+          ..drawRect(
+            r,
+            Paint()
+              ..shader = const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF17283F), Color(0xFF0B1626)],
+              ).createShader(r),
+          )
+          ..drawRect(
+            r.deflate(8),
+            Paint()
+              ..color = c.withValues(alpha: 0.7)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 6,
+          );
+        if (i != 5) {
+          // The baseline the letters sit on.
+          final y = s.height * (1 - baseline / boardH);
+          canvas.drawLine(
+            Offset(s.width * 0.06, y),
+            Offset(s.width * 0.94, y),
+            Paint()
+              ..color = c.withValues(alpha: 0.55)
+              ..strokeWidth = 3,
+          );
+        }
+      });
+      final mat = PhysicallyBasedMaterial()
+        ..baseColorTexture = tex
+        ..metallicFactor = 0
+        ..roughnessFactor = 0.85
+        ..emissiveTexture = tex
+        ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
+        ..emissiveStrength = 0.35;
+      final n = Node(name: 'alley board', mesh: Mesh(boardGeometry(boardW, boardH, thick: 0.04), mat))
+        ..castsShadows = false
+        ..visible = false;
+      scene.add(n);
+      _boards.add(n);
+    }
+  }
+
+  /// How far stall [i]'s letters stand over its counter now.
+  double _lift(int i) => i == 5 ? 0 : baseline * eio(_boardUp[i]);
+
+  /// The boards up (the one a talk shows) or down, [dt] seconds on.
+  void _poseBoards(double dt) {
+    for (var i = 0; i < _boards.length; i++) {
+      final up = _played?.$1 == i;
+      _boardUp[i] = up ? math.min(1.0, _boardUp[i] + dt / 0.55) : math.max(0.0, _boardUp[i] - dt / 0.45);
+      final e = eio(_boardUp[i]);
+      final n = _boards[i]..visible = e > 0.002;
+      if (n.visible) {
+        n.localTransform = AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + boardH / 2 - boardH * (1 - e), boardZ));
+      }
+      if (i < _roots.length) {
+        _roots[i].localTransform = AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + _lift(i), AlleyLayout.stageZ));
+      }
+    }
+  }
+
   // ── The stalls ────────────────────────────────────────────────────────────
+
+  /// Where a stall's two lanterns hang (stall frame: ± across, in front).
+  static const _lanternX = 1.16, _lanternZ = -0.6;
 
   void _buildStalls() {
     final batch = Batch();
@@ -164,11 +253,12 @@ class ScriptAlley {
       for (var k = 0; k < 5; k++) {
         box(0.56, 0.07, 1.75, -1.12 + 0.56 * k, 2.5, 0.33, k.isEven ? c : white, rotX: -0.14);
       }
-      // The lanterns' cords and caps (the lit paper is its own mesh).
-      for (final x in [-0.98, 0.98]) {
-        box(0.015, 0.2, 0.015, x, 2.3, -0.5, cord);
-        box(0.2, 0.04, 0.2, x, 2.2, -0.5, cord);
-        box(0.2, 0.04, 0.2, x, 1.82, -0.5, cord);
+      // The lanterns' cords and caps (the lit paper is its own mesh), at
+      // the front corners (clear of the talk's display board, seen head on).
+      for (final x in [-_lanternX, _lanternX]) {
+        box(0.015, 0.2, 0.015, x, 2.3, _lanternZ, cord);
+        box(0.2, 0.04, 0.2, x, 2.2, _lanternZ, cord);
+        box(0.2, 0.04, 0.2, x, 1.82, _lanternZ, cord);
       }
       // The vertical stall's board, on its counter.
       if (i == 5) box(0.52, 1.36, 0.05, 0, AlleyLayout.stageY + 0.68, AlleyLayout.stageZ + 0.2, dark);
@@ -182,8 +272,8 @@ class ScriptAlley {
     final paper = CylinderGeometry(bottomRadius: 0.16, topRadius: 0.16, height: 0.34, radialSegments: 12);
     final small = CylinderGeometry(bottomRadius: 0.11, topRadius: 0.11, height: 0.24, radialSegments: 10);
     for (var i = 0; i < 6; i++) {
-      for (final x in [-0.98, 0.98]) {
-        batch.add(_lanterns, part(paper, AlleyLayout.frame(i) * trs(vm.Vector3(x, 2.01, -0.5)), v4(lin3(const Color(0xFFFFFFFF)))));
+      for (final x in [-_lanternX, _lanternX]) {
+        batch.add(_lanterns, part(paper, AlleyLayout.frame(i) * trs(vm.Vector3(x, 2.01, _lanternZ)), v4(lin3(const Color(0xFFFFFFFF)))));
       }
     }
     for (final z in [32.0, 37.0]) {
@@ -317,6 +407,7 @@ class ScriptAlley {
         localTransform: AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY, AlleyLayout.stageZ)),
       );
       scene.add(root);
+      _roots.add(root);
       final d = _demos[i];
       for (final s in solids[i]) {
         final n = Node(name: 'alley letter', mesh: Mesh(glyphGeometry(s.mesh), mat))
@@ -376,6 +467,8 @@ class ScriptAlley {
     for (final m in _glyphMats) {
       m.emissiveStrength = 0.12 + 1.3 * on;
     }
+    _poseBoards((t - _lastT).clamp(0.0, 0.1));
+    _lastT = t;
     for (var i = 0; i < 6; i++) {
       _pose(i, _loopAt(i, t));
     }
@@ -437,7 +530,7 @@ class ScriptAlley {
 
   /// A puff where letters come together (stage point of stall [i]).
   void _puff(int i, double x, double y, double age, int seed) {
-    final w = AlleyLayout.toWorld(i, vm.Vector3(x, AlleyLayout.stageY + y, AlleyLayout.stageZ - 0.1));
+    final w = AlleyLayout.toWorld(i, vm.Vector3(x, AlleyLayout.stageY + _lift(i) + y, AlleyLayout.stageZ - 0.1));
     fx.puff(w.x, w.y, w.z, age, 0.35, seed: seed, n: 3);
   }
 

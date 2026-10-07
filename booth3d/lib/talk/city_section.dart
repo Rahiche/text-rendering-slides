@@ -35,7 +35,7 @@ class CityBeat {
   }) : shot = null,
        stall = null;
 
-  CityBeat.stall(int this.stall, {this.fly = 2.0, this.shift = 0.3})
+  CityBeat.stall(int this.stall, {this.fly = 2.0, this.shift = 0.42})
     : shot = Shot(
         AlleyLayout.toWorld(stall, _stallEye),
         AlleyLayout.toWorld(stall, _stallTarget),
@@ -72,8 +72,9 @@ class CityBeat {
   /// nearly there: the last third of the way).
   final double? lead;
 
-  /// A stall from the path, as the build's visits see it.
-  static final _stallEye = vm.Vector3(0.85, 1.72, -4.0), _stallTarget = vm.Vector3(0.05, 1.42, -0.1);
+  /// A stall head on, close: its display board (risen behind the letters
+  /// while the talk's there) filling the frame beside the card.
+  static final _stallEye = vm.Vector3(0, 1.6, -3.0), _stallTarget = vm.Vector3(0, 1.6, ScriptAlley.boardZ);
 }
 
 /// A stop: its short name (the way along the bottom), its card, its beats.

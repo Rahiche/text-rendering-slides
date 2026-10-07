@@ -169,7 +169,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('emoji ZWJ', '5 code points → 1 glyph'),
           ],
         ),
-        [CityBeat.scene('forge', fly: 2.4)],
+        [CityBeat.scene('forge', fly: 2.4, shift: 0.52)],
       ),
       CityStop(
         'lines',

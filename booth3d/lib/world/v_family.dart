@@ -1,3 +1,4 @@
+import 'dart:convert' show utf8;
 import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
@@ -9,14 +10,16 @@ import 'figure.dart';
 import 'kit.dart';
 import 'motion.dart';
 import 'shot.dart';
+import 'v_phones.dart' show TalkPhones;
 import 'vignette.dart';
 
 /// 家族 · A string ≠ text, on the lawn behind the site: a family out for a
 /// walk, hand in hand — 👨‍👩‍👧‍👦, one emoji: a man, a woman, a girl and a
 /// boy joined by three zero-width joiners (their held hands glow). Over
-/// them, what it is in a string: 1 grapheme, 7 code points, 11 UTF-16
-/// units, 25 UTF-8 bytes. They stop and let go: four people, four
-/// graphemes (the children run about); then hands again, and on.
+/// them, a phone with the emoji in a text field and what a String makes of
+/// it: 1 character, 7 runes, length 11, 25 UTF-8 bytes. They stop and let
+/// go: four people, four characters (the children run about); then hands
+/// again, and on.
 class ZwjFamily extends Vignette {
   ZwjFamily(super.kit);
 
@@ -58,8 +61,15 @@ class ZwjFamily extends Vignette {
 
   final _slots = <int>[];
   final _poses = List.generate(4, (_) => FigurePose());
-  late final Node _joined, _apartSign;
   bool _ready = false;
+
+  /// The phone over them (landscape): its size, and its screen's; the
+  /// emoji in its text field, joined or not.
+  static const _pw = 2.8, _ph = 1.3, _pd = 0.1, _sw = 2.64, _sh = 1.17;
+  static const _family = '👨‍👩‍👧‍👦', _four = '👨👩👧👦';
+  late final Node _phone, _screen;
+  late final PhysicallyBasedMaterial _screenMat;
+  late final Texture2D _joinedField, _apartField;
 
   static const _emoji = TextStyle(fontFamily: BP.display, fontSize: 160);
 
@@ -93,24 +103,57 @@ class ZwjFamily extends Vignette {
         ),
       );
     }
-    Future<Node> board(String big, String small) => sign(1.9, 0.86, vm.Matrix4.identity(), (c, s) {
-      final r = RRect.fromRectAndRadius(Offset.zero & s, Radius.circular(s.height * 0.14));
-      c.drawRRect(r, Paint()..color = const Color(0xF2F4F1EA));
-      c.drawRRect(
-        r.deflate(4),
+    _joinedField = await _field(_family, 1);
+    _apartField = await _field(_four, 4);
+    _screenMat = TalkPhones.screenMat(_joinedField);
+    _phone = Node(name: 'family phone', mesh: Mesh(glyphGeometry(TalkPhones.slab(_pw, _ph, 0.16, _pd)), pbr(Vignette.c(0x8E9298), metallic: 0.7, roughness: 0.42)))
+      ..castsShadows = false
+      ..visible = false;
+    _screen = Node(name: 'family phone screen', mesh: Mesh(boardGeometry(_sw, _sh, thick: 0.01), _screenMat))
+      ..castsShadows = false
+      ..visible = false;
+    detail
+      ..add(_phone)
+      ..add(_screen);
+    _ready = true;
+  }
+
+  /// The phone's screen (dark: the family emoji is pale grey silhouettes,
+  /// lost on white): [text] in a text field (a caret after it), and what a
+  /// String makes of it — its [characters] (what a reader sees), runes,
+  /// UTF-16 length and UTF-8 bytes.
+  Future<Texture2D> _field(String text, int characters) => paintedTexture(1200, 532, (c, s) {
+    TalkPhones.chrome(c, s, '', '', bar: false, dark: true);
+    final field = RRect.fromRectAndRadius(Rect.fromLTWH(40, 84, s.width - 80, 186), const Radius.circular(44));
+    c
+      ..drawRRect(field, Paint()..color = const Color(0xFF242A35))
+      ..drawRRect(
+        field,
         Paint()
-          ..color = const Color(0xFF2E6DA8)
+          ..color = const Color(0xFF4F7CC4)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 5,
       );
-      Vignette.text(c, big, Rect.fromLTWH(0, s.height * 0.04, s.width, s.height * 0.6), s.height * 0.46, const Color(0xFF14203A));
-      Vignette.text(c, small, Rect.fromLTWH(0, s.height * 0.64, s.width, s.height * 0.3), s.height * 0.16, const Color(0xFF1E2A4A));
-    }, glow: 0.45);
-    _joined = await board('👨‍👩‍👧‍👦  1 grapheme', '7 code points (3 × ZWJ) · 11 UTF-16 units · 25 UTF-8 bytes');
-    _apartSign = await board('👨 👩 👧 👦  4 graphemes', 'let go: no joiners, four emoji');
-    _joined.visible = _apartSign.visible = false;
-    _ready = true;
-  }
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: const TextStyle(fontSize: 136)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(c, Offset(80, 84 + (186 - tp.height) / 2));
+    c.drawRect(Rect.fromLTWH(80 + tp.width + 12, 112, 7, 130), Paint()..color = const Color(0xFF64B5F6));
+    tp.dispose();
+    final counts = [
+      ('.characters', characters, true),
+      ('.runes', text.runes.length, false),
+      ('.length', text.length, false),
+      ('utf8 bytes', utf8.encode(text).length, false),
+    ];
+    for (final (i, (name, n, lit)) in counts.indexed) {
+      final x = 64.0 + i * 280;
+      TalkPhones.label(c, name, Offset(x, 292), 30, const Color(0xFF9AA3B2), weight: FontWeight.w700, family: BP.mono);
+      TalkPhones.label(c, '$n', Offset(x - 4, 328), 108, lit ? const Color(0xFFFFC66D) : const Color(0xFFF2F4F8), weight: FontWeight.w800, family: BP.mono);
+    }
+    TalkPhones.home(c, s, dark: true);
+  });
 
   // ── Posing ────────────────────────────────────────────────────────────────
 
@@ -203,20 +246,21 @@ class ZwjFamily extends Vignette {
         pglow(h.x, h.y + 0.02, h.z, 0.07, 0.07, 0.07, vm.Vector4(0.5 * pulse, 1.1 * pulse, 2.2 * pulse, 1));
       }
     }
-    // The sign over them: 1 grapheme while they're joined, 4 apart.
-    // (Only while the camera's here: from anywhere else it's a board's
-    // blank back.)
+    // The phone over them: the emoji joined while they hold hands, four
+    // apart. (Only while the camera's here.)
     final flip = apart > 0.5;
-    _joined.visible = !flip && visited;
-    _apartSign.visible = flip && visited;
-    final n = flip ? _apartSign : _joined;
+    _phone.visible = _screen.visible = visited;
+    _screenMat.baseColorTexture = _screenMat.emissiveTexture = flip ? _apartField : _joinedField;
     final pop = 1 - 0.25 * math.sin(math.pi * (apart < 0.5 ? apart * 2 : (1 - apart) * 2)).abs();
+    final y = 2.58 + 0.05 * math.sin(t * 1.3);
     _m
       ..setIdentity()
-      ..setTranslationRaw(-0.05, 2.45 + 0.05 * math.sin(t * 1.3), z - 0.2)
+      ..setTranslationRaw(-0.05, y, z - 0.2)
       ..rotateY(away ? math.pi : 0)
       ..scaleByDouble(pop, pop, pop, 1);
-    n.localTransform = frame * _m;
+    // (The body stands on its bottom edge; the screen just in front.)
+    _phone.localTransform = frame * _m * vm.Matrix4.translation(vm.Vector3(0, -_ph / 2, 0));
+    _screen.localTransform = frame * _m * vm.Matrix4.translation(vm.Vector3(0, 0, -(_pd / 2 + 0.008)));
     pool.end();
   }
 

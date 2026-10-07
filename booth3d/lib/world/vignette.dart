@@ -256,7 +256,9 @@ abstract class Vignette {
     // (Its ink's middle is what's placed: the mesh stands on its ink's
     // bottom.)
     final q = vm.Quaternion.euler(yaw, pitch, roll);
-    final off = q.rotated(vm.Vector3(0, -g.height * s / 2, 0));
+    // (Turned by the matrix the node gets: Quaternion.rotated turns the
+    // other way.)
+    final off = q.asRotationMatrix().transformed(vm.Vector3(0, -g.height * s / 2, 0));
     _m.setFromTranslationRotationScale(vm.Vector3(x + off.x, y + off.y, z + off.z), q, vm.Vector3.all(s));
     g.node.localTransform = frame * _m;
   }

@@ -104,7 +104,7 @@ List<TalkSection> talkSections(Site3D site) {
             ),
           ],
         ),
-        [CityBeat.scene('family', hold: 6.1, fly: 2.6), CityBeat.scene('family', from: 6.1, hold: 10.75, fly: 0.8)],
+        [CityBeat.scene('family', hold: 6.1, fly: 2.6, pull: 1.1), CityBeat.scene('family', from: 6.1, hold: 10.75, fly: 0.8, pull: 1.1)],
       ),
       CityStop(
         'pipeline',
@@ -602,7 +602,9 @@ List<TalkSection> talkSections(Site3D site) {
             FactCode("KumihanText('Flutterで日本語の改行を\n  きれいにする方法', balance: true)"),
           ],
         ),
-        [CityBeat.scene('tram', hold: 11.6, fly: 2.4, pull: 1.5, shift: 0.38)],
+        // (Two phones: the same sentence as Text() breaks it and as
+        // KumihanText() does.)
+        [CityBeat.scene('phones', from: 40, hold: 47.5, fly: 3.0)],
       ),
       CityStop(
         'punctuation',
@@ -617,7 +619,8 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow("'chws'", 'not in Noto Sans JP · Hiragino'),
           ],
         ),
-        [CityBeat.at(talkShot(-12.3, 1.7, -12.4, -13.8, 1.3, -8.55, 40), fly: 3.4)],
+        // (The first phone on its side: the marks before and after.)
+        [CityBeat.scene('phones', from: 47.5, hold: 55.5, fly: 1.6, lead: 1.6)],
       ),
       CityStop(
         'slug',

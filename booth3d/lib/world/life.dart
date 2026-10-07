@@ -65,7 +65,7 @@ class Life3D {
     _traffic.pose(camera, night);
     _people.pose(_t, camera, m, night, work);
     _signals.pose(_t, night);
-    _birds.pose(_t, night);
+    _birds.pose(_t, night, camera);
     _blimp.pose(_t, night);
   }
 }
@@ -1330,7 +1330,8 @@ class _Birds {
   _Birds(Scene scene) {
     _wings = InstancedMesh(
       geometry: merged([part(CuboidGeometry(vm.Vector3(0.22, 0.03, 0.62)), vm.Matrix4.translation(vm.Vector3(0, 0, 0.31)), vm.Vector4(1, 1, 1, 1))]),
-      material: pbr(lin(BP.ink), roughness: 0.6),
+      // (Dark against the sky, as birds are seen.)
+      material: pbr(lin(const Color(0xFF2B3442)), roughness: 0.6),
     );
     for (var i = 0; i < _n * 2; i++) {
       _wings.addInstance(hidden);
@@ -1346,7 +1347,9 @@ class _Birds {
   static const _n = 11;
   late final InstancedMesh _wings;
 
-  void pose(double t, double night) {
+  /// The flock at [t]; any bird near the [camera] gone (one flying past
+  /// the lens would fill the frame).
+  void pose(double t, double night, vm.Vector3 camera) {
     final show = night < 0.45;
     _wings.updateInstanceTransforms((list) {
       for (var i = 0; i < _n; i++) {
@@ -1363,8 +1366,15 @@ class _Birds {
         final dx = math.cos(a), dz = -math.sin(a) * 0.7;
         final hdg = headingTo(dx, dz);
         final flap = math.sin(t * 9 + i * 1.3) * 0.55;
-        setTrsYX(list[i * 2], x, y, z, hdg, flap + 0.15, 2.2);
-        setTrsYX(list[i * 2 + 1], x, y, z, hdg + math.pi, -flap - 0.15, 2.2);
+        final cx = x - camera.x, cy = y - camera.y, cz = z - camera.z;
+        final s = 2.2 * smooth(14, 24, math.sqrt(cx * cx + cy * cy + cz * cz));
+        if (s < 0.01) {
+          list[i * 2].setFrom(hidden);
+          list[i * 2 + 1].setFrom(hidden);
+          continue;
+        }
+        setTrsYX(list[i * 2], x, y, z, hdg, flap + 0.15, s);
+        setTrsYX(list[i * 2 + 1], x, y, z, hdg + math.pi, -flap - 0.15, s);
       }
     });
   }

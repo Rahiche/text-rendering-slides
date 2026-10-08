@@ -6,21 +6,26 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'figure_rig.dart';
 import 'kit.dart';
+import 'models.dart';
 import 'site_geo.dart' show setTrs;
 
 export 'figure_rig.dart';
 
 /// Name City's people, drawn: everyone — the crew and the people in the
-/// streets — is the same low-poly human (a torso that narrows to the waist
-/// and widens to the hips, a head with a face and hair, arms with elbows
-/// and mitten hands, legs with knees and shoes), posed from a [FigurePose]
-/// by [FigureRig] and dressed by a [FigureLook]: work clothes, hi-vis vests,
-/// hard hats, lab coats, suits, jackets, coats, skirts, bags.
+/// streets — is the same human (a torso that narrows to the waist and
+/// widens to the hips, a head with one simple face for all, hair, arms
+/// with elbows and hands, legs with knees and shoes), posed from a
+/// [FigurePose] by [FigureRig] and dressed by a [FigureLook]: work clothes,
+/// hi-vis vests, hard hats, lab coats, suits, jackets, coats, skirts, bags.
+/// The head, its hair, the hands and the shoes are sculpted in Blender
+/// (tool/blender/people.py).
 ///
 /// One [Figures] per scene draws them all: every part is an instanced mesh
 /// (one draw for everybody's heads, one for everybody's forearms…), its
-/// colour per instance, its details (eyes, soles, a vest's opening) in the
-/// geometry. Nothing is allocated per frame.
+/// colour per instance, its shading in its vertex colours; people near the
+/// camera wear the full parts, those far from it simpler ones, and each
+/// frame the meshes hold just who's showing. Nothing is allocated per
+/// frame.
 
 // ── What they wear ──────────────────────────────────────────────────────────
 
@@ -53,6 +58,9 @@ class FigureLook {
   /// tights under a skirt), the shoes; gloves (null: bare hands).
   vm.Vector4 legs = _white, shoes = _white;
   vm.Vector4? shins, gloves;
+
+  /// The shoes' soles (null: to go with them, see [Figures]).
+  vm.Vector4? soles;
 
   /// A skirt, or a coat's or a lab coat's tail, and its length (1: to the
   /// knee).
@@ -93,13 +101,19 @@ class _Body {
   List<String>? ring;
   final FigureLook look;
 
-  /// Its number (its head; its arms and legs are 2n, 2n + 1).
+  /// Its number.
   final int n;
 
   /// What they last showed (see [FigureMotion]).
   final motion = FigureMotion();
-  InstancedMesh? torso, hair;
-  int torsoAt = -1, hairAt = -1, hat = -1, cap = -1, vest = -1, stripes = -1, skirt = -1, backpack = -1, bag = -1, board = -1, parasol = -1;
+
+  /// Its parts (the ones its look has), and by name; drawn near the camera
+  /// (in full) or far from it (simpler).
+  final uses = <_Use>[];
+  late final _Use torso, hips, head, eyes, brows;
+  _Use? hair, hat, cap, vest, stripes, skirt, backpack, bag, board, parasol;
+  final upper = <_Use>[], lower = <_Use>[], hand = <_Use>[], thigh = <_Use>[], shin = <_Use>[], foot = <_Use>[], sole = <_Use>[];
+  bool near = false;
   bool hidden = false;
 
   /// Where they were drawn in the last frame (feet, without the nudge),
@@ -114,9 +128,63 @@ class _Body {
   double vx = 0, vz = 0;
 }
 
-/// Everybody's parts in one scene: a draw per part for everybody (about
-/// 1,500 triangles a person), colours per instance. [add] a person, then
-/// [draw] them every frame (or [hide] them): what's drawn is smoothed over
+/// One of a person's instances of a part (one side's, of a pair): where it's
+/// drawn this frame, in what colour; whether it's shown.
+class _Use {
+  _Use(this.part, this.color);
+  final _Part part;
+  final vm.Vector4 color;
+  final m = vm.Matrix4.identity();
+  bool on = false;
+}
+
+/// One of the people's parts: its mesh near the camera and the simpler one
+/// for far from it ([far] null: the same one, or, [farShown] false, none).
+class _Part {
+  _Part(this.near, [this.far, this.farShown = true]);
+  final _Slots near;
+  final _Slots? far;
+  final bool farShown;
+
+  _Slots? at(bool isNear) => isNear ? near : (far ?? (farShown ? near : null));
+}
+
+/// A mesh's instances, packed afresh each frame: just whoever's showing it
+/// (its colour set only when its owner changes).
+class _Slots {
+  _Slots(this.mesh);
+  final InstancedMesh mesh;
+  final _owners = <_Use>[];
+  int _used = 0;
+
+  void put(_Use u) {
+    final i = _used++;
+    if (i < _owners.length) {
+      mesh.setInstanceTransform(i, u.m);
+      if (!identical(_owners[i], u)) {
+        mesh.setInstanceColor(i, u.color);
+        _owners[i] = u;
+      }
+    } else {
+      mesh.addInstance(u.m, color: u.color);
+      _owners.add(u);
+    }
+  }
+
+  /// Drops the instances no one used this frame.
+  void end() {
+    while (_owners.length > _used) {
+      mesh.removeInstanceAt(_owners.length - 1);
+      _owners.removeLast();
+    }
+    _used = 0;
+  }
+}
+
+/// Everybody's parts in one scene: a draw per part for everybody, colours
+/// per instance; people near the camera in full, those far from it simpler.
+/// [add] a person, then [draw] them every frame (or [hide] them), and
+/// [commit] the frame once everyone's drawn: what's drawn is smoothed over
 /// the poses' jumps (each person's [FigureMotion], on its clock).
 class Figures {
   Figures._(this.scene) {
@@ -125,6 +193,10 @@ class Figures {
 
   static final _of = Expando<Figures>('figures');
 
+  /// The sculpted parts (people.glb), loaded before anyone's drawn.
+  static Map<String, MeshData>? _parts;
+  static Future<void> load() async => _parts ??= await modelParts('assets/models/people.glb');
+
   /// The scene's figures (made on first use).
   static Figures of(Scene scene) => _of[scene] ??= Figures._(scene);
 
@@ -132,9 +204,10 @@ class Figures {
   final rig = FigureRig();
   final _bodies = <_Body>[];
 
-  late final InstancedMesh _torso, _torsoSlim, _hips, _head, _upperArm, _forearm, _hand, _thigh, _shin, _foot;
-  late final InstancedMesh _hardHat, _cap, _vest, _stripes, _skirt, _backpack, _bag, _board, _parasol;
-  final _hairs = <InstancedMesh>[];
+  late final _Part _torso, _torsoSlim, _hips, _head, _eyes, _brows, _upperArm, _forearm, _hand, _thigh, _shin, _foot, _sole;
+  late final _Part _hardHat, _cap, _vest, _stripes, _skirt, _backpack, _bag, _board, _parasol;
+  final _hairs = <_Part>[];
+  final _slots = <_Slots>[];
   late final PhysicallyBasedMaterial _stripeMat;
 
   /// The reflective stripes catch the floodlights after dark (0 day … 1
@@ -143,73 +216,93 @@ class Figures {
 
   void _build() {
     final cloth = pbr(rgb(1, 1, 1), roughness: 0.82);
-    final skin = pbr(rgb(1, 1, 1), roughness: 0.6);
-    final hair = pbr(rgb(1, 1, 1), roughness: 0.55);
+    final skin = pbr(rgb(1, 1, 1), roughness: 0.55);
+    final hair = pbr(rgb(1, 1, 1), roughness: 0.5);
+    final eye = pbr(rgb(1, 1, 1), roughness: 0.22);
+    final rubber = pbr(rgb(1, 1, 1), roughness: 0.85);
     final shiny = pbr(rgb(1, 1, 1), roughness: 0.3, metallic: 0.05);
     final shoe = pbr(rgb(1, 1, 1), roughness: 0.5);
     _stripeMat = pbr(rgb(1, 1, 1), roughness: 0.25, metallic: 0.25, emissive: rgb(0.85, 0.88, 0.9), emissiveStrength: 0.02);
-    InstancedMesh im(MeshGeometry g, Material m, String name) {
-      final mesh = InstancedMesh(geometry: g, material: m);
+    _Slots im(MeshGeometry g, Material m, String name) {
+      final mesh = InstancedMesh(geometry: g, material: m, cullInstances: true);
       scene.add(Node(name: 'people $name')..addComponent(InstancedMeshComponent(mesh)));
-      return mesh;
+      final slots = _Slots(mesh);
+      _slots.add(slots);
+      return slots;
     }
 
-    _torso = im(_torsoGeometry(slim: false), cloth, 'torsos');
-    _torsoSlim = im(_torsoGeometry(slim: true), cloth, 'slim torsos');
-    _hips = im(_hipsGeometry(), cloth, 'hips');
-    _head = im(_headGeometry(), skin, 'heads');
+    final parts = _parts!;
+    MeshGeometry sculpted(String name) => MeshGeometry.fromMeshData(parts[name]!);
+    _Part both(String name, Material m, String label) => _Part(im(sculpted(name), m, label), im(sculpted('${name}_far'), m, '$label far'));
+    _Part lofted(MeshGeometry Function(bool near) g, Material m, String label) => _Part(im(g(true), m, label), im(g(false), m, '$label far'));
+    _Part one(MeshGeometry g, Material m, String label) => _Part(im(g, m, label));
+
+    _torso = lofted((near) => _torsoGeometry(slim: false, near: near), cloth, 'torsos');
+    _torsoSlim = lofted((near) => _torsoGeometry(slim: true, near: near), cloth, 'slim torsos');
+    _hips = lofted(_hipsGeometry, cloth, 'hips');
+    _head = both('head', skin, 'heads');
+    // (Eyes and brows: too small to see from afar.)
+    _eyes = _Part(im(sculpted('eyes'), eye, 'eyes'), null, false);
+    _brows = _Part(im(sculpted('brows'), hair, 'brows'), null, false);
     for (final h in Hair.values.skip(1)) {
-      _hairs.add(im(_hairGeometry(h), hair, 'hair ${h.name}'));
+      _hairs.add(both('hair_${h.name}', hair, 'hair ${h.name}'));
     }
-    _upperArm = im(_upperArmGeometry(), cloth, 'upper arms');
-    _forearm = im(_forearmGeometry(), cloth, 'forearms');
-    _hand = im(_handGeometry(), skin, 'hands');
-    _thigh = im(_thighGeometry(), cloth, 'thighs');
-    _shin = im(_shinGeometry(), cloth, 'shins');
-    _foot = im(_footGeometry(), shoe, 'shoes');
-    _hardHat = im(_hardHatGeometry(), shiny, 'hard hats');
-    _cap = im(_capGeometry(), cloth, 'caps');
-    _vest = im(_vestGeometry(), cloth, 'vests');
-    _stripes = im(_stripesGeometry(), _stripeMat, 'vest stripes');
-    _skirt = im(_skirtGeometry(), cloth, 'skirts');
-    _backpack = im(_backpackGeometry(), cloth, 'backpacks');
-    _bag = im(_bagGeometry(), cloth, 'bags');
-    _board = im(_boardGeometry(), cloth, 'clipboards');
-    _parasol = im(_parasolGeometry(), cloth, 'parasols');
+    _upperArm = lofted(_upperArmGeometry, cloth, 'upper arms');
+    _forearm = lofted(_forearmGeometry, cloth, 'forearms');
+    _hand = both('hand', skin, 'hands');
+    _thigh = lofted(_thighGeometry, cloth, 'thighs');
+    _shin = lofted(_shinGeometry, cloth, 'shins');
+    _foot = both('shoe', shoe, 'shoes');
+    _sole = both('sole', rubber, 'soles');
+    _hardHat = one(_hardHatGeometry(), shiny, 'hard hats');
+    _cap = one(_capGeometry(), cloth, 'caps');
+    _vest = one(_vestGeometry(), cloth, 'vests');
+    _stripes = one(_stripesGeometry(), _stripeMat, 'vest stripes');
+    _skirt = one(_skirtGeometry(), cloth, 'skirts');
+    _backpack = one(_backpackGeometry(), cloth, 'backpacks');
+    _bag = one(_bagGeometry(), cloth, 'bags');
+    _board = one(_boardGeometry(), cloth, 'clipboards');
+    _parasol = one(_parasolGeometry(), cloth, 'parasols');
   }
 
   /// Adds a person who looks like [look]; returns their number for [draw].
   int add(FigureLook look) {
     final b = _Body(look, _bodies.length);
     _bodies.add(b);
-    int one(InstancedMesh m, vm.Vector4 c) => m.addInstance(hidden, color: c);
-    b.torso = look.slim ? _torsoSlim : _torso;
-    b.torsoAt = one(b.torso!, look.top);
-    one(_head, look.skin);
-    // (The seat of the trousers, or under the skirt in its colour.)
-    one(_hips, look.skirt ?? look.legs);
-    if (look.hair != Hair.none) {
-      b.hair = _hairs[look.hair.index - 1];
-      b.hairAt = one(b.hair!, look.hairColor);
+    _Use use(_Part p, vm.Vector4 c) {
+      final u = _Use(p, c);
+      b.uses.add(u);
+      return u;
     }
+
+    final skin = _toned(look.skin);
+    b
+      ..torso = use(look.slim ? _torsoSlim : _torso, look.top)
+      // (The seat of the trousers, or under the skirt in its colour.)
+      ..hips = use(_hips, look.skirt ?? look.legs)
+      ..head = use(_head, skin)
+      ..eyes = use(_eyes, vm.Vector4(1, 1, 1, 1))
+      ..brows = use(_brows, look.hairColor);
+    if (look.hair != Hair.none) b.hair = use(_hairs[look.hair.index - 1], look.hairColor);
     final sleeves = look.sleeves ?? look.top;
     for (var s = 0; s < 2; s++) {
-      one(_upperArm, sleeves);
-      one(_forearm, look.bareArms ? look.skin : sleeves);
-      one(_hand, look.gloves ?? look.skin);
-      one(_thigh, look.legs);
-      one(_shin, look.shins ?? look.legs);
-      one(_foot, look.shoes);
+      b.upper.add(use(_upperArm, sleeves));
+      b.lower.add(use(_forearm, look.bareArms ? skin : sleeves));
+      b.hand.add(use(_hand, look.gloves ?? skin));
+      b.thigh.add(use(_thigh, look.legs));
+      b.shin.add(use(_shin, look.shins == null ? look.legs : (look.shins == look.skin ? skin : look.shins!)));
+      b.foot.add(use(_foot, look.shoes));
+      b.sole.add(use(_sole, look.soles ?? _soleFor(look.shoes)));
     }
-    if (look.hardHat case final c?) b.hat = one(_hardHat, c);
-    if (look.cap case final c?) b.cap = one(_cap, c);
-    if (look.layer case final c?) b.vest = one(_vest, c);
-    if (look.stripes) b.stripes = one(_stripes, vm.Vector4(1, 1, 1, 1));
-    if (look.skirt case final c?) b.skirt = one(_skirt, c);
-    if (look.backpack case final c?) b.backpack = one(_backpack, c);
-    if (look.bag case final c?) b.bag = one(_bag, c);
-    if (look.clipboard) b.board = one(_board, vm.Vector4(1, 1, 1, 1));
-    if (look.parasol case final c?) b.parasol = one(_parasol, c);
+    if (look.hardHat case final c?) b.hat = use(_hardHat, c);
+    if (look.cap case final c?) b.cap = use(_cap, c);
+    if (look.layer case final c?) b.vest = use(_vest, c);
+    if (look.stripes) b.stripes = use(_stripes, vm.Vector4(1, 1, 1, 1));
+    if (look.skirt case final c?) b.skirt = use(_skirt, c);
+    if (look.backpack case final c?) b.backpack = use(_backpack, c);
+    if (look.bag case final c?) b.bag = use(_bag, c);
+    if (look.clipboard) b.board = use(_board, vm.Vector4(1, 1, 1, 1));
+    if (look.parasol case final c?) b.parasol = use(_parasol, c);
     return b.n;
   }
 
@@ -220,35 +313,28 @@ class Figures {
   (double, double) velocityOf(int n) => (_bodies[n].vx, _bodies[n].vz);
 
   /// Hides person [n].
-  void hide(int n) {
-    final b = _bodies[n];
-    if (b.hidden) return;
-    b.hidden = true;
-    b.torso!.setInstanceTransform(b.torsoAt, hidden);
-    _hips.setInstanceTransform(n, hidden);
-    _head.setInstanceTransform(n, hidden);
-    b.hair?.setInstanceTransform(b.hairAt, hidden);
-    for (var k = 2 * n; k < 2 * n + 2; k++) {
-      _upperArm.setInstanceTransform(k, hidden);
-      _forearm.setInstanceTransform(k, hidden);
-      _hand.setInstanceTransform(k, hidden);
-      _thigh.setInstanceTransform(k, hidden);
-      _shin.setInstanceTransform(k, hidden);
-      _foot.setInstanceTransform(k, hidden);
-    }
-    _hideExtras(b);
-  }
+  void hide(int n) => _bodies[n].hidden = true;
 
-  void _hideExtras(_Body b) {
-    if (b.hat >= 0) _hardHat.setInstanceTransform(b.hat, hidden);
-    if (b.cap >= 0) _cap.setInstanceTransform(b.cap, hidden);
-    if (b.vest >= 0) _vest.setInstanceTransform(b.vest, hidden);
-    if (b.stripes >= 0) _stripes.setInstanceTransform(b.stripes, hidden);
-    if (b.skirt >= 0) _skirt.setInstanceTransform(b.skirt, hidden);
-    if (b.backpack >= 0) _backpack.setInstanceTransform(b.backpack, hidden);
-    if (b.bag >= 0) _bag.setInstanceTransform(b.bag, hidden);
-    if (b.board >= 0) _board.setInstanceTransform(b.board, hidden);
-    if (b.parasol >= 0) _parasol.setInstanceTransform(b.parasol, hidden);
+  /// The nearest the camera people are drawn simpler from (and they stay in
+  /// full until a little further).
+  static const _nearAt = 16.0, _farAt = 18.0;
+
+  /// Packs this frame's people into their parts' meshes: just who's
+  /// showing, in full near [eye] (the camera), simpler far from it. Once a
+  /// frame, after everyone's been drawn.
+  void commit(vm.Vector3 eye) {
+    for (final b in _bodies) {
+      if (b.hidden || b.seen.isNaN) continue;
+      final dx = b.x - eye.x, dy = b.y - eye.y, dz = b.z - eye.z;
+      final d2 = dx * dx + dy * dy + dz * dz;
+      b.near = d2 < (b.near ? _farAt * _farAt : _nearAt * _nearAt);
+      for (final u in b.uses) {
+        if (u.on) u.part.at(b.near)?.put(u);
+      }
+    }
+    for (final s in _slots) {
+      s.end();
+    }
   }
 
   final _m = vm.Matrix4.identity(), _t = vm.Matrix4.identity();
@@ -259,6 +345,9 @@ class Figures {
     if (!p.visible) {
       hide(n);
       return;
+    }
+    for (final u in b.uses) {
+      u.on = false;
     }
     final now = FigureMotion.clock;
     if (now != _frameAt) _nudge(now);
@@ -329,54 +418,58 @@ class Figures {
       }
       b.aloft = aloft;
     }
-    _put(b.torso!, b.torsoAt, r.chest, g, size, g);
-    _put(_hips, n, r.pelvis, g, size, g);
+    _set(b.torso, r.chest, g, size, g);
+    _set(b.hips, r.pelvis, g, size, g);
     // Children's heads are big for their size.
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
-    _put(_head, n, r.head, hs, hs, hs);
-    if (b.hair case final h?) _put(h, b.hairAt, r.head, hs, hs, hs);
+    _set(b.head, r.head, hs, hs, hs);
+    _set(b.eyes, r.head, hs, hs, hs);
+    _set(b.brows, r.head, hs, hs, hs);
+    if (b.hair case final u?) _set(u, r.head, hs, hs, hs);
     // (A touch sturdier than life: they read better from afar.)
     final arm = math.sqrt(look.girth) * size * 1.05, leg = math.sqrt(look.girth) * size * 1.08;
     for (var s = 0; s < 2; s++) {
-      final k = 2 * n + s;
-      _put(_upperArm, k, r.upper[s], arm, size, arm);
-      _put(_forearm, k, r.lower[s], arm, size, arm);
-      _put(_hand, k, r.hand[s], size, size, size);
-      _put(_thigh, k, r.thighs[s], leg, size, leg);
-      _put(_shin, k, r.shins[s], leg, size, leg);
-      _put(_foot, k, r.feet[s], size, size, size);
+      _set(b.upper[s], r.upper[s], arm, size, arm);
+      _set(b.lower[s], r.lower[s], arm, size, arm);
+      // (The right hand, sculpted; the left, its mirror.)
+      _set(b.hand[s], r.hand[s], s == 0 ? -size : size, size, size);
+      _set(b.thigh[s], r.thighs[s], leg, size, leg);
+      _set(b.shin[s], r.shins[s], leg, size, leg);
+      _set(b.foot[s], r.feet[s], size, size, size);
+      _set(b.sole[s], r.feet[s], size, size, size);
     }
-    if (b.hat >= 0) {
+    if (b.hat case final u?) {
       // On the head; or tossed in the air, spinning.
       _t
         ..setFrom(r.head)
         ..multiply(setTrs(_m, 0, p.hatUp, 0, yaw: p.hatSpin, roll: 0.3 * math.sin(p.hatSpin)));
-      _put(_hardHat, b.hat, _t, hs, hs, hs);
+      _set(u, _t, hs, hs, hs);
     }
-    if (b.cap >= 0) _put(_cap, b.cap, r.head, hs, hs, hs);
-    if (b.vest >= 0) _put(_vest, b.vest, r.chest, g, size, g);
-    if (b.stripes >= 0) _put(_stripes, b.stripes, r.chest, g, size, g);
-    if (b.skirt >= 0) _put(_skirt, b.skirt, r.pelvis, g, size * look.skirtLength, g);
-    if (b.backpack >= 0) _put(_backpack, b.backpack, r.chest, size, size, size);
-    if (b.bag >= 0) {
+    // (A size up: over the hair.)
+    if (b.cap case final u?) _set(u, r.head, hs * 1.06, hs * 1.06, hs * 1.06);
+    if (b.vest case final u?) _set(u, r.chest, g, size, g);
+    if (b.stripes case final u?) _set(u, r.chest, g, size, g);
+    if (b.skirt case final u?) _set(u, r.pelvis, g, size * look.skirtLength, g);
+    if (b.backpack case final u?) _set(u, r.chest, size, size, size);
+    if (b.bag case final u?) {
       // Hanging from the left hand.
       final at = r.palms[0];
-      _put(_bag, b.bag, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      _set(u, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
     }
-    if (b.board >= 0) {
+    if (b.board case final u?) {
       if (p.clipboard) {
         // Held up in the left hand, its face tilted to be read.
         _t
           ..setFrom(r.hand[0])
           ..multiply(setTrs(_m, 0, -0.075, -0.12, pitch: -0.35));
-        _put(_board, b.board, _t, size, size, size);
+        _set(u, _t, size, size, size);
       } else {
-        _board.setInstanceTransform(b.board, hidden);
+        u.on = false;
       }
     }
-    if (b.parasol >= 0) {
+    if (b.parasol case final u?) {
       final at = r.palms[1];
-      _put(_parasol, b.parasol, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      _set(u, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
     }
   }
 
@@ -746,8 +839,9 @@ class Figures {
     }
   }
 
-  void _put(InstancedMesh mesh, int i, vm.Matrix4 frame, double sx, double sy, double sz) {
-    final s = _m.storage, f = frame.storage;
+  /// [u] shown this frame at [frame], scaled (x, y, z).
+  static void _set(_Use u, vm.Matrix4 frame, double sx, double sy, double sz) {
+    final s = u.m.storage, f = frame.storage;
     for (var k = 0; k < 16; k++) {
       s[k] = f[k];
     }
@@ -756,7 +850,59 @@ class Figures {
       s[4 + k] *= sy;
       s[8 + k] *= sz;
     }
-    mesh.setInstanceTransform(i, _m);
+    u.on = true;
+  }
+
+  /// [rings] smoothed for [near] (see [_soft]), as they are for far.
+  static List<List<double>> _soften(bool near, List<List<double>> rings) => near ? _soft(rings) : rings;
+
+  /// [rings] (y, half width, half depth, z offset) smoothed: [k] for each one
+  /// between (a curve through them that doesn't overshoot), and a point at
+  /// either end rounded into a dome.
+  static List<List<double>> _soft(List<List<double>> rings, {int k = 3, int dome = 3}) {
+    bool point(List<double> r) => r[1] == 0 && r[2] == 0;
+    final startCap = point(rings.first), endCap = point(rings.last);
+    final body = rings.sublist(startCap ? 1 : 0, endCap ? rings.length - 1 : rings.length);
+    final out = <List<double>>[];
+    for (var i = 0; i + 1 < body.length; i++) {
+      final p0 = body[math.max(0, i - 1)], p1 = body[i], p2 = body[i + 1], p3 = body[math.min(body.length - 1, i + 2)];
+      for (var j = 0; j < k; j++) {
+        final t = j / k;
+        out.add([
+          for (var c = 0; c < 4; c++)
+            () {
+              final v = 0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t * t + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t * t * t);
+              final lo = math.min(p1[c], p2[c]), hi = math.max(p1[c], p2[c]), pad = (hi - lo) * 0.15;
+              return c == 0 ? v : v.clamp(lo - pad, hi + pad).toDouble();
+            }(),
+        ]);
+      }
+    }
+    out.add(body.last);
+    List<List<double>> cap(List<double> edge, List<double> tip) => [
+      for (var j = 1; j < dome; j++)
+        () {
+          final a = j / dome * math.pi / 2;
+          final c = math.cos(a), sn = math.sin(a);
+          return [edge[0] + (tip[0] - edge[0]) * sn, edge[1] * c, edge[2] * c, edge[3] + (tip[3] - edge[3]) * sn];
+        }(),
+      tip,
+    ];
+    if (startCap) out.insertAll(0, cap(out.first, rings.first).reversed);
+    if (endCap) out.addAll(cap(out.last, rings.last));
+    return out;
+  }
+
+  /// [c] as skin under the city's light: a little deeper and warmer (light
+  /// skin otherwise washes out to white in the sun).
+  static vm.Vector4 _toned(vm.Vector4 c) =>
+      vm.Vector4(math.pow(c.x, 1.15) * 0.96, math.pow(c.y, 1.15) * 0.93, math.pow(c.z, 1.15) * 0.9, c.w);
+
+  /// The soles under shoes of colour [c]: dark under dark leather and dark
+  /// shoes, white under trainers (light or coloured ones).
+  static vm.Vector4 _soleFor(vm.Vector4 c) {
+    final lum = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
+    return lum < 0.08 ? vm.Vector4(c.x * 0.55 + 0.008, c.y * 0.55 + 0.008, c.z * 0.55 + 0.008, 1) : vm.Vector4(0.82, 0.81, 0.78, 1);
   }
 
   // ── The parts' shapes (size 1; each in its own frame: y up, z back) ─────
@@ -764,51 +910,57 @@ class Figures {
   static final _w = vm.Vector4(1, 1, 1, 1);
 
   /// The torso, from the shirt's hem to the neck, its origin at the hip
-  /// joints' height: waist, chest, shoulders (the arms' tops round them
-  /// off). The hem hangs a little loose, wide of the trousers' seat
-  /// ([_hipsGeometry]) and the tops of the legs, so it ends in one clean
-  /// line: the legs never poke through it.
-  static MeshGeometry _torsoGeometry({required bool slim}) {
-    final m = _Mesh();
-    // (y, half width, half depth, z offset)
-    final rings = slim
-        ? const [
-            [-0.036, 0.0, 0.0, 0.008],
-            [-0.032, 0.208, 0.128, 0.008],
-            [0.0, 0.178, 0.112, 0.0],
-            [0.09, 0.138, 0.094, -0.004],
-            [0.2, 0.142, 0.096, -0.008],
-            [0.3, 0.156, 0.112, -0.022],
-            [0.38, 0.163, 0.108, -0.014],
-            [0.45, 0.168, 0.094, -0.004],
-            [0.51, 0.122, 0.074, 0.004],
-            [0.552, 0.058, 0.054, 0.004],
-            [0.562, 0.0, 0.0, 0.004],
-          ]
-        : const [
-            [-0.036, 0.0, 0.0, 0.006],
-            [-0.032, 0.205, 0.13, 0.006],
-            [0.0, 0.176, 0.116, 0.0],
-            [0.09, 0.157, 0.104, -0.006],
-            [0.2, 0.162, 0.108, -0.01],
-            [0.32, 0.178, 0.116, -0.012],
-            [0.42, 0.188, 0.112, -0.006],
-            [0.48, 0.186, 0.098, 0.0],
-            [0.53, 0.13, 0.078, 0.005],
-            [0.565, 0.064, 0.058, 0.005],
-            [0.575, 0.0, 0.0, 0.005],
-          ];
-    m.loft(rings, seg: 14, e: 2.6, color: _w);
-    return m.build();
+  /// joints' height: waist, chest, square shoulders (over the arms' tops)
+  /// sloping up to the neck. The hem hangs a little loose, wide of the
+  /// trousers' seat ([_hipsGeometry]) and the tops of the legs, so it ends
+  /// in one clean line: the legs never poke through it. [near]: smooth, for
+  /// close; else simpler.
+  static MeshGeometry _torsoGeometry({required bool slim, required bool near}) {
+    final rings = slim ? _torsoSlimRings : _torsoRings;
+    return (_Mesh()..loft(near ? _soft(rings) : rings, seg: near ? 28 : 12, e: near ? 2.4 : 2.6, color: _w)).build();
   }
+
+  // (y, half width, half depth, z offset)
+  static const _torsoRings = [
+    [-0.036, 0.0, 0.0, 0.006],
+    [-0.032, 0.205, 0.13, 0.006],
+    [0.0, 0.177, 0.116, 0.0],
+    [0.09, 0.158, 0.104, -0.006],
+    [0.2, 0.163, 0.108, -0.01],
+    [0.32, 0.178, 0.116, -0.012],
+    [0.42, 0.19, 0.112, -0.006],
+    [0.47, 0.194, 0.104, -0.002],
+    [0.505, 0.193, 0.096, 0.002],
+    [0.53, 0.183, 0.086, 0.004],
+    [0.548, 0.155, 0.074, 0.005],
+    [0.559, 0.105, 0.064, 0.005],
+    [0.566, 0.066, 0.058, 0.005],
+    [0.572, 0.0, 0.0, 0.005],
+  ];
+  static const _torsoSlimRings = [
+    [-0.036, 0.0, 0.0, 0.008],
+    [-0.032, 0.208, 0.128, 0.008],
+    [0.0, 0.178, 0.112, 0.0],
+    [0.09, 0.138, 0.094, -0.004],
+    [0.2, 0.142, 0.096, -0.008],
+    [0.3, 0.156, 0.112, -0.022],
+    [0.38, 0.163, 0.108, -0.014],
+    [0.44, 0.174, 0.097, -0.006],
+    [0.49, 0.18, 0.089, 0.0],
+    [0.52, 0.176, 0.08, 0.003],
+    [0.538, 0.148, 0.07, 0.004],
+    [0.549, 0.1, 0.06, 0.004],
+    [0.556, 0.06, 0.054, 0.004],
+    [0.562, 0.0, 0.0, 0.004],
+  ];
 
   /// The seat of the trousers, from the crotch up under the shirt's hem
   /// (its origin at the hip joints, as the torso's; it moves with the
   /// pelvis, the shirt with the chest).
-  static MeshGeometry _hipsGeometry() {
+  static MeshGeometry _hipsGeometry(bool near) {
     final m = _Mesh();
     m.loft(
-      const [
+      _soften(near, const [
         [-0.13, 0.0, 0.0, 0.012],
         [-0.117, 0.12, 0.087, 0.012],
         [-0.07, 0.172, 0.112, 0.007],
@@ -817,109 +969,18 @@ class Figures {
         // the pelvis as they walk, and the seat must never show through.)
         [-0.008, 0.148, 0.096, 0.0],
         [0.008, 0.0, 0.0, 0.0],
-      ],
-      seg: 14,
-      e: 2.6,
+      ]),
+      seg: near ? 28 : 12,
+      e: near ? 2.4 : 2.6,
       color: _w,
     );
-    return m.build();
-  }
-
-  /// The head and neck, origin at the neck's pivot, the face to −z: skull,
-  /// jaw and chin, a nose, ears, eyes and a mouth (dark, in the geometry).
-  static MeshGeometry _headGeometry() {
-    final m = _Mesh();
-    // The neck, from inside the collar up under the jaw.
-    m.loft(
-      const [
-        [-0.06, 0.046, 0.048, 0.006],
-        [0.03, 0.044, 0.046, 0.0],
-        [0.07, 0.042, 0.044, 0.006],
-      ],
-      seg: 10,
-      color: _w,
-      capStart: false,
-    );
-    m.loft(_skull, seg: 12, e: 2.15, color: _w);
-    // Nose: a small wedge.
-    final nose = [vm.Vector3(0, 0.142, -0.094), vm.Vector3(0, 0.103, -0.121), vm.Vector3(-0.017, 0.097, -0.097), vm.Vector3(0.017, 0.097, -0.097)];
-    final c = vm.Vector3(0, 0.11, -0.08);
-    m
-      ..tri(nose[0], nose[2], nose[1], _w, c)
-      ..tri(nose[0], nose[1], nose[3], _w, c)
-      ..tri(nose[2], nose[3], nose[1], _w, c);
-    // Ears, eyes (dark brown: the skin colour barely shows), the mouth.
-    for (final side in const [-1.0, 1.0]) {
-      m.ellipsoid(side * 0.078, 0.122, 0.006, 0.012, 0.028, 0.019, _w, seg: 6, rings: 3);
-      m.ellipsoid(side * 0.031, 0.132, -0.086, 0.011, 0.0085, 0.008, _eye, seg: 6, rings: 3);
-    }
-    m.box(0, 0.07, -0.095, 0.016, 0.0035, 0.004, _lips);
-    return m.build();
-  }
-
-  static final _eye = vm.Vector4(0.035, 0.028, 0.025, 1), _lips = vm.Vector4(0.62, 0.36, 0.34, 1);
-
-  /// The skull, from the chin up (y, half width, half depth, z offset).
-  static const _skull = [
-    [0.012, 0.0, 0.0, -0.062],
-    [0.022, 0.03, 0.026, -0.068],
-    [0.04, 0.052, 0.05, -0.044],
-    [0.068, 0.066, 0.076, -0.022],
-    [0.1, 0.074, 0.09, -0.008],
-    [0.13, 0.078, 0.096, -0.002],
-    [0.16, 0.08, 0.098, 0.002],
-    [0.19, 0.076, 0.093, 0.004],
-    [0.22, 0.062, 0.076, 0.006],
-    [0.243, 0.038, 0.047, 0.008],
-    [0.255, 0.0, 0.0, 0.008],
-  ];
-
-  /// The skull's half width, half depth and z offset at height [y].
-  static (double, double, double) _skullAt(double y) {
-    if (y <= _skull.first[0]) return (_skull.first[1], _skull.first[2], _skull.first[3]);
-    for (var i = 0; i + 1 < _skull.length; i++) {
-      final a = _skull[i], b = _skull[i + 1];
-      if (y <= b[0]) {
-        final f = (y - a[0]) / (b[0] - a[0]);
-        return (lerp(a[1], b[1], f), lerp(a[2], b[2], f), lerp(a[3], b[3], f));
-      }
-    }
-    return (0, 0, _skull.last[3]);
-  }
-
-  /// A hairstyle over the skull (and the brows, in the hair's colour).
-  static MeshGeometry _hairGeometry(Hair h) {
-    final m = _Mesh();
-    // Where the hair stops, by angle round the head (a: 0 at the right,
-    // π/2 at the back, −π/2 at the face), and how thick it is there.
-    double edge(double a) {
-      final face = math.max(0.0, -math.sin(a)); // 1 at the face
-      final back = math.max(0.0, math.sin(a));
-      return switch (h) {
-        Hair.short => lerp(lerp(0.148, 0.192, face * face), 0.07, back),
-        Hair.medium => lerp(lerp(0.11, 0.17, face * face), 0.04, back),
-        Hair.bob => lerp(0.035, 0.168, smooth(0.6, 0.82, face)),
-        _ => lerp(lerp(0.03, -0.2, smooth(0.3, 0.8, back)), 0.172, smooth(0.6, 0.82, face)),
-      };
-    }
-
-    final puff = switch (h) {
-      Hair.short => 0.009,
-      Hair.medium => 0.014,
-      _ => 0.016,
-    };
-    m.shell(edge, puff, flare: h == Hair.bob || h == Hair.long ? 0.02 : 0.0, seg: 14, rings: 5);
-    // Brows.
-    for (final side in const [-1.0, 1.0]) {
-      m.box(side * 0.032, 0.153, -0.089, 0.017, 0.004, 0.006, _w, rotZ: side * 0.12);
-    }
     return m.build();
   }
 
   /// Shoulder to elbow (a rounded top over the joint).
-  static MeshGeometry _upperArmGeometry() =>
+  static MeshGeometry _upperArmGeometry(bool near) =>
       (_Mesh()..loft(
-            const [
+            _soften(near, const [
               [0.032, 0.0, 0.0, 0.0],
               [0.02, 0.036, 0.04, 0.0],
               [-0.015, 0.053, 0.053, 0.0],
@@ -928,53 +989,34 @@ class Figures {
               [-0.25, 0.044, 0.043, 0.0],
               [-0.3, 0.041, 0.041, 0.0],
               [-0.325, 0.0, 0.0, 0.0],
-            ],
-            seg: 8,
+            ]),
+            seg: near ? 16 : 8,
             color: _w,
           ))
           .build();
 
   /// Elbow to wrist (the sleeve's cuff at the wrist).
-  static MeshGeometry _forearmGeometry() =>
+  static MeshGeometry _forearmGeometry(bool near) =>
       (_Mesh()..loft(
-            const [
+            _soften(near, const [
               [0.03, 0.0, 0.0, 0.0],
               [0.012, 0.04, 0.04, 0.0],
               [-0.05, 0.044, 0.041, 0.0],
               [-0.15, 0.036, 0.032, 0.0],
-              [-0.235, 0.031, 0.027, 0.0],
+              [-0.215, 0.032, 0.028, 0.0],
+              [-0.232, 0.0335, 0.0295, 0.0],
+              [-0.244, 0.031, 0.027, 0.0],
               [-0.252, 0.0, 0.0, 0.0],
-            ],
-            seg: 8,
+            ]),
+            seg: near ? 16 : 8,
             color: _w,
           ))
           .build();
 
-  /// A mitten from the wrist: flat (the palm faces ±x), the thumb forward.
-  static MeshGeometry _handGeometry() {
-    final m = _Mesh()
-      ..loft(
-        const [
-          [0.012, 0.0, 0.0, 0.0],
-          [0.0, 0.019, 0.024, 0.0],
-          [-0.03, 0.021, 0.037, 0.0],
-          [-0.075, 0.021, 0.042, 0.0],
-          [-0.12, 0.017, 0.04, 0.003],
-          [-0.155, 0.011, 0.03, 0.006],
-          [-0.168, 0.0, 0.0, 0.006],
-        ],
-        seg: 6,
-        e: 2.4,
-        color: _w,
-      );
-    m.limb(vm.Vector3(0, -0.035, -0.028), vm.Vector3(0, -0.085, -0.062), 0.012, 0.009, _w, seg: 6);
-    return m.build();
-  }
-
   /// Hip to knee (its top inside the hips).
-  static MeshGeometry _thighGeometry() =>
+  static MeshGeometry _thighGeometry(bool near) =>
       (_Mesh()..loft(
-            const [
+            _soften(near, const [
               // (Its top, round the hip joint, slim: always under the shirt
               // and the trousers' seat, it mustn't show through the shirt
               // as the chest twists against the pelvis in a stride.)
@@ -986,47 +1028,29 @@ class Figures {
               [-0.37, 0.055, 0.056, 0.0],
               [-0.43, 0.052, 0.054, -0.004],
               [-0.455, 0.0, 0.0, -0.004],
-            ],
-            seg: 8,
+            ]),
+            seg: near ? 16 : 8,
             color: _w,
           ))
           .build();
 
   /// Knee to ankle: the calf, the trousers' hem over the shoe.
-  static MeshGeometry _shinGeometry() =>
+  static MeshGeometry _shinGeometry(bool near) =>
       (_Mesh()..loft(
-            const [
+            _soften(near, const [
               [0.035, 0.0, 0.0, 0.0],
               [0.012, 0.05, 0.051, 0.0],
               [-0.09, 0.05, 0.054, 0.008],
               [-0.22, 0.042, 0.043, 0.004],
-              [-0.36, 0.037, 0.037, 0.0],
-              [-0.395, 0.039, 0.04, 0.0],
+              [-0.35, 0.037, 0.037, 0.0],
+              [-0.378, 0.0395, 0.0405, 0.0],
+              [-0.398, 0.0395, 0.0405, 0.0],
               [-0.41, 0.0, 0.0, 0.0],
-            ],
-            seg: 8,
+            ]),
+            seg: near ? 16 : 8,
             color: _w,
           ))
           .build();
-
-  /// A shoe from the ankle: heel, instep, toe; the sole a shade darker.
-  static MeshGeometry _footGeometry() {
-    final m = _Mesh();
-    // Sections along −z (forward): (z, half width, top y, bottom y).
-    const secs = [
-      [0.065, 0.0, -0.035, -0.055],
-      [0.058, 0.034, -0.005, -0.08],
-      [0.02, 0.042, 0.025, -0.08],
-      [-0.06, 0.046, -0.012, -0.08],
-      [-0.14, 0.046, -0.038, -0.08],
-      [-0.185, 0.036, -0.05, -0.08],
-      [-0.2, 0.0, -0.062, -0.074],
-    ];
-    m.sweepZ(secs, seg: 8, e: 3.2, top: _w, sole: _sole);
-    return m.build();
-  }
-
-  static final _sole = vm.Vector4(0.55, 0.55, 0.55, 1);
 
   /// A hard hat: the dome, a ridge along the top, the brim (a peak at the
   /// front).
@@ -1073,7 +1097,7 @@ class Figures {
   /// from the waist over the shoulders, open down the front in a V.
   static MeshGeometry _vestGeometry() {
     final m = _Mesh();
-    m.loft(_vestRings, seg: 14, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+    m.loft(_soft(_vestRings, k: 2), seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
     return m.build();
   }
 
@@ -1083,8 +1107,10 @@ class Figures {
     [0.2, 0.174, 0.12, -0.012],
     [0.32, 0.19, 0.128, -0.014],
     [0.42, 0.2, 0.124, -0.006],
-    [0.485, 0.198, 0.108, 0.0],
-    [0.535, 0.142, 0.088, 0.005],
+    [0.47, 0.203, 0.114, -0.002],
+    [0.505, 0.201, 0.106, 0.002],
+    [0.535, 0.19, 0.095, 0.004],
+    [0.553, 0.16, 0.082, 0.005],
   ];
 
   /// The vest's V: open at the front, wider towards the top.
@@ -1105,7 +1131,7 @@ class Figures {
             return [y + dy, r.$1 + 0.004, r.$2 + 0.004, r.$3];
           }(),
       ];
-      m.loft(rings, seg: 14, e: 2.6, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+      m.loft(rings, seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
     }
     // Over the shoulders: front and back.
     for (final side in const [-1.0, 1.0]) {
@@ -1166,8 +1192,22 @@ class Figures {
         color: _w,
       );
     for (final side in const [-1.0, 1.0]) {
-      m.strip(vm.Vector3(side * 0.085, 0.47, 0.05), vm.Vector3(side * 0.095, 0.47, -0.08), 0.03, vm.Vector3(0, 1, 0), _strap);
-      m.strip(vm.Vector3(side * 0.095, 0.47, -0.105), vm.Vector3(side * 0.1, 0.17, -0.12), 0.03, vm.Vector3(0, 0, -1), _strap);
+      final x = side * 0.09;
+      final path = [
+        vm.Vector3(x, 0.43, 0.116),
+        vm.Vector3(x, 0.535, 0.09),
+        vm.Vector3(x, 0.569, 0.02),
+        vm.Vector3(x * 1.03, 0.562, -0.058),
+        vm.Vector3(x * 1.06, 0.5, -0.104),
+        vm.Vector3(x * 1.12, 0.17, -0.122),
+      ];
+      for (var i = 0; i + 1 < path.length; i++) {
+        final d = path[i + 1] - path[i];
+        // (Facing away from the body: out of the band's way, across it.)
+        final out = vm.Vector3(0, -d.z, d.y)..normalize();
+        if (out.dot(vm.Vector3(0, path[i].y - 0.45, path[i].z)) < 0) out.negate();
+        m.strip(path[i], path[i + 1], 0.03, out, _strap);
+      }
     }
     return m.build();
   }
@@ -1327,43 +1367,6 @@ class _Mesh {
     }
   }
 
-  /// A sweep along −z through sections (z, half width, top y, bottom y),
-  /// boxy (superellipse [e]); the lowest vertices take [sole].
-  void sweepZ(List<List<double>> secs, {int seg = 10, double e = 3, required vm.Vector4 top, required vm.Vector4 sole}) {
-    final base = <int>[];
-    for (final s in secs) {
-      base.add(_n);
-      final cy = (s[2] + s[3]) / 2, hy = (s[2] - s[3]) / 2;
-      if (s[1] == 0) {
-        _v(0, cy, s[0], top);
-        continue;
-      }
-      for (var j = 0; j < seg; j++) {
-        final a = j / seg * 2 * math.pi;
-        final c = math.cos(a), n = math.sin(a);
-        final x = s[1] * c.sign * math.pow(c.abs(), 2 / e), y = cy + hy * n.sign * math.pow(n.abs(), 2 / e);
-        _v(x, y, s[0], y < s[3] + 0.012 ? sole : top);
-      }
-    }
-    int at(int k, int j) => secs[k][1] == 0 ? base[k] : base[k] + (j % seg);
-    for (var k = 0; k + 1 < secs.length; k++) {
-      final s0 = secs[k], s1 = secs[k + 1];
-      final iz = (s0[0] + s1[0]) / 2, iy = (s0[2] + s0[3] + s1[2] + s1[3]) / 4;
-      for (var j = 0; j < seg; j++) {
-        final p00 = at(k, j), p01 = at(k, j + 1), p10 = at(k + 1, j), p11 = at(k + 1, j + 1);
-        final ref = s0[1] == 0 ? s1[0] : (s1[1] == 0 ? s0[0] : iz);
-        if (s0[1] == 0) {
-          _tri(p00, p11, p10, 0, iy, ref);
-        } else if (s1[1] == 0) {
-          _tri(p00, p01, p11, 0, iy, ref);
-        } else {
-          _tri(p00, p01, p11, 0, iy, ref);
-          _tri(p00, p11, p10, 0, iy, ref);
-        }
-      }
-    }
-  }
-
   /// An ellipsoid at (x, y, z).
   void ellipsoid(double x, double y, double z, double rx, double ry, double rz, vm.Vector4 col, {int seg = 8, int rings = 5}) {
     final r = <List<double>>[];
@@ -1440,32 +1443,6 @@ class _Mesh {
       _p[v * 3] = a.x + x.x * px + y.x * py + z.x * pz;
       _p[v * 3 + 1] = a.y + x.y * px + y.y * py + z.y * pz;
       _p[v * 3 + 2] = a.z + x.z * px + y.z * py + z.z * pz;
-    }
-  }
-
-  /// Hair over the skull: from where it stops ([edge] by angle) up to the
-  /// crown, [puff] out from the skull, flaring by [flare] at the bottom.
-  void shell(double Function(double a) edge, double puff, {double flare = 0, int seg = 16, int rings = 6}) {
-    final base = _n;
-    for (var k = 0; k <= rings; k++) {
-      final t = k / rings;
-      for (var j = 0; j < seg; j++) {
-        final a = j / seg * 2 * math.pi;
-        final y0 = edge(a), y = lerp(y0, 0.258, math.pow(t, 0.85).toDouble());
-        // (Below the cheekbones it hangs straight down.)
-        final (hx, hz, oz) = Figures._skullAt(math.max(0.13, y));
-        final k1 = 1 + (puff + flare * (1 - t) * (1 - t)) / math.max(0.03, math.min(hx, hz)) * (1 - 0.3 * t);
-        _v(hx * k1 * math.cos(a), y + puff * 0.6 * t, oz + hz * k1 * math.sin(a), FigureLook._white);
-      }
-    }
-    for (var k = 0; k < rings; k++) {
-      for (var j = 0; j < seg; j++) {
-        final p00 = base + k * seg + j, p01 = base + k * seg + (j + 1) % seg;
-        final p10 = p00 + seg, p11 = p01 + seg;
-        final iy = _p[p00 * 3 + 1];
-        _tri(p00, p01, p11, 0, iy - 0.02, 0.0);
-        _tri(p00, p11, p10, 0, iy - 0.02, 0.0);
-      }
     }
   }
 

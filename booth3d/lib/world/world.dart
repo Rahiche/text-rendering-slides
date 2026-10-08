@@ -53,6 +53,9 @@ class World3D {
 
   Future<void> init() async {
     await Scene.initializeStaticResources();
+    // (The people's sculpted parts, before anyone's made: the talk's
+    // sections make the scenes' people as soon as they're asked for.)
+    await Figures.load();
     scene.antiAliasingMode = Tuning.aa;
     scene.depthOfField
       ..quality = DepthOfFieldQuality.low
@@ -182,6 +185,8 @@ class World3D {
     mark('director');
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork, others: out);
     _lineup?.update(m.t);
+    // Everyone's drawn: into the people's meshes, in full near the camera.
+    Figures.of(scene).commit(director.camera.position);
     mark('life');
     if (watch != null && marks != null && watch.elapsedMicroseconds > 12000) {
       var last = 0;

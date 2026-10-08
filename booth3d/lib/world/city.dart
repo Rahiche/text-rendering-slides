@@ -53,7 +53,7 @@ class City3D {
 
   Future<void> init() async {
     _ground();
-    _streets();
+    _streets(await _grass());
     _lamps();
     _plazaLights();
     await towers.init();
@@ -158,7 +158,25 @@ class City3D {
 
   // ── Streets ───────────────────────────────────────────────────────────────
 
-  void _streets() {
+  /// The park's lawn: a grass photo's detail (Poly Haven's CC0 "Grass
+  /// Ground": its luminance only, the lawn's own colour over it) and its
+  /// relief, laid in world space a tile every 3 m.
+  Future<PhysicallyBasedMaterial> _grass() async {
+    final detail = await Texture2D.fromAsset('assets/textures/grass_detail.jpg');
+    final relief = await Texture2D.fromAsset('assets/textures/grass_normal.jpg', content: TextureContent.normal);
+    // (The detail's mean is 0.58 linear: the lawn keeps its colour on
+    // average.)
+    final c = lin(const Color(0xFF1F4A45));
+    return PhysicallyBasedMaterial()
+      ..baseColorTexture = detail
+      ..baseColorFactor = vm.Vector4(c.x / 0.58, c.y / 0.58, c.z / 0.58, 1)
+      ..normalTexture = relief
+      ..normalScale = 0.9
+      ..metallicFactor = 0
+      ..roughnessFactor = 0.95;
+  }
+
+  void _streets(PhysicallyBasedMaterial lawn) {
     final asphalt = pbr(lin(const Color(0xFF111B2C)), roughness: 0.82);
     final paving = PhysicallyBasedMaterial()
       ..baseColorTexture = _grid(cells: 4, px: 32, minor: 2, major: 2, base: 0x2A3E5A, minorC: 0x22344D, majorC: 0x22344D)
@@ -201,8 +219,7 @@ class City3D {
     sw(-sx + sh, Plan.aveZ0 - 2.4, sx - sh, Plan.aveZ0);
     sw(sx + sh, Plan.aveZ0 - 2.4, 130, Plan.aveZ0);
     // The park behind the plaza: a lawn with paths.
-    final lawn = pbr(lin(const Color(0xFF1F4A45)), roughness: 0.95);
-    _slab(-Plan.plazaX, Plan.parkZ0, Plan.plazaX, Plan.parkZ1, 0.0, lawn);
+    scene.add(Node(name: 'lawn', mesh: Mesh(MeshGeometry.fromMeshData(_slabData(-Plan.plazaX, Plan.parkZ0, Plan.plazaX, Plan.parkZ1, 0.0, tile: 3)), lawn)));
     sw(-2, Plan.parkZ0, 2, Plan.parkZ1);
     sw(-Plan.plazaX, Plan.parkZ0 + 14, Plan.plazaX, Plan.parkZ0 + 17);
     near.build(scene, 'streets');

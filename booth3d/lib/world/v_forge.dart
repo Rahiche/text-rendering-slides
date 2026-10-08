@@ -8,9 +8,9 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'figure.dart';
 import 'kit.dart';
 import 'motion.dart';
-import 'site_geo.dart' show MeshBatch;
 import 'shot.dart';
 import 'vignette.dart';
+import 'models.dart';
 
 /// 合字工房 · Shaping, in the park past the alley (on the right of the long
 /// path, across from the tofu shop): a smithy where glyphs are forged into
@@ -74,7 +74,6 @@ class LigatureForge extends Vignette {
     makePool(boxes: 24, glows: 12);
     final b = Batch();
     final m = pbr(rgb(1, 1, 1), roughness: 0.8);
-    final steel = pbr(rgb(1, 1, 1), roughness: 0.35, metallic: 0.8);
     final brick = Vignette.c(0x8C4B3A), soot = Vignette.c(0x2A2626), iron = Vignette.c(0x3C4048), wood = Vignette.c(0x8A6440);
     // The furnace: brick, a dark mouth, a chimney.
     box(b, m, 1.4, 1.9, 1.3, -1.75, 0.95, 0.35, brick);
@@ -86,10 +85,9 @@ class LigatureForge extends Vignette {
       box(b, m, 0.07, _beltY - 0.1, 0.07, x, (_beltY - 0.1) / 2, -0.82, iron);
       box(b, m, 0.07, _beltY - 0.1, 0.07, x, (_beltY - 0.1) / 2, -0.42, iron);
     }
-    // The anvil on its stump; the rack; a quench tub.
+    // The stump; the rack; a quench tub. (The anvil and the hammer are
+    // made in Blender: tool/blender/forge.py.)
     cylinder(b, m, 0.24, 0.55, _anvil.$1, 0.275, _anvil.$3, wood);
-    box(b, steel, 0.52, 0.2, 0.24, _anvil.$1, 0.66, _anvil.$3, iron);
-    box(b, steel, 0.68, 0.14, 0.26, _anvil.$1 - 0.05, 0.83, _anvil.$3, iron);
     box(b, m, 1.5, 0.06, 0.4, _rackX, 1.25, 0.15, wood);
     box(b, m, 1.5, 0.06, 0.4, _rackX, 0.75, 0.15, wood);
     for (final x in [_rackX - 0.72, _rackX + 0.72]) {
@@ -111,11 +109,21 @@ class LigatureForge extends Vignette {
         localTransform: place(trs(vm.Vector3(_mouthX - 0.65, 0.84, -0.36))),
       )..castsShadows = false,
     );
-    // The hammer: a handle and a head, held in the smith's right hand.
-    final hb = MeshBatch()
-      ..box(vm.Vector3(0, -0.16, 0), vm.Vector3(0.035, 0.36, 0.035))
-      ..box(vm.Vector3(0, -0.34, -0.04), vm.Vector3(0.09, 0.09, 0.2));
-    _hammer = Node(name: 'forge hammer', mesh: Mesh(hb.build(), pbr(Vignette.c(0x4A4E56), roughness: 0.4, metallic: 0.7)))..castsShadows = false;
+    // The anvil on the stump, its horn to the furnace, its face polished
+    // (lighter in its vertex colours than the cast iron).
+    final (anvil, hammer) = await (modelParts('assets/models/anvil.glb'), modelParts('assets/models/hammer.glb')).wait;
+    detail.add(
+      Node(
+        name: 'forge anvil',
+        mesh: Mesh(MeshGeometry.fromMeshData(anvil['anvil']!), pbr(rgb(0.4, 0.41, 0.44), metallic: 0.85, roughness: 0.42)),
+        localTransform: place(trs(vm.Vector3(_anvil.$1 - 0.05, 0.55, _anvil.$3))),
+      )..castsShadows = false,
+    );
+    // The hammer, held in the smith's right hand: its origin at the grip,
+    // the handle down, the striking face forward.
+    _hammer = Node(name: 'forge hammer')
+      ..add(Node(name: 'forge hammer handle', mesh: Mesh(MeshGeometry.fromMeshData(hammer['handle']!), pbr(rgb(1, 1, 1), roughness: 0.62)))..castsShadows = false)
+      ..add(Node(name: 'forge hammer head', mesh: Mesh(MeshGeometry.fromMeshData(hammer['head']!), pbr(rgb(0.55, 0.56, 0.6), metallic: 0.85, roughness: 0.35)))..castsShadows = false);
     detail.add(_hammer);
     // The glyphs: each its own material (each heats and cools).
     final texts = [

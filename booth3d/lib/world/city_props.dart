@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'city_plan.dart';
 import 'kit.dart';
+import 'models.dart';
 
 /// Street furniture: the park's trees (mint greens and sakura), benches,
 /// traffic cones round the site, glowing vending machines and a red post
@@ -42,24 +42,10 @@ class CityProps {
   static const _treeModels = ['round', 'tall', 'wide'];
   static const _crowns = [(3.8, 1.45), (4.4, 1.2), (3.45, 1.6)];
 
-  /// A model's parts, by name, as mesh data in the city's frame.
-  static Future<Map<String, MeshData>> _parts(String asset) async {
-    final bytes = await rootBundle.load(asset);
-    final root = await Node.fromGlbBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
-    final out = <String, MeshData>{};
-    void walk(Node n) {
-      if (n.mesh != null) out[n.name] = n.extractMeshData(transform: n.globalTransform);
-      n.children.forEach(walk);
-    }
-
-    walk(root);
-    return out;
-  }
-
   Future<void> _trees() async {
     final bark = pbr(lin(const Color(0xFF6A5442)), roughness: 0.92);
     final foliage = pbr(rgb(1, 1, 1), roughness: 0.82);
-    final models = await Future.wait([for (final m in _treeModels) _parts('assets/models/tree_$m.glb')]);
+    final models = await Future.wait([for (final m in _treeModels) modelParts('assets/models/tree_$m.glb')]);
     final trunks = [for (final m in models) InstancedMesh(geometry: MeshGeometry.fromMeshData(m['trunk']!), material: bark)];
     final crowns = [for (final m in models) InstancedMesh(geometry: MeshGeometry.fromMeshData(m['crown']!), material: foliage)];
     const greens = [0x22705A, 0x2B8166, 0x338D6E, 0x1F6450, 0x3B9878];

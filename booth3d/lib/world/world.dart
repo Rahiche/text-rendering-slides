@@ -21,6 +21,7 @@ import 'figure_rig.dart' show FigureMotion;
 import 'ease.dart' show approach, smooth;
 import 'kit.dart' show lerp;
 import 'life.dart';
+import 'lineup.dart';
 import 'physics.dart';
 import 'script_alley.dart' show ScriptAlley;
 import 'site.dart';
@@ -42,6 +43,9 @@ class World3D {
   late final talk = Talk(director, talkSections(site));
   bool ready = false;
   bool _skipped = false;
+
+  /// (Capture runs: people stood in a row to look at; see [Lineup].)
+  Lineup? _lineup;
 
   /// What's being got ready, for the loading screen: 'fonts' (the web),
   /// 'city', 'people'; [ready] once done.
@@ -72,6 +76,7 @@ class World3D {
     Figures.of(scene).addFixed(city.props.solids);
     stage.value = 'people';
     await life.init();
+    _lineup = Lineup.of(scene);
     // Every pipeline compiled behind the loading screen (the talk's devices
     // shown for it: their glass is a pipeline of its own), not the first
     // time something appears on stage.
@@ -176,6 +181,7 @@ class World3D {
     ];
     mark('director');
     life.update(m, dt, camera: director.camera.position, wallWidth: site.wallWidth, night: sky.night, work: site.streetWork, others: out);
+    _lineup?.update(m.t);
     mark('life');
     if (watch != null && marks != null && watch.elapsedMicroseconds > 12000) {
       var last = 0;

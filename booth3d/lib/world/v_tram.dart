@@ -31,11 +31,11 @@ class LineTram extends Vignette {
   @override
   String get name => 'tram';
   @override
-  String get kick => '改行電車 · LINE BREAKING';
+  String get kick => 'LINE BREAKING';
   @override
   String get line => 'Fill the line, then the next';
   @override
-  String get note => 'greedy breaking; 。 may not start a line (禁則)';
+  String get note => 'greedy breaking; 。 may not start a line (kinsoku)';
 
   @override
   double get loop => _loop;
@@ -93,7 +93,7 @@ class LineTram extends Vignette {
   );
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('Text flows across lines ↵ 改行電車 LINE BREAK', _style(false)), ('行頭に来ません。改行駅', _style(true))];
+  List<(String, TextStyle)> get fontRuns => [('Text flows across lines ↵ LINE BREAK', _style(false)), ('行頭に来ません。', _style(true))];
 
   @override
   Future<void> init() async {
@@ -207,7 +207,7 @@ class LineTram extends Vignette {
       sign(4.4, 0.62, vm.Matrix4.translation(vm.Vector3(1.0, 2.95, 1.7)), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFFF4F1EA));
         c.drawRect(Rect.fromLTWH(0, s.height * 0.78, s.width, s.height * 0.22), Paint()..color = const Color(0xFF2E6DA8));
-        Vignette.text(c, '改行駅 · LINE BREAK', Rect.fromLTWH(0, 0, s.width, s.height * 0.76), s.height * 0.46, const Color(0xFF1E2A4A), lang: 'ja');
+        Vignette.text(c, 'LINE BREAK', Rect.fromLTWH(0, 0, s.width, s.height * 0.76), s.height * 0.46, const Color(0xFF1E2A4A), lang: 'ja');
       }),
       // The line's width, marked on the platform's edge.
       sign(

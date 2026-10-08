@@ -79,7 +79,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    BoothUi.of(model).title = (ja: '名前の街', en: 'Name City'); // history, toasts, operator state
+    BoothUi.of(model).title = 'Name City'; // history, toasts, operator state
     model.pace = const CityPace(); // one letter at a time, with kerning
     HardwareKeyboard.instance.addHandler(_onKey);
     if (!_capturing) {
@@ -339,7 +339,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       ),
     );
     return MaterialApp(
-      title: '名前の街 · Name City',
+      title: 'Name City',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,

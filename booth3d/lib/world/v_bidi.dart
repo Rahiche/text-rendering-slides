@@ -26,7 +26,7 @@ class BidiWorks extends Vignette {
   @override
   String get name => 'bidi';
   @override
-  String get kick => '双方向 · BIDI';
+  String get kick => 'BIDI';
   @override
   String get line => 'Memory ≠ screen';
   @override
@@ -66,7 +66,7 @@ class BidiWorks extends Vignette {
   bool _ready = false;
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('Hi שלום 2026! 双方向 BIDI MEMORY SCREEN 論理順 表示順', _style)];
+  List<(String, TextStyle)> get fontRuns => [('Hi שלום 2026! BIDI MEMORY SCREEN ORDER', _style)];
 
   static const _colors = [0x6C9BE0, 0xF2A33A, 0x58C08E];
 
@@ -108,7 +108,7 @@ class BidiWorks extends Vignette {
         vm.Matrix4.translation(vm.Vector3(0, 6.2, -0.05)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF1E2433));
-          Vignette.text(c, '双方向 · BIDI', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
+          Vignette.text(c, 'BIDI', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
           Vignette.text(c, 'MEMORY ≠ SCREEN', Rect.fromLTWH(0, s.height * 0.62, s.width, s.height * 0.32), s.height * 0.22, const Color(0xFFF4EBD8));
         },
         glow: 0.5,
@@ -121,7 +121,7 @@ class BidiWorks extends Vignette {
         vm.Matrix4.translation(vm.Vector3(-4.85, _memY + 0.1, _rowZ + 0.38)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF2E3546));
-          Vignette.text(c, 'MEMORY 論理順', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.4, const Color(0xFFF4EBD8), lang: 'ja');
+          Vignette.text(c, 'MEMORY ORDER', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.4, const Color(0xFFF4EBD8), lang: 'ja');
         },
         glow: 0.6,
         thick: 0.01,
@@ -132,7 +132,7 @@ class BidiWorks extends Vignette {
         vm.Matrix4.translation(vm.Vector3(-4.85, _screenY + 0.1, _rowZ + 0.38)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF2E3546));
-          Vignette.text(c, 'SCREEN 表示順', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.4, const Color(0xFFF4EBD8), lang: 'ja');
+          Vignette.text(c, 'SCREEN ORDER', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.4, const Color(0xFFF4EBD8), lang: 'ja');
         },
         glow: 0.6,
         thick: 0.01,

@@ -24,7 +24,7 @@ class TextRelay extends Vignette {
   @override
   String get name => 'relay';
   @override
-  String get kick => 'リレー · Text() → ui.Paragraph';
+  String get kick => 'Text() → ui.Paragraph';
   @override
   String get line => 'Constraints go down, sizes come up';
   @override
@@ -63,7 +63,7 @@ class TextRelay extends Vignette {
   static const _style = TextStyle(fontFamily: BP.display, fontSize: 160, fontWeight: FontWeight.w700);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('Flutter Text RichText RenderParagraph TextPainter ui.Paragraph リレー', _style)];
+  List<(String, TextStyle)> get fontRuns => [('Flutter Text RichText RenderParagraph TextPainter ui.Paragraph', _style)];
 
   @override
   Future<void> init() async {

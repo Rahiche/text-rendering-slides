@@ -27,7 +27,7 @@ class ZwjFamily extends Vignette {
   @override
   String get name => 'family';
   @override
-  String get kick => '家族 · STRING ≠ TEXT';
+  String get kick => 'STRING ≠ TEXT';
   @override
   String get line => '👨‍👩‍👧‍👦 = 1 grapheme';
   @override
@@ -74,7 +74,7 @@ class ZwjFamily extends Vignette {
   static const _emoji = TextStyle(fontFamily: BP.display, fontSize: 160);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('👨‍👩‍👧‍👦 👨 👩 👧 👦 grapheme code points UTF-16 bytes ZWJ 家族', _emoji)];
+  List<(String, TextStyle)> get fontRuns => [('👨‍👩‍👧‍👦 👨 👩 👧 👦 grapheme code points UTF-16 bytes ZWJ', _emoji)];
 
   @override
   Future<void> init() async {

@@ -12,10 +12,9 @@ import 'talk_section.dart';
 /// unsolved → solved, and the end. Each stop is the place in the city that
 /// shows it, its card the deck's slide in a few lines, with its numbers.
 List<TalkSection> talkSections(Site3D site) {
-  CitySection section(String number, String title, String ja, List<String> glyphs, List<CityStop> stops) => CitySection(
+  CitySection section(String number, String title, List<String> glyphs, List<CityStop> stops) => CitySection(
     number: number,
     title: title,
-    ja: ja,
     glyphs: glyphs,
     cityStops: stops,
     vignettes: site.vignettes,
@@ -26,11 +25,10 @@ List<TalkSection> talkSections(Site3D site) {
 
   return [
     // (Its eight scripts are in the air round the title: the scene 'scripts'.)
-    section('', 'Text rendering', 'テキストレンダリング', const [], [
+    section('', 'Text rendering', const [], [
       CityStop(
         'title',
         const TalkCard(
-          'テキストレンダリング',
           'Text rendering',
           'from code points to pixels · and how Flutter does it',
           [
@@ -51,11 +49,10 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.scene('scripts', hold: 10.0, fly: 6.0, lead: 4.6, shift: 0, cardAt: 1e9, chapter: true)],
       ),
     ]),
-    section('01', 'From code points to pixels', 'コードポイントから画素へ', const ['A', 'ب', 'क', '文', 'ก', '😀'], [
+    section('01', 'From code points to pixels', const ['A', 'ب', 'क', '文', 'ก', '😀'], [
       CityStop(
         'intro',
         const TalkCard(
-          'コードポイントから画素へ',
           'From code points to pixels',
           'A string goes in, pixels come out. In between, every step of the way is a place in this city.',
           [
@@ -71,14 +68,14 @@ List<TalkSection> talkSections(Site3D site) {
             cardAt: 2.8,
             chapter: true,
             pins: [
-              _pin(6.6, 2.4, 15.2, '家族', 'STRING'),
-              _pin(-12.55, 3.3, 6.2, '文字工場', 'PIPELINE'),
-              _pin(28.4, 6.6, 29.2, '分割', 'ITEMIZE'),
-              _pin(-6.6, 3.6, 48.5, '豆腐屋', 'FALLBACK'),
-              _pin(6.4, 3.0, 46.8, '合字工房', 'SHAPING'),
-              _pin(1.0, 3.4, 66.6, '改行電車', 'LINES'),
-              _pin(-28.4, 6.6, 11.2, '双方向', 'BIDI'),
-              _pin(-9.0, 1.6, 79.0, '画素畑', 'RASTER'),
+              _pin(6.6, 2.4, 15.2, 'STRING'),
+              _pin(-12.55, 3.3, 6.2, 'PIPELINE'),
+              _pin(28.4, 6.6, 29.2, 'ITEMIZE'),
+              _pin(-6.6, 3.6, 48.5, 'FALLBACK'),
+              _pin(6.4, 3.0, 46.8, 'SHAPING'),
+              _pin(1.0, 3.4, 66.6, 'LINES'),
+              _pin(-28.4, 6.6, 11.2, 'BIDI'),
+              _pin(-9.0, 1.6, 79.0, 'RASTER'),
             ],
           ),
         ],
@@ -86,7 +83,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'string',
         const TalkCard(
-          '文字列 ≠ テキスト',
           'A string ≠ text',
           "Dart's String.length counts UTF-16 units, not what you see. The family is one grapheme: "
               'four people joined by three zero-width joiners. Let go, it is four.',
@@ -110,7 +106,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'pipeline',
         const TalkCard(
-          'パイプライン',
           'The pipeline',
           'Seven stages, each owned by a different library: code points become runs, fonts, glyphs, '
               'lines, positions, and finally pixels.',
@@ -127,7 +122,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'itemize',
         const TalkCard(
-          '分割',
           'Itemize',
           'Before shaping, the string is cut where the script changes. Each run gets one script, one '
               'direction and one font; every later stage works on runs.',
@@ -141,7 +135,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'fallback',
         const TalkCard(
-          'フォントフォールバック',
           'Font fallback',
           "Fonts are asked in order, one character at a time: the app's, then the platform's. When "
               'none has it, .notdef draws tofu: □.',
@@ -158,7 +151,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'shaping',
         const TalkCard(
-          'シェーピング',
           'Shaping',
           'HarfBuzz turns code points into glyph ids and positions, and not one for one: letters join, '
               'merge, shift, swap places or collapse into one.',
@@ -175,14 +167,13 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'lines',
         const TalkCard(
-          '改行',
           'Line breaking',
           'Greedy: fill each line up to maxWidth, then start the next. Where a line may break depends '
               'on the script.',
           [
             FactRow('spaces', 'UAX #14 break opportunities', example: 'the|quick|brown|fox'),
             FactRow('Thai', 'no spaces: ICU dictionary', example: 'สวัสดี|ครับ'),
-            FactRow('CJK', 'almost anywhere, but 。 never starts a line (禁則)', accent: true, example: '行|頭|に|来|ま|せ|ん。'),
+            FactRow('CJK', 'almost anywhere, but 。 never starts a line (kinsoku)', accent: true, example: '行|頭|に|来|ま|せ|ん。'),
             FactRow('too long', 'an emergency break inside the word', example: 'Donaudampfsch|ifffahrt'),
           ],
         ),
@@ -207,7 +198,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'bidi',
         const TalkCard(
-          '双方向',
           'Memory ≠ screen',
           'Text is stored in typing order; the bidi algorithm reorders it for display. A right-to-left '
               'run is reversed, its number stays left to right.',
@@ -222,7 +212,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'raster',
         const TalkCard(
-          'ラスタライズ',
           'Rasterization',
           'Glyphs are outlines. At a small size, each pixel is shaded by how much of it the outline '
               'covers.',
@@ -235,11 +224,10 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.scene('farm', hold: 12.0, fly: 3.0)],
       ),
     ]),
-    section('02', 'Every script adds rules', 'すべての文字にルールがある', const ['ع', 'कि', 'ปั่น', '한', '縦', '👋🏽'], [
+    section('02', 'Every script adds rules', const ['ع', 'कि', 'ปั่น', '한', '縦', '👋🏽'], [
       CityStop(
         'intro',
         const TalkCard(
-          'すべての文字にルールがある',
           'Every script adds rules',
           'Latin lets you assume a lot. Every other script breaks one of those assumptions, and a real '
               'paragraph mixes them.',
@@ -256,9 +244,9 @@ List<TalkSection> talkSections(Site3D site) {
             cardAt: 2.8,
             chapter: true,
             pins: [
-              _pin(0, 3.4, 26.06, '文字横丁', 'SCRIPT ALLEY'),
-              _pin(32.2, 34, 90.4, 'ユニコード塔', 'UNICODE'),
-              _pin(-28.4, 6.6, 25.2, 'ロケール', 'LOCALE'),
+              _pin(0, 3.4, 26.06, 'SCRIPT ALLEY'),
+              _pin(32.2, 34, 90.4, 'UNICODE'),
+              _pin(-28.4, 6.6, 25.2, 'LOCALE'),
             ],
           ),
         ],
@@ -266,7 +254,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'unicode',
         const TalkCard(
-          'ユニコード',
           '128 → 172,808',
           "From ASCII's 128 characters to Unicode 18's 172,808, across 170+ scripts, and still only "
               '15.5% of the codespace.',
@@ -283,7 +270,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'alley',
         const TalkCard(
-          '文字横丁',
           'Every script breaks a rule',
           'Each script breaks an assumption Latin lets you make. Script Alley has a stall for six of '
               'them.',
@@ -301,7 +287,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'rtl',
         const TalkCard(
-          '右から左',
           'Right to left',
           'שלום is written from the right: index 0 is the rightmost letter, and the caret moves left '
               'as you type.',
@@ -316,7 +301,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'joining',
         const TalkCard(
-          'つながる',
           'Joining',
           'An Arabic letter takes a shape for its neighbours: isolated, initial, medial or final.',
           [
@@ -330,7 +314,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'reorder',
         const TalkCard(
-          '並べ替え',
           'Reordering',
           'The Devanagari vowel sign ि is stored after its consonant, but drawn before it.',
           [
@@ -344,7 +327,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'stacking',
         const TalkCard(
-          '積み重ね',
           'Stacking',
           "Thai marks stack on their letter: a vowel above it, a tone mark above that, raised so they "
               "don't collide. And no spaces between words: a dictionary finds them.",
@@ -359,7 +341,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'blocks',
         const TalkCard(
-          '組み立て',
           'Composition',
           'Hangul letters (jamo) are composed into one square syllable block.',
           [
@@ -373,11 +354,10 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'vertical',
         const TalkCard(
-          '縦書き',
           'Vertical',
           'Japanese can be set top to bottom, its columns right to left.',
           [
-            FactRow('reads', '縦書きは右から左へ読む'),
+            FactRow('reads', 'down each column, the columns right to left'),
             FactRow('also', 'Chinese · Mongolian (its columns left to right)'),
             FactRow('in Flutter', 'not built in (section 04)', accent: true),
           ],
@@ -387,7 +367,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'locale',
         const TalkCard(
-          'ロケール',
           'One code point, two glyphs',
           'Han characters are unified: Japanese and Chinese share a code point but draw it differently. '
               'The locale picks the font.',
@@ -401,7 +380,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'mixing',
         const TalkCard(
-          '混在',
           'Mixing multiplies',
           'Every script you add multiplies the work. One mixed paragraph exercises the whole '
               'pipeline at once.',
@@ -418,11 +396,10 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.scene('mix', hold: 8.0, fly: 3.0, shift: 0)],
       ),
     ]),
-    section('03', 'How others do it', 'ほかのエンジン', const ['Aa', 'ش', 'ह', '字'], [
+    section('03', 'How others do it', const ['Aa', 'ش', 'ह', '字'], [
       CityStop(
         'intro',
         const TalkCard(
-          'ほかのエンジン',
           'How others do it',
           "Five engines, five places on a line between owning the whole stack and using the "
               "platform's.",
@@ -436,7 +413,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'engines',
         const TalkCard(
-          '五つのエンジン',
           'Five engines',
           'Four of the five share one shaper, HarfBuzz; Apple has its own. The differences are in '
               'the layers around it.',
@@ -453,7 +429,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'chrome',
         const TalkCard(
-          'ブラウザ',
           'Chrome',
           'Text lives in the DOM, so the browser gets the rest for free.',
           [
@@ -467,7 +442,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'figma',
         const TalkCard(
-          'デザイン',
           'Figma',
           'One canvas with its own text engine: the same on every OS, but text is re-rendered at every '
               'zoom, and every feature is theirs to build.',
@@ -483,7 +457,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'macos',
         const TalkCard(
-          'アップル',
           'macOS · Core Text',
           'Apple owns the whole stack, its own shaper included: a paragraph into lines, lines into '
               'runs, runs into glyphs.',
@@ -499,7 +472,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'android',
         const TalkCard(
-          'アンドロイド',
           'Android · Minikin',
           "Minikin weighs the whole paragraph before it breaks a line. Flutter's text stack came from "
               'it, and kept only the greedy breaker.',
@@ -513,11 +485,10 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.at(talkShot(14, 20, 38, 34, 13, 57.6, 42), fly: 2.6, pins: [_engines[3]])],
       ),
     ]),
-    section('04', "Flutter's trade-off", 'Flutterのトレードオフ', const ['✕', '✓'], [
+    section('04', "Flutter's trade-off", const ['✕', '✓'], [
       CityStop(
         'intro',
         const TalkCard(
-          'Flutterのトレードオフ',
           "Flutter's trade-off",
           'Flutter draws every pixel itself. That buys consistency and effects, and costs the features '
               'the platform would have given it.',
@@ -531,7 +502,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'missing',
         const TalkCard(
-          'できないこと',
           'Not in Flutter',
           'Owning the stack means rebuilding every platform feature. These are still missing, or '
               'have only workarounds.',
@@ -551,7 +521,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'only',
         const TalkCard(
-          'できること',
           'Only in Flutter',
           "Because Flutter owns every pixel, its text can do what native text can't.",
           [
@@ -575,7 +544,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'web',
         const TalkCard(
-          'ウェブ',
           'On the web',
           "On the web Flutter ships its own engine as WASM: text on a canvas the browser can't search, "
               'and fonts that arrive late, as tofu until then.',
@@ -591,11 +559,10 @@ List<TalkSection> talkSections(Site3D site) {
       ),
     ]),
     JourneySection(site.works),
-    section('06', 'Unsolved → solved', '未解決 → 解決', const ['文節', '」「', '◇'], [
+    section('06', 'Unsolved → solved', const ['文節', '」「', '◇'], [
       CityStop(
         'intro',
         const TalkCard(
-          '未解決 → 解決',
           'Unsolved → solved',
           "Three things Flutter's text doesn't do well today, and small packages that fix them "
               'without touching the engine.',
@@ -609,7 +576,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'phrases',
         const TalkCard(
-          '文節で改行',
           'Phrase breaking',
           'Japanese may break almost anywhere, so Flutter splits words mid-phrase. kumihan finds the '
               'phrases (BudouX) and glues each with invisible word joiners.',
@@ -627,7 +593,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'punctuation',
         const TalkCard(
-          '約物の詰め',
           'Punctuation spacing',
           "Full-width punctuation carries half an em of blank. Where two marks meet, the gap should "
               "close: kumihan applies the font's 'halt' glyph by glyph, where they meet.",
@@ -643,7 +608,6 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'slug',
         const TalkCard(
-          'スラッグ',
           'Slug · GPU text',
           'Draw glyphs straight from their curves in a fragment shader: sharp at any zoom, rotation or '
               'perspective, with no atlas to re-rasterize.',
@@ -656,11 +620,10 @@ List<TalkSection> talkSections(Site3D site) {
         [CityBeat.scene('word', from: 20, hold: 33.5, fly: 3.6, shift: 0.26)],
       ),
     ]),
-    section('', 'The trade-off', 'トレードオフ', const ['control', '⇄', 'native'], [
+    section('', 'The trade-off', const ['control', '⇄', 'native'], [
       CityStop(
         'trade-off',
         const TalkCard(
-          'トレードオフ',
           'The trade-off',
           "Every engine picks a point between owning the stack and using the platform's. Flutter chose "
               'control, consistency and effects.',
@@ -677,20 +640,14 @@ List<TalkSection> talkSections(Site3D site) {
       ),
       CityStop(
         'thanks',
-        const TalkCard(
-          'ありがとうございました',
-          'Thank you',
-          'questions? · ご質問は？',
-          [],
-          true,
-        ),
+        const TalkCard('Thank you', 'questions?', [], true, 'ありがとうございました'),
         [CityBeat.scene('scripts', from: 100, hold: 110, fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true)],
       ),
     ]),
   ];
 }
 
-TalkPin _pin(double x, double y, double z, String ja, String en) => TalkPin(vm.Vector3(x, y, z), ja, en);
+TalkPin _pin(double x, double y, double z, String name) => TalkPin(vm.Vector3(x, y, z), name);
 
 /// The city's east side from above, its rooftop signs: the five engines'
 /// buildings.
@@ -699,10 +656,10 @@ final _overview = talkShot(-30, 55, -40, 48, 10, 30, 56, drift: 1.0);
 /// Five buildings along the east side as the five engines' headquarters
 /// (Flutter's has its name on the roof).
 final _engines = [
-  _pin(33.6, 14.6, -2.2, 'ブラウザ', 'CHROME'),
-  _pin(51.5, 27.2, 14.8, 'デザイン', 'FIGMA'),
-  _pin(51.3, 18.6, 48.6, 'アップル', 'MACOS'),
-  _pin(34.0, 14.5, 57.6, 'アンドロイド', 'ANDROID'),
-  _pin(52.6, 22.6, 33.5, 'フラッター', 'FLUTTER'),
+  _pin(33.6, 14.6, -2.2, 'CHROME'),
+  _pin(51.5, 27.2, 14.8, 'FIGMA'),
+  _pin(51.3, 18.6, 48.6, 'MACOS'),
+  _pin(34.0, 14.5, 57.6, 'ANDROID'),
+  _pin(52.6, 22.6, 33.5, 'FLUTTER'),
 ];
 

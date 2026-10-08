@@ -25,7 +25,7 @@ class ItemizeWorks extends Vignette {
   @override
   String get name => 'itemize';
   @override
-  String get kick => '分割 · ITEMIZE';
+  String get kick => 'ITEMIZE';
   @override
   String get line => 'One string, four runs';
   @override
@@ -79,7 +79,7 @@ class ItemizeWorks extends Vignette {
   bool _ready = false;
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('Hi مرحبا 世界 👋 分割 ITEMIZE Latin Arabic Han Emoji LTR RTL', _style)];
+  List<(String, TextStyle)> get fontRuns => [('Hi مرحبا 世界 👋 ITEMIZE Latin Arabic Han Emoji LTR RTL', _style)];
 
   @override
   Future<void> init() async {
@@ -112,7 +112,7 @@ class ItemizeWorks extends Vignette {
         vm.Matrix4.translation(vm.Vector3(0, 6.2, -0.05)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF1E2433));
-          Vignette.text(c, '分割 · ITEMIZE', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
+          Vignette.text(c, 'ITEMIZE', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
           Vignette.text(c, 'ONE STRING → FOUR RUNS', Rect.fromLTWH(0, s.height * 0.62, s.width, s.height * 0.32), s.height * 0.22, const Color(0xFFF4EBD8));
         },
         glow: 0.5,

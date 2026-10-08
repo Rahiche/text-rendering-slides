@@ -50,12 +50,12 @@ class CitySigns {
 
   /// Blade signs: the street's text trades.
   static const _blades = <(String, Color)>[
-    ('書店', BP.amber),
-    ('活字', BP.green),
-    ('印刷', BP.pink),
-    ('喫茶', BP.coral),
-    ('文具', BP.line),
-    ('フォント', BP.violet),
+    ('BOOKS', BP.amber),
+    ('TYPE', BP.green),
+    ('PRINT', BP.pink),
+    ('CAFE', BP.coral),
+    ('INK', BP.line),
+    ('FONTS', BP.violet),
   ];
 
   late final _steel = pbr(rgb(1, 1, 1), metallic: 0.7, roughness: 0.45);
@@ -100,7 +100,7 @@ class CitySigns {
       if ([
             for (final (w, _, l) in _words)
               if (l == locale) w,
-            if (locale == 'ja') ...[for (final (w, _) in _blades) w, '工事中', '安全第一'],
+            if (locale == null) ...[for (final (w, _) in _blades) w, 'UNDER CONSTRUCTION SAFETY FIRST'],
           ]
           case final words when words.isNotEmpty)
         (words.join(' '), TextStyle(fontFamily: BP.display, fontSize: 40, locale: locale == null ? null : Locale(locale))),
@@ -179,13 +179,13 @@ class CitySigns {
 
   Future<void> _bladeSigns() async {
     final specs = [
-      for (final (word, _) in _blades) TextSolid(word.split('').join('\n'), _style('ja', size: 110).copyWith(height: 1.0), height: 1, depth: 0.22),
+      for (final (word, _) in _blades) TextSolid(word.split('').join('\n'), _style(null, size: 110).copyWith(height: 1.0), height: 1, depth: 0.22),
     ];
     final unit = await extrudeTexts(specs);
     final sized = <TextSolid>[];
     for (var k = 0; k < _blades.length; k++) {
       final chars = _blades[k].$1.length;
-      final h = 1.15 * chars;
+      final h = 0.8 * chars;
       final aspect = unit[k].width / math.max(unit[k].height, 1e-3);
       sized.add(TextSolid(specs[k].text, specs[k].style, height: math.min(h, 1.3 / math.max(aspect, 0.05)), depth: 0.22));
     }
@@ -217,7 +217,7 @@ class CitySigns {
   // ── The site's boards ─────────────────────────────────────────────────────
 
   Future<void> _boards() async {
-    // 工事中: a yellow standing board at the plaza's front-left corner.
+    // UNDER CONSTRUCTION: a yellow standing board at the plaza's front-left corner.
     final kouji = await paintedTexture(512, 680, (c, s) {
       final r = RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, s.width, s.height), const Radius.circular(36));
       c.drawRRect(r, Paint()..color = const Color(0xFFFFC94A));
@@ -235,10 +235,10 @@ class CitySigns {
           ..strokeCap = StrokeCap.butt);
       }
       c.restore();
-      _text(c, '工事中', Rect.fromLTWH(0, 130, s.width, 260), 190, const Color(0xFF1B2233));
-      _text(c, 'ご迷惑をおかけします', Rect.fromLTWH(0, 420, s.width, 70), 44, const Color(0xFF1B2233));
-      _text(c, '名前を建設しています', Rect.fromLTWH(0, 490, s.width, 60), 38, const Color(0xFF7A4A10));
-      _text(c, 'NAME CITY · UNDER CONSTRUCTION', Rect.fromLTWH(0, 585, s.width, 50), 26, const Color(0xFF1B2233));
+      _text(c, 'UNDER\nCONSTRUCTION', Rect.fromLTWH(30, 140, s.width - 60, 250), 96, const Color(0xFF1B2233));
+      _text(c, 'Sorry for the noise', Rect.fromLTWH(0, 420, s.width, 70), 44, const Color(0xFF1B2233));
+      _text(c, 'We are building your name', Rect.fromLTWH(0, 490, s.width, 60), 36, const Color(0xFF7A4A10));
+      _text(c, 'NAME CITY', Rect.fromLTWH(0, 585, s.width, 50), 26, const Color(0xFF1B2233));
     });
     final koujiMat = PhysicallyBasedMaterial()
       ..baseColorTexture = kouji
@@ -249,13 +249,13 @@ class CitySigns {
       ..emissiveStrength = 0;
     _boardMats.add(koujiMat);
     final at = trs(vm.Vector3(-13.8, 0, Plan.plazaZ0 + 0.45), rotY: 0.18);
-    scene.add(Node(name: '工事中', mesh: Mesh(boardGeometry(1.25, 1.66), koujiMat), localTransform: at * vm.Matrix4.translation(vm.Vector3(0, 1.2, 0))));
+    scene.add(Node(name: 'under construction', mesh: Mesh(boardGeometry(1.25, 1.66), koujiMat), localTransform: at * vm.Matrix4.translation(vm.Vector3(0, 1.2, 0))));
     for (final x in [-0.55, 0.55]) {
       _batch.add(_steel, part(CuboidGeometry(vm.Vector3(0.07, 2.1, 0.07)), at * vm.Matrix4.translation(vm.Vector3(x, 1.05, 0.06)), _steelColor));
     }
     _batch.add(_steel, part(CuboidGeometry(vm.Vector3(1.4, 0.08, 0.5)), at * vm.Matrix4.translation(vm.Vector3(0, 0.04, 0.06)), _steelColor));
 
-    // 安全第一: a white banner with the green cross, on the front barriers.
+    // SAFETY FIRST: a white banner with the green cross, on the front barriers.
     final anzen = await paintedTexture(1024, 256, (c, s) {
       c.drawRect(Rect.fromLTWH(0, 0, s.width, s.height), Paint()..color = const Color(0xFFF7F4EC));
       c.drawRect(Rect.fromLTWH(10, 10, s.width - 20, s.height - 20), Paint()
@@ -266,7 +266,7 @@ class CitySigns {
       final cross = Paint()..color = const Color(0xFF21A86B);
       c.drawRect(const Rect.fromLTWH(70, 108, 150, 40), cross);
       c.drawRect(const Rect.fromLTWH(125, 53, 40, 150), cross);
-      _text(c, '安全第一', Rect.fromLTWH(250, 30, s.width - 290, 190), 150, const Color(0xFF167A4C));
+      _text(c, 'SAFETY FIRST', Rect.fromLTWH(250, 30, s.width - 290, 190), 120, const Color(0xFF167A4C));
     });
     final anzenMat = PhysicallyBasedMaterial()
       ..baseColorTexture = anzen
@@ -278,7 +278,7 @@ class CitySigns {
     _boardMats.add(anzenMat);
     scene.add(
       Node(
-        name: '安全第一',
+        name: 'safety first',
         mesh: Mesh(boardGeometry(3.6, 0.9), anzenMat),
         localTransform: trs(vm.Vector3(7.6, 0.75, Plan.plazaZ0 - 0.39)), // (left of the site gate)
       ),

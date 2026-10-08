@@ -107,7 +107,6 @@ class CitySection extends TalkSection {
   CitySection({
     required this.number,
     required this.title,
-    required this.ja,
     required this.cityStops,
     required this.vignettes,
     required this.alley,
@@ -136,7 +135,7 @@ class CitySection extends TalkSection {
   }
 
   @override
-  final String number, title, ja;
+  final String number, title;
   @override
   final List<String> glyphs;
   final List<CityStop> cityStops;

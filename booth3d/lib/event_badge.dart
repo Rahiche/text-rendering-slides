@@ -31,7 +31,7 @@ class EventBadge extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('WELCOME TO · ようこそ', style: UT.mono(13, color: BP.amber, weight: 600, ls: 1.2)),
+              Text('WELCOME TO', style: UT.mono(13, color: BP.amber, weight: 600, ls: 1.2)),
               const SizedBox(height: 2),
               Text(name, style: UT.name(34, color: BP.ink, weight: 700, height: 1.05)),
             ],

@@ -24,7 +24,7 @@ class TalkScripts extends Vignette {
   @override
   String get name => 'scripts';
   @override
-  String get kick => '文字 · ONE WORD, EIGHT SCRIPTS';
+  String get kick => 'ONE WORD, EIGHT SCRIPTS';
   @override
   String get line => _text.join(' · ');
   @override

@@ -22,7 +22,7 @@ class UnicodeTower extends Vignette {
   @override
   String get name => 'tower';
   @override
-  String get kick => 'ユニコード塔 · UNICODE';
+  String get kick => 'UNICODE';
   @override
   String get line => '128 → 172,808 characters';
   @override
@@ -61,7 +61,7 @@ class UnicodeTower extends Vignette {
   static const _style = TextStyle(fontFamily: BP.display, fontSize: 160, fontWeight: FontWeight.w700);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [(_snow.join(' '), _style), ('ユニコード塔 UNICODE 128 172,808 😀', _style)];
+  List<(String, TextStyle)> get fontRuns => [(_snow.join(' '), _style), ('UNICODE TOWER 128 172,808 😀', _style)];
 
   @override
   Future<void> init() async {
@@ -129,7 +129,7 @@ class UnicodeTower extends Vignette {
         vm.Matrix4.translation(vm.Vector3(0, _plinth + 0.75, -_w / 2 - 0.62)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF14203A));
-          Vignette.text(c, 'ユニコード塔 · UNICODE', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
+          Vignette.text(c, 'UNICODE TOWER', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.5, const Color(0xFFF2C94C), lang: 'ja');
         },
         glow: 0.5,
         shell: true,

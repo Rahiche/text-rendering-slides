@@ -125,15 +125,7 @@ class LetterShape {
 }
 
 /// The pipeline's steps as the signs and the caption name them.
-const worksSteps = [
-  ('文字列', 'UTF-8 BYTES'),
-  ('デコード', 'DECODE'),
-  ('フォント', 'FONT · CMAP'),
-  ('シェーピング', 'SHAPING'),
-  ('アウトライン', 'OUTLINE'),
-  ('ラスタライズ', 'RASTERIZE'),
-  ('画面', 'PIXELS'),
-];
+const worksSteps = ['UTF-8 BYTES', 'DECODE', 'FONT · CMAP', 'SHAPING', 'OUTLINE', 'RASTERIZE', 'PIXELS'];
 
 /// What the works' caption (the 2D overlay's lower third, during a camera
 /// visit) shows, refreshed every frame: the step being looked at and its
@@ -331,12 +323,12 @@ class GlyphWorks {
       final l = name.letters[s.k];
       // ignore: avoid_print
       print(
-        'PLAN works ${l.text} maker ${s.maker}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].$2.split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}',
+        'PLAN works ${l.text} maker ${s.maker}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}',
       );
     }
     for (final c in _cuts) {
       // ignore: avoid_print
-      print('PLAN works cut ${f(c.from)}-${f(c.to)} ${worksSteps[c.step].$2} ${name.letters[c.k].text}');
+      print('PLAN works cut ${f(c.from)}-${f(c.to)} ${worksSteps[c.step]} ${name.letters[c.k].text}');
     }
     if (_journey case final jn?) {
       // ignore: avoid_print
@@ -2027,7 +2019,7 @@ class GlyphWorks {
 
   Future<void> _build() async {
     await awaitFallbackFonts(
-      '文字工場 文字列 デコード フォント シェーピング アウトライン ラスタライズ 画面 字あ한 テキストパイプライン',
+      '字あ한',
       style: const TextStyle(fontFamily: BP.display, fontSize: 40, locale: Locale('ja')),
     );
     final base = await _texture(_atlas, _atlas, (c) => _paint(c, glow: false));
@@ -2289,20 +2281,16 @@ class GlyphWorks {
       ink,
       spans: [
         TextSpan(
-          text: '文字工場',
+          text: 'GLYPH ',
           style: TextStyle(color: ink),
         ),
         TextSpan(
-          text: '  ·  ',
-          style: TextStyle(color: glow ? const Color(0xFF7A5A10) : amber),
-        ),
-        TextSpan(
-          text: 'GLYPH WORKS',
-          style: TextStyle(color: amber, fontSize: 80),
+          text: 'WORKS',
+          style: TextStyle(color: amber),
         ),
       ],
     );
-    // The steps' signs: a number in a ring, the step in Japanese and English.
+    // The steps' signs: a number in a ring, the step.
     for (var i = 0; i < 7; i++) {
       final b = _stepSigns[i];
       c.drawRect(b, Paint()..color = glow ? black : cream);
@@ -2317,8 +2305,7 @@ class GlyphWorks {
       final o = Offset(b.left + 44, b.center.dy);
       c.drawCircle(o, 28, Paint()..color = i == 6 ? const Color(0xFF2E6DA8) : navy);
       _text(c, '${i + 1}', Rect.fromCenter(center: o, width: 44, height: 44), 40, cream);
-      _text(c, worksSteps[i].$1, Rect.fromLTWH(b.left + 84, b.top + 6, b.width - 92, 44), 40, navy);
-      _text(c, worksSteps[i].$2, Rect.fromLTWH(b.left + 84, b.top + 50, b.width - 92, 28), 24, const Color(0xFF2E6DA8));
+      _text(c, worksSteps[i], Rect.fromLTWH(b.left + 84, b.top + 12, b.width - 96, b.height - 24), 36, navy);
     }
     // The font cases' fronts: a drawer with a name card and a sample.
     const samples = ['Aa Éé', 'ب ت ع', '字 あ 한'];
@@ -2347,7 +2334,7 @@ class GlyphWorks {
     c.drawRect(p, Paint()..color = glow ? black : cream);
     if (!glow) {
       _text(c, 'Inside Flutter\'s Text Pipeline', Rect.fromLTWH(p.left + 14, p.top + 14, p.width - 28, 52), 40, navy);
-      _text(c, 'テキストパイプラインの中', Rect.fromLTWH(p.left + 14, p.top + 66, p.width - 28, 36), 28, const Color(0xFFE8505F));
+      _text(c, 'seven steps, bytes to pixels', Rect.fromLTWH(p.left + 14, p.top + 66, p.width - 28, 36), 26, const Color(0xFFE8505F));
       for (var i = 0; i < 7; i++) {
         final x = p.left + 22 + i * 56.0, y = p.top + 130;
         c.drawRect(
@@ -2369,7 +2356,7 @@ class GlyphWorks {
         }
       }
       _text(c, 'UTF-8 → U+ → cmap → shape → outline → raster → pixels', Rect.fromLTWH(p.left + 14, p.top + 196, p.width - 28, 30), 20, const Color(0xFF2E6DA8));
-      _text(c, '名前の街 · NAME CITY', Rect.fromLTWH(p.left + 14, p.top + 244, p.width - 28, 36), 24, navy);
+      _text(c, 'NAME CITY', Rect.fromLTWH(p.left + 14, p.top + 244, p.width - 28, 36), 24, navy);
     }
     // The decoder's panel.
     final dp = _decoderPanel;

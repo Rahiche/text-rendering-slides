@@ -23,7 +23,7 @@ class RubyCable extends Vignette {
   @override
   String get name => 'ruby';
   @override
-  String get kick => 'ルビ · RUBY';
+  String get kick => 'RUBY';
   @override
   String get line => 'Small text over its base';
   @override
@@ -62,7 +62,7 @@ class RubyCable extends Vignette {
   static const _style = TextStyle(fontFamily: BP.display, fontSize: 160, fontWeight: FontWeight.w700, locale: Locale('ja'));
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('東京 とう きょう ルビ RUBY', _style)];
+  List<(String, TextStyle)> get fontRuns => [('東京 とう きょう RUBY', _style)];
 
   @override
   Future<void> init() async {
@@ -94,7 +94,7 @@ class RubyCable extends Vignette {
     final nodes = await Future.wait([
       sign(4.6, 0.8, vm.Matrix4.translation(vm.Vector3(0, _cableY + 0.95, _z + 0.1)), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF1E2433));
-        Vignette.text(c, 'ルビ · RUBY', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.46, const Color(0xFFF2C94C), lang: 'ja');
+        Vignette.text(c, 'RUBY', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.46, const Color(0xFFF2C94C), lang: 'ja');
         Vignette.text(c, 'small text over its base', Rect.fromLTWH(0, s.height * 0.6, s.width, s.height * 0.34), s.height * 0.24, const Color(0xFFF4EBD8));
       }, glow: 0.5),
       for (var k = 0; k < 2; k++)

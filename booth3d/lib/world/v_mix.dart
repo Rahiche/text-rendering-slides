@@ -24,7 +24,7 @@ class TalkMix extends Vignette {
   @override
   String get name => 'mix';
   @override
-  String get kick => '混在 · MIXING';
+  String get kick => 'MIXING';
   @override
   String get line => _runs.map((r) => r.$1).join(' ');
   @override

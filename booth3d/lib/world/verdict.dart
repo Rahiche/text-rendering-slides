@@ -373,8 +373,8 @@ class Verdict3D {
     const tb = Rect.fromLTWH(w - 250, h - 92, 226, 68);
     c.drawRect(tb, line..strokeWidth = 1.6);
     c.drawLine(Offset(tb.left, tb.top + 34), Offset(tb.right, tb.top + 34), line..strokeWidth = 1.2);
-    _text(c, '次の建物 · NEXT BUILD', Rect.fromLTWH(tb.left + 8, tb.top + 3, tb.width - 16, 30), 26);
-    _text(c, '名前の街 · NAME CITY · No.02', Rect.fromLTWH(tb.left + 8, tb.top + 37, tb.width - 16, 28), 20);
+    _text(c, 'NEXT BUILD', Rect.fromLTWH(tb.left + 8, tb.top + 3, tb.width - 16, 30), 26);
+    _text(c, 'NAME CITY · No.02', Rect.fromLTWH(tb.left + 8, tb.top + 37, tb.width - 16, 28), 20);
   }
 
   void _text(Canvas c, String s, Rect box, double size) {

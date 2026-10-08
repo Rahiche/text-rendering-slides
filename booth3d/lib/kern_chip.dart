@@ -59,13 +59,13 @@ class _KernPainter extends CustomPainter {
     text.frame(m.t);
     final k = UiInk(canvas, text);
     final zero = c.em.abs() < 0.005;
-    final kick = k.tp('KERNING · カーニング', UT.mono(14, color: BP.amber, weight: 600, ls: 1.2));
+    final kick = k.tp('KERNING', UT.mono(14, color: BP.amber, weight: 600, ls: 1.2));
     final l = k.tp(c.left, UT.name(40, color: BP.ink, height: 1.0));
     final r = k.tp(c.right, UT.name(40, color: BP.ink, height: 1.0));
     final shown = c.em * c.count;
     final value = zero ? '±0 em' : (shown.abs() < 0.005 ? '0.00 em' : '${shown < 0 ? '−' : '+'}${shown.abs().toStringAsFixed(2)} em');
     final v = k.tp(value, UT.mono(28, color: zero ? BP.inkDim : BP.amber, weight: 700));
-    final note = k.tp(zero ? 'spacing · 字間OK' : 'pair kerning · ペアカーニング', UT.mono(12, color: zero ? BP.green : BP.inkDim, weight: 500));
+    final note = k.tp(zero ? 'spacing OK' : 'pair kerning', UT.mono(12, color: zero ? BP.green : BP.inkDim, weight: 500));
     // The pair: kerned as the font has it, the right letter a little loose
     // until the crew have pushed it home.
     final kernPx = c.em * 40;

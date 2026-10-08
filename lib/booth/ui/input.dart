@@ -169,7 +169,7 @@ class _NameInputState extends State<NameInput> {
   }
 }
 
-const _invitation = ['Your name could be next!', '次はあなたの名前！'];
+const _invitation = ['Your name could be next!', 'Type it, press Enter'];
 
 /// The invitation typed out, held, and erased, line after line: what shows
 /// [s] seconds in, and whether the caret is moving.
@@ -266,16 +266,8 @@ class _InputPainter extends CustomPainter {
 
   /// The resting hint.
   void _hint(UiInk k) {
-    final ps = [
-      k.tp('Type your name', UT.label(34, color: BP.inkDim, weight: 500)),
-      k.tp('·', UT.label(34, color: BP.inkFaint)),
-      k.tp('お名前を入力', UT.label(30, color: BP.inkDim, weight: 500)),
-    ];
-    var x = UG.field.left + 10; // clear of the caret
-    for (final p in ps) {
-      p.paint(k.c, Offset(x, UG.field.center.dy - p.height / 2));
-      x += p.width + 12;
-    }
+    final p = k.tp('Type your name', UT.label(34, color: BP.inkDim, weight: 500));
+    p.paint(k.c, Offset(UG.field.left + 10, UG.field.center.dy - p.height / 2)); // clear of the caret
   }
 
   /// Nobody has typed for a while: the invitation types itself.

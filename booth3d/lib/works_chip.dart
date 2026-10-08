@@ -59,10 +59,9 @@ class _WorksPainter extends CustomPainter {
     if (show <= 0.01 || c.step < 0) return;
     text.frame(m.t);
     final k = UiInk(canvas, text);
-    final (ja, en) = worksSteps[c.step];
-    final kick = k.tp('$ja · $en', UT.mono(14, color: BP.amber, weight: 600, ls: 1.2));
+    final kick = k.tp(worksSteps[c.step], UT.mono(14, color: BP.amber, weight: 600, ls: 1.2));
     final where = k.tp(
-      c.journey ? "文字の旅 · A LETTER'S JOURNEY" : '文字工場 · GLYPH WORKS',
+      c.journey ? "A LETTER'S JOURNEY" : 'GLYPH WORKS',
       UT.mono(11, color: c.journey ? BP.amber : BP.inkDim, weight: 500, ls: 1.0),
     );
     final glyph = k.tp(c.letter, UT.name(40, color: BP.ink, height: 1.0));

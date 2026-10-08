@@ -31,7 +31,7 @@ class TofuShop extends Vignette {
   @override
   String get name => 'tofu';
   @override
-  String get kick => '豆腐屋 · FONT FALLBACK';
+  String get kick => 'FONT FALLBACK';
   @override
   String get line => 'U+0378: no font has it';
   @override
@@ -111,7 +111,7 @@ class TofuShop extends Vignette {
   List<(String, TextStyle)> get fontRuns => [
     for (final (n, s, _) in _fonts) ('$n $s', const TextStyle(fontFamily: BP.display)),
     for (final s in _shelves) (s, const TextStyle(fontFamily: BP.display)),
-    ('豆腐屋 TOFU .notdef U+0378 U+0628 ب', const TextStyle(fontFamily: BP.display, fontFamilyFallback: [BP.arabic])),
+    ('TOFU SHOP .notdef U+0378 U+0628 ب', const TextStyle(fontFamily: BP.display, fontFamilyFallback: [BP.arabic])),
   ];
 
   @override
@@ -212,17 +212,17 @@ class TofuShop extends Vignette {
         ),
       ],
       sign(2.3, 0.62, vm.Matrix4.translation(vm.Vector3(_shopX, 2.5, _counterZ - 0.06)), (c, s) {
-        // The noren: three panels of navy, 豆腐 in white.
+        // The noren: three panels of navy, TOFU in white.
         final w = s.width / 3;
         for (var i = 0; i < 3; i++) {
           c.drawRect(Rect.fromLTWH(i * w + 3, 0, w - 6, s.height), Paint()..color = const Color(0xFF1E2A4A));
         }
-        Vignette.text(c, '豆 腐', Rect.fromLTWH(0, 0, s.width * 0.7, s.height * 0.95), s.height * 0.62, const Color(0xFFF4F1EA), lang: 'ja');
+        Vignette.text(c, 'TOFU', Rect.fromLTWH(0, 0, s.width * 0.7, s.height * 0.95), s.height * 0.5, const Color(0xFFF4F1EA));
         Vignette.text(c, '.notdef', Rect.fromLTWH(s.width * 0.67, s.height * 0.3, s.width * 0.32, s.height * 0.5), s.height * 0.22, const Color(0xFFF4F1EA));
       }, glow: 0.3),
       sign(1.9, 0.4, vm.Matrix4.translation(vm.Vector3(_shopX, 3.18, _counterZ - 0.1)), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFFF4EBD8));
-        Vignette.text(c, '豆腐屋 · TOFU · □', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.6, const Color(0xFF8E2A1E), lang: 'ja');
+        Vignette.text(c, 'TOFU SHOP · □', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.6, const Color(0xFF8E2A1E), lang: 'ja');
       }),
     ]);
     // The tofu's face (the .notdef box: the code point's hex), and the

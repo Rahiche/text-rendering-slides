@@ -41,7 +41,7 @@ class TalkPhones extends Vignette {
   @override
   String get name => 'phones';
   @override
-  String get kick => '端末 · PHONES';
+  String get kick => 'PHONES';
   @override
   String get line => 'the same words, the same lines';
   @override

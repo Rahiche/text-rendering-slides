@@ -22,7 +22,7 @@ class WeightGym extends Vignette {
   @override
   String get name => 'gym';
   @override
-  String get kick => '太さジム · VARIABLE FONTS';
+  String get kick => 'VARIABLE FONTS';
   @override
   String get line => 'wght 100 → 800';
   @override
@@ -56,7 +56,7 @@ class WeightGym extends Vignette {
   @override
   List<(String, TextStyle)> get fontRuns => [
     for (final w in _weights) ('Aa wght', _style(w)),
-    ('太さジム VARIABLE FONTS', const TextStyle(fontFamily: BP.display)),
+    ('VARIABLE FONTS wght GYM', const TextStyle(fontFamily: BP.display)),
   ];
 
   @override
@@ -87,7 +87,7 @@ class WeightGym extends Vignette {
     await Future.wait([
       sign(3.0, 0.5, vm.Matrix4.translation(vm.Vector3(2.0, 2.92, 1.88)), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFFE8505F));
-        Vignette.text(c, '太さジム · wght GYM', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.56, const Color(0xFFFFFFFF), lang: 'ja');
+        Vignette.text(c, 'wght GYM', Rect.fromLTWH(0, 0, s.width, s.height), s.height * 0.56, const Color(0xFFFFFFFF), lang: 'ja');
       }),
       sign(
         0.9,

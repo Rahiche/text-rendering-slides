@@ -227,8 +227,7 @@ class _Card extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(card.ja, style: UT.label(16, color: BP.inkDim, weight: 500)),
-              const SizedBox(height: 2),
+              if (card.kicker.isNotEmpty) ...[Text(card.kicker, style: UT.label(16, color: BP.inkDim, weight: 500)), const SizedBox(height: 2)],
               Text(card.title, style: UT.name(card.opener ? 52 : 46, color: BP.ink, weight: 600, height: 1.05)),
             ],
           ),
@@ -408,8 +407,7 @@ class _Chapter extends StatelessWidget {
               ),
             ),
           Container(width: 140, height: 2, margin: const EdgeInsets.only(top: 20, bottom: 26), color: BP.amber),
-          Text(card.ja, style: UT.label(24, color: BP.inkDim, weight: 500).copyWith(shadows: _glow)),
-          const SizedBox(height: 6),
+          if (card.kicker.isNotEmpty) ...[Text(card.kicker, style: UT.label(24, color: BP.inkDim, weight: 500).copyWith(shadows: _glow)), const SizedBox(height: 6)],
           Text(
             card.title,
             textAlign: TextAlign.center,
@@ -592,14 +590,9 @@ class _PinPainter extends CustomPainter {
         if (talk.project(p.at) case final o?) (o, p),
     ]..sort((a, b) => b.$1.dy.compareTo(a.$1.dy));
     final placed = <Rect>[];
-    for (final (o, TalkPin(:ja, :en)) in pins) {
+    for (final (o, TalkPin(:name)) in pins) {
       final label = TextPainter(
-        text: TextSpan(
-          children: [
-            TextSpan(text: '$ja  ', style: UT.label(17, color: BP.ink.withValues(alpha: k), weight: 600)),
-            TextSpan(text: en, style: UT.mono(13, color: BP.amber.withValues(alpha: k), weight: 700, ls: 1.4)),
-          ],
-        ),
+        text: TextSpan(text: name, style: UT.mono(15, color: BP.amber.withValues(alpha: k), weight: 700, ls: 1.4)),
         textDirection: TextDirection.ltr,
       )..layout();
       final w = label.width + 28, h = label.height + 16;

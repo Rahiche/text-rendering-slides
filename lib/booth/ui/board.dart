@@ -67,7 +67,7 @@ void paintBoard(UiInk k, BoothModel m, BoothUi ui) {
 
 enum _Bulbs { wave, chase, party, dim }
 
-void _sign(UiInk k, Job? j, double t, ({String ja, String en})? title) {
+void _sign(UiInk k, Job? j, double t, String? title) {
   final c = k.c;
   const r = UG.sign;
   // Hung from above on two cables, like the deck's hall signs.
@@ -98,18 +98,10 @@ void _sign(UiInk k, Job? j, double t, ({String ja, String en})? title) {
     k.bulb(Offset(x0 + (x1 - x0) * i / (n - 1), UG.bulbY), on);
   }
 
-  // 名前工場 · Name Factory (bricks), or 名前工房 · Name Workshop (crafts).
+  // Name Factory (bricks), or Name Workshop (crafts).
   final workshop = j?.mode == BuildMode.craft;
-  final own = title;
-  final ja = k.tp(own?.ja ?? (workshop ? '名前工房' : '名前工場'), UT.label(29, weight: 700));
-  final dot = k.tp('·', UT.label(29, color: BP.inkDim));
-  final en = k.tp(own?.en ?? (workshop ? 'Name Workshop' : 'Name Factory'), UT.label(29, weight: 600));
-  final w = ja.width + 12 + dot.width + 12 + en.width;
-  var x = r.center.dx - w / 2;
-  for (final p in [ja, dot, en]) {
-    p.paint(c, Offset(x, UG.titleY - p.height / 2));
-    x += p.width + 12;
-  }
+  final en = k.tp(title ?? (workshop ? 'Name Workshop' : 'Name Factory'), UT.label(29, weight: 700));
+  en.paint(c, Offset(r.center.dx - en.width / 2, UG.titleY - en.height / 2));
   c.drawLine(Offset(r.left + 6, UG.divider), Offset(r.right - 6, UG.divider), k.st(BP.lineDim, 1));
 }
 
@@ -136,38 +128,38 @@ void _nowBuilding(UiInk k, BoothModel m, Job j, double t) {
   var timeIcon = 1; // 1 clock, 2 tick, 0 none
   if (j.sample) {
     final makingRoom = next != null;
-    kick = makingRoom ? 'MAKING ROOM · まもなく開始' : 'WARMING UP · 準備中';
+    kick = makingRoom ? 'MAKING ROOM' : 'WARMING UP';
     kickCol = BP.line;
     nameCol = makingRoom || clearing ? BP.inkFaint : BP.line;
     barCol = BP.lineDim;
     if (clearing) bar = 0;
-    right = makingRoom ? 'next: $next' : 'sample · 見本';
+    right = makingRoom ? 'next: $next' : 'sample';
     timeIcon = 0;
     time = makingRoom ? 'your turn soon' : 'type your name ↓';
   } else {
     switch (j.phase) {
       case Phase.intake || Phase.build:
-        kick = 'NOW BUILDING FOR · 建設中';
-        right = total == 0 ? 'reading… · 解析中' : '$laid / $total';
+        kick = 'NOW BUILDING FOR';
+        right = total == 0 ? 'reading…' : '$laid / $total';
         final left = j.phase == Phase.intake
             ? j.phaseLen - j.since(t) + j.buildLen
             : j.phaseLen - j.since(t);
         time = j.phase == Phase.intake && j.buildLen == 0 ? '…' : clock(left);
       case Phase.reveal:
-        kick = 'NOW BUILDING FOR · 建設中';
+        kick = 'NOW BUILDING FOR';
         right = '$total / $total';
-        time = 'finishing · 仕上げ';
+        time = 'finishing';
         timeIcon = 0;
       case Phase.celebrate:
-        kick = 'BUILT FOR · 完成！';
+        kick = 'BUILT FOR';
         kickCol = BP.green;
         barCol = BP.green;
         bar = 1;
-        right = craft ? '$total characters · 文字' : '$total bricks';
+        right = craft ? '$total characters' : '$total bricks';
         time = clock(j.phaseStart - j.startedAt);
         timeIcon = 2;
       case Phase.demolish || Phase.cleanup:
-        kick = 'CLEARING THE SITE · 解体中';
+        kick = 'CLEARING THE SITE';
         kickCol = BP.inkDim;
         nameCol = BP.inkFaint;
         barCol = BP.lineDim;
@@ -301,7 +293,7 @@ void _rail(UiInk k, BoothModel m, BoothUi ui, double t) {
     c.drawRRect(rr, k.fl(BP.panel));
     c.drawRRect(rr, k.st(bounce > 0 ? BP.amber : BP.lineDim, 1.2));
     final p = k.tp(
-      '+${rail.more} more · 他${rail.more}名',
+      '+${rail.more} more',
       UT.mono(15, color: BP.inkDim, weight: 600),
     );
     k.putMid(p, r.left + 12, r.center.dy, maxW: r.width - 22);
@@ -309,7 +301,7 @@ void _rail(UiInk k, BoothModel m, BoothUi ui, double t) {
 
   if (m.queue.isEmpty && (j == null || j.sample || t - j.startedAt > 0.9)) {
     // An empty ticket: this could be you.
-    final p = k.tp('your name here? · ここにあなたの名前', UT.mono(15, color: BP.inkFaint, weight: 500));
+    final p = k.tp('your name here?', UT.mono(15, color: BP.inkFaint, weight: 500));
     final r = Rect.fromLTWH(UG.left + 8, UG.ticketTop, p.width + 28, UG.ticketH);
     c.drawPath(dashPath(Path()..addRect(r), dash: 5, gap: 4), k.st(BP.inkFaint, 1.1));
     final pg = Rect.fromCenter(center: Offset(r.center.dx, r.top - 2), width: 7, height: 13);

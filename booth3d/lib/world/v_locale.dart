@@ -24,7 +24,7 @@ class LocaleOffice extends Vignette {
   @override
   String get name => 'locale';
   @override
-  String get kick => 'ロケール · LOCALE';
+  String get kick => 'LOCALE';
   @override
   String get line => 'One code point, two glyphs';
   @override
@@ -99,7 +99,7 @@ class LocaleOffice extends Vignette {
         vm.Matrix4.translation(vm.Vector3(0, 6.2, -0.05)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF1E2433));
-          Vignette.text(c, 'ロケール · LOCALE', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.46, const Color(0xFFF2C94C), lang: 'ja');
+          Vignette.text(c, 'LOCALE', Rect.fromLTWH(0, 0, s.width, s.height * 0.66), s.height * 0.46, const Color(0xFFF2C94C), lang: 'ja');
           Vignette.text(c, 'ONE CODE POINT, TWO GLYPHS', Rect.fromLTWH(0, s.height * 0.62, s.width, s.height * 0.32), s.height * 0.22, const Color(0xFFF4EBD8));
         },
         glow: 0.5,
@@ -115,7 +115,7 @@ class LocaleOffice extends Vignette {
             c.drawRect(Offset.zero & sz, Paint()..color = Color(0xFF000000 | _colors[s]));
             Vignette.text(
               c,
-              s == 0 ? 'ja · 日本語' : 'zh-Hans · 简体中文',
+              s == 0 ? 'ja · Japanese' : 'zh-Hans · Chinese',
               Rect.fromLTWH(0, 0, sz.width, sz.height),
               sz.height * 0.52,
               const Color(0xFFF4F1EA),

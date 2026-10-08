@@ -20,10 +20,8 @@ void _counter(UiInk k, int n, BoothUi ui, double t) {
   final c = k.c;
   const r = UG.counter;
   k.plate(r, rivets: false);
-  final en = k.tp('Built today', UT.label(21, weight: 600));
-  final ja = k.tp('今日の完成', UT.label(17, color: BP.inkDim, weight: 500));
-  en.paint(c, Offset(r.left + 16, r.top + 11));
-  ja.paint(c, Offset(r.left + 16, r.top + 39));
+  final en = k.tp('Built today', UT.label(22, weight: 600));
+  en.paint(c, Offset(r.left + 16, r.center.dy - en.height / 2));
 
   // Mechanical counter: one wheel per digit, rolling when it changes.
   final digits = math.max(3, '$n'.length);
@@ -65,12 +63,7 @@ void _ticker(UiInk k, List<String> names, double t) {
   final inner = r.deflate(10);
   if (names.isEmpty) {
     final en = k.tp('Be the first today!', UT.label(23, color: BP.inkDim, weight: 600));
-    final ja = k.tp('今日の一番乗りはあなた！', UT.label(19, color: BP.inkFaint, weight: 500));
-    const gap = 16.0;
-    final w = en.width + gap + ja.width;
-    final x = inner.center.dx - w / 2;
-    en.paint(c, Offset(x, inner.center.dy - en.height / 2));
-    ja.paint(c, Offset(x + en.width + gap, inner.center.dy - ja.height / 2));
+    en.paint(c, Offset(inner.center.dx - en.width / 2, inner.center.dy - en.height / 2));
     return;
   }
   const sep = 40.0; // room for the diamond between names

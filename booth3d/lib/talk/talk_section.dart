@@ -9,9 +9,12 @@ import '../world/shot.dart';
 /// talk's own numbers. [opener]: a section's first card (its number and
 /// title, large).
 class TalkCard {
-  const TalkCard(this.ja, this.title, this.lede, [this.facts = const [], this.opener = false]);
+  const TalkCard(this.title, this.lede, [this.facts = const [], this.opener = false, this.kicker = '']);
 
-  final String ja, title, lede;
+  final String title, lede;
+
+  /// A line over the title (the thanks: ありがとうございました).
+  final String kicker;
   final List<CardFact> facts;
   final bool opener;
 }
@@ -53,11 +56,11 @@ class FactLetters extends CardFact {
 }
 
 /// Something in the city named where it is (a callout following the
-/// camera): where, its Japanese and English names.
+/// camera): where, and its name.
 class TalkPin {
-  const TalkPin(this.at, this.ja, this.en);
+  const TalkPin(this.at, this.name);
   final vm.Vector3 at;
-  final String ja, en;
+  final String name;
 }
 
 /// One beat of the talk: the stop it belongs to (a stop has one or more),
@@ -98,7 +101,6 @@ abstract class TalkSection {
   /// '05' (empty: the title and the end).
   String get number;
   String get title;
-  String get ja;
 
   /// The stops' short names, for the way along the bottom.
   List<String> get stops;

@@ -27,7 +27,7 @@ class LigatureForge extends Vignette {
   @override
   String get name => 'forge';
   @override
-  String get kick => '合字工房 · SHAPING';
+  String get kick => 'SHAPING';
   @override
   String get line => 'f + i → ﬁ   - + > → ->';
   @override
@@ -67,7 +67,7 @@ class LigatureForge extends Vignette {
   static const _codeStyle = TextStyle(fontFamily: BP.mono, fontSize: 160, fontVariations: [FontVariation('wght', 700)]);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('fiﬁ → ≠ 合字工房 LIGATURE FORGE', _style), ('- > -> ! = !=', _codeStyle)];
+  List<(String, TextStyle)> get fontRuns => [('fiﬁ → ≠ LIGATURE FORGE', _style), ('- > -> ! = !=', _codeStyle)];
 
   @override
   Future<void> init() async {
@@ -146,7 +146,7 @@ class LigatureForge extends Vignette {
     ];
     await sign(2.6, 0.5, vm.Matrix4.translation(vm.Vector3(0.3, 2.62, -1.32)), (c, s) {
       c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF2B2422));
-      Vignette.text(c, '合字工房 · LIGATURES', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.4, const Color(0xFFF2C94C), lang: 'ja');
+      Vignette.text(c, 'LIGATURE FORGE', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.4, const Color(0xFFF2C94C), lang: 'ja');
       Vignette.text(
         c,
         'f + i → ﬁ    - + > → ->    ! + = → !=',

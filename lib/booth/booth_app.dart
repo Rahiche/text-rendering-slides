@@ -43,7 +43,7 @@ class _BoothAppState extends State<BoothApp> {
 
 /// MaterialApp shell shared by the app and capture mode.
 Widget boothMaterialApp(Widget home) => MaterialApp(
-  title: 'Name Factory · 名前工場',
+  title: 'Name Factory',
   debugShowCheckedModeBanner: false,
   theme: ThemeData(
     brightness: Brightness.dark,

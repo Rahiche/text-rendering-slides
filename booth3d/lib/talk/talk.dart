@@ -86,11 +86,10 @@ class Talk extends ChangeNotifier {
   String get allText => [
     for (final s in sections) ...[
       s.title,
-      s.ja,
       for (var i = 0; i < s.stops.length; i++) ...() {
         final c = s.card(i);
         return [
-          c.ja,
+          c.kicker,
           c.title,
           c.lede,
           for (final f in c.facts)
@@ -103,7 +102,7 @@ class Talk extends ChangeNotifier {
         ];
       }(),
       for (final b in s.beats)
-        for (final p in b.pins) '${p.ja} ${p.en}',
+        for (final p in b.pins) p.name,
     ],
   ].join(' ');
 

@@ -66,7 +66,7 @@ class SiteProps {
 
   Future<void> _build() async {
     await awaitFallbackFonts(
-      '喫煙所 あきかん',
+      'SMOKING AREA CANS',
       style: const TextStyle(fontFamily: BP.display, fontSize: 40, locale: Locale('ja')),
     );
     final base = await paintedTexture(_atlas, _atlas, (c, s) => _paint(c, glow: false));
@@ -262,14 +262,14 @@ class SiteProps {
       c.drawLine(Offset(x, cy - 6), Offset(x - 5, cy - 18), smoke);
       c.drawLine(Offset(x - 5, cy - 18), Offset(x + 2, cy - 32), smoke);
     }
-    _text(c, '喫煙所', Rect.fromLTWH(r.left + 88, r.top + 14, r.width - 100, 68), 56, glow ? const Color(0xFF6CE5B1) : const Color(0xFF14203A));
-    _text(c, 'SMOKING AREA', Rect.fromLTWH(r.left + 88, r.top + 80, r.width - 100, 26), 18, glow ? const Color(0xFF6CE5B1) : const Color(0xFF167A4C));
+    _text(c, 'SMOKING', Rect.fromLTWH(r.left + 88, r.top + 14, r.width - 100, 60), 48, glow ? const Color(0xFF6CE5B1) : const Color(0xFF14203A));
+    _text(c, 'AREA', Rect.fromLTWH(r.left + 88, r.top + 74, r.width - 100, 32), 26, glow ? const Color(0xFF6CE5B1) : const Color(0xFF167A4C));
   }
 
   void _binLabel(Canvas c, {required bool glow}) {
     final r = _label;
     c.drawRect(r, Paint()..color = glow ? const Color(0xFF000000) : const Color(0xFFF7F4EC));
-    _text(c, 'あきかん', r.deflate(6), 34, glow ? const Color(0xFF000000) : const Color(0xFF2E6DA8));
+    _text(c, 'CANS', r.deflate(6), 34, glow ? const Color(0xFF000000) : const Color(0xFF2E6DA8));
   }
 
   void _text(Canvas c, String s, Rect box, double size, Color color) {

@@ -28,7 +28,7 @@ class PixelFarm extends Vignette {
   @override
   String get name => 'farm';
   @override
-  String get kick => '画素畑 · RASTERIZATION';
+  String get kick => 'RASTERIZATION';
   @override
   String get line => 'Coverage → grey';
   @override
@@ -96,7 +96,7 @@ class PixelFarm extends Vignette {
   static const _style = TextStyle(fontFamily: BP.display, fontWeight: FontWeight.w700);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('$_glyph 画素畑 PIXEL FARM', _style)];
+  List<(String, TextStyle)> get fontRuns => [('$_glyph PIXEL FARM', _style)];
 
   @override
   Future<void> init() async {
@@ -135,7 +135,7 @@ class PixelFarm extends Vignette {
     );
     await sign(4.2, 0.9, vm.Matrix4.translation(vm.Vector3(0, 1.4, -_fenceZ - 0.3)), (c, s) {
       c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF2E5E2E));
-      Vignette.text(c, '画素畑 · PIXEL FARM', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.44, const Color(0xFFF4EBD8), lang: 'ja');
+      Vignette.text(c, 'PIXEL FARM', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.44, const Color(0xFFF4EBD8), lang: 'ja');
       Vignette.text(c, 'coverage → grey', Rect.fromLTWH(0, s.height * 0.6, s.width, s.height * 0.34), s.height * 0.24, const Color(0xFFF2C94C));
     });
     _farmer = person(

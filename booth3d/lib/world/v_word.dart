@@ -34,7 +34,7 @@ class TalkWord extends Vignette {
   @override
   String get name => 'word';
   @override
-  String get kick => 'フラッター · ONLY IN FLUTTER';
+  String get kick => 'ONLY IN FLUTTER';
   @override
   String get line => 'a box for each grapheme';
   @override

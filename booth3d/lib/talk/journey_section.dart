@@ -31,8 +31,6 @@ class JourneySection extends TalkSection {
   @override
   String get title => "One word's journey";
   @override
-  String get ja => '文字の旅';
-  @override
   List<String> get stops => journeyStops;
   @override
   List<String> get glyphs => const ['F', '→', '#9', '→', '▦'];
@@ -132,7 +130,7 @@ final _beats = <TalkBeat>[
     shift: 0.24,
     cardAt: 2.8,
     chapter: true,
-    pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), '文字工場', 'GLYPH WORKS')],
+    pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), 'GLYPH WORKS')],
   ),
   // Text(): the works from outside, its sign; the maker walks in.
   TalkBeat(1, talkShot(-11.2, 2.6, 0.2, -12.4, 1.8, 6.0, 50, drift: 0.5), fly: 3.4),

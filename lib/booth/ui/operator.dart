@@ -20,7 +20,7 @@ void paintOperator(UiInk k, BoothModel m, BoothUi ui) {
     _chip(
       k,
       Offset(UG.chip.dx, y),
-      '▶▶ ×${ui.speed.round()} fast-forward · 早送り中 · Ctrl⇧↓',
+      '▶▶ ×${ui.speed.round()} fast-forward · Ctrl⇧↓',
       BP.amber,
       1,
     );
@@ -31,7 +31,7 @@ void paintOperator(UiInk k, BoothModel m, BoothUi ui) {
     _chip(
       k,
       Offset(UG.chip.dx, y),
-      '${f.en} · ${f.ja}',
+      f.en,
       f.warn ? BP.coral : BP.green,
       eo(a / 0.15) * (1 - c01((a - 2.6) / 0.4)),
     );
@@ -67,21 +67,21 @@ double _key(UiInk k, String label, double x, double y, {void Function(Rect face)
 }
 
 const _rows = [
-  ('S', 'Skip the current name', 'スキップ'),
-  ('⌫', 'Remove the last name in line', '最後の予約を削除'),
-  ('M', 'Factory ↔ Workshop (next name)', '工場 ↔ 工房'),
-  ('F', 'Full screen on / off', '全画面'),
-  ('↑↓', 'Fast-forward ×2 / slower', '早送り'),
-  ('R', 'Reset today’s count (twice)', '今日の記録をリセット'),
-  ('H', 'Show / hide this help', 'ヘルプ'),
-  ('Q', 'Quit the app', '終了'),
+  ('S', 'Skip the current name'),
+  ('⌫', 'Remove the last name in line'),
+  ('M', 'Factory ↔ Workshop (next name)'),
+  ('F', 'Full screen on / off'),
+  ('↑↓', 'Fast-forward ×2 / slower'),
+  ('R', 'Reset today’s count (twice)'),
+  ('H', 'Show / hide this help'),
+  ('Q', 'Quit the app'),
 ];
 
 void _help(UiInk k, BoothModel m, BoothUi ui, Flash? flash) {
   final c = k.c;
   const r = UG.help;
   k.plate(r, edge: BP.amber);
-  final title = k.tp('Operator keys · オペレーター用', UT.label(21, weight: 600));
+  final title = k.tp('Operator keys', UT.label(21, weight: 600));
   title.paint(c, Offset(r.left + 22, r.top + 15));
   final status = k.tp(
     '×${ui.speed.round()} · in line ${m.queue.length} · today ${ui.today.length}',
@@ -90,7 +90,7 @@ void _help(UiInk k, BoothModel m, BoothUi ui, Flash? flash) {
   status.paint(c, Offset(r.right - 22 - status.width, r.top + 22));
 
   var y = r.top + 54;
-  for (final (key, en, ja) in _rows) {
+  for (final (key, en) in _rows) {
     final armed = key == 'R' && ui.armed;
     if (armed) {
       c.drawRect(
@@ -118,24 +118,15 @@ void _help(UiInk k, BoothModel m, BoothUi ui, Flash? flash) {
     }
     final col = armed ? BP.coral : BP.ink;
     final pe = k.tp(armed ? 'Press R again to reset' : en, UT.label(17, color: col, weight: 500));
-    final pj = k.tp(
-      armed ? 'もう一度押すとリセット' : ja,
-      UT.label(14, color: armed ? BP.coral : BP.inkDim, weight: 500),
-    );
     final tx = r.left + 176;
     pe.paint(c, Offset(tx, y + 12 - pe.height / 2));
-    k.put(
-      pj,
-      Offset(tx + pe.width + 12, y + 12 - pj.height / 2),
-      maxW: r.right - 22 - (tx + pe.width + 12),
-    );
     y += 33;
   }
   // Footer: the last operator action, else where the history is kept.
   final loc = ui.history.store.location;
   final foot = flash != null
       ? k.tp(
-          '${flash.en} · ${flash.ja}',
+          flash.en,
           UT.mono(13, color: flash.warn ? BP.coral : BP.green, weight: 600),
         )
       : k.tp(

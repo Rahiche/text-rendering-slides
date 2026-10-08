@@ -18,14 +18,12 @@ class Toast {
   const Toast({
     required this.ok,
     required this.en,
-    required this.ja,
     required this.at,
     this.name,
     this.serial,
   });
   final bool ok;
   final String en;
-  final String ja;
 
   /// Scene time it appeared.
   final double at;
@@ -55,9 +53,8 @@ class Flight {
 
 /// Operator feedback (real time, so fast-forward doesn't hurry it).
 class Flash {
-  Flash(this.en, this.ja, {this.warn = false}) : at = DateTime.now();
+  Flash(this.en, {this.warn = false}) : at = DateTime.now();
   final String en;
-  final String ja;
   final bool warn;
   final DateTime at;
 
@@ -90,9 +87,9 @@ class BoothUi extends ChangeNotifier {
   final BoothModel model;
   final BoothHistory history;
 
-  /// The board's title, when an app wants its own (the 3D booth: 名前の街 ·
-  /// Name City). Null: by build mode (名前工場 / 名前工房).
-  ({String ja, String en})? title;
+  /// The board's title, when an app wants its own (the 3D booth: Name
+  /// City). Null: by build mode (Name Factory / Name Workshop).
+  String? title;
   final text = UiText();
 
   /// No typing for this long: the input invites the next visitor.
@@ -158,8 +155,8 @@ class BoothUi extends ChangeNotifier {
     lastInput = t;
     var check = checkName(raw);
     if (check case NameOk(:final name)) check = _lineCheck(name) ?? check;
-    if (check case NameRejected(:final en, :final ja)) {
-      toast = Toast(ok: false, en: en, ja: ja, at: t);
+    if (check case NameRejected(:final en)) {
+      toast = Toast(ok: false, en: en, at: t);
       shakeAt = t;
       notifyListeners();
       return check;
@@ -183,13 +180,10 @@ class BoothUi extends ChangeNotifier {
         j != null && !j.sample && j.cutAt == null && j.phase.index <= Phase.reveal.index;
     if ((building && j.name.toLowerCase() == k) ||
         model.queue.any((q) => q.name.toLowerCase() == k)) {
-      return NameRejected('$name is already in line!', '$nameさんはもう並んでいます');
+      return NameRejected('$name is already in line!');
     }
     if (model.queue.length >= maxQueue) {
-      return const NameRejected(
-        'The line is full: please try again in a few minutes',
-        'ただいま満員です。少し後でもう一度どうぞ',
-      );
+      return const NameRejected('The line is full: please try again in a few minutes');
     }
     return null;
   }
@@ -199,18 +193,15 @@ class BoothUi extends ChangeNotifier {
   Toast _accepted(Job job, int pos, double wait) {
     final mins = math.max(1, (wait / 60).round());
     final soon = wait < 45;
-    final String en, ja;
+    final String en;
     if (pos <= 1 && soon) {
       en = 'Got it! You’re next · starting now';
-      ja = '受付完了！まもなく建設開始です';
     } else if (pos <= 1) {
       en = 'Got it! You’re next · in about $mins min';
-      ja = '受付完了！次の番です・約$mins分後';
     } else {
       en = 'Got it! #$pos in line · starts in about $mins min';
-      ja = '受付完了！$pos番目・約$mins分後に開始';
     }
-    return Toast(ok: true, en: en, ja: ja, at: t, name: job.name, serial: job.serial);
+    return Toast(ok: true, en: en, at: t, name: job.name, serial: job.serial);
   }
 
   void _tick() {
@@ -260,8 +251,8 @@ class BoothUi extends ChangeNotifier {
   bool get armed =>
       _armed != null && DateTime.now().difference(_armed!) < const Duration(seconds: 6);
 
-  void _flash(String en, String ja, {bool warn = false}) {
-    flash = Flash(en, ja, warn: warn);
+  void _flash(String en, {bool warn = false}) {
+    flash = Flash(en, warn: warn);
     notifyListeners();
   }
 
@@ -274,21 +265,21 @@ class BoothUi extends ChangeNotifier {
   void operatorSkip() {
     final j = model.job;
     if (j == null || j.phase == Phase.demolish || j.phase == Phase.cleanup) {
-      _flash('Nothing to skip right now', 'スキップするものはありません');
+      _flash('Nothing to skip right now');
       return;
     }
     model.skip();
-    _flash('Skipped “${j.name}”', '「${j.name}」をスキップ');
+    _flash('Skipped “${j.name}”');
   }
 
   void operatorDropLast() {
     if (model.queue.isEmpty) {
-      _flash('Nobody is waiting', '待っている人はいません');
+      _flash('Nobody is waiting');
       return;
     }
     final name = model.queue.last.name;
     model.dropLast();
-    _flash('Removed “$name” from the line', '「$name」を列から削除');
+    _flash('Removed “$name” from the line');
   }
 
   /// Ctrl+Shift+M: Name Factory (bricks) ↔ Name Workshop (crafts), from
@@ -296,18 +287,13 @@ class BoothUi extends ChangeNotifier {
   void operatorMode() {
     final craft = model.mode == BuildMode.bricks;
     model.mode = craft ? BuildMode.craft : BuildMode.bricks;
-    _flash(
-      craft
-          ? 'Next name: Name Workshop (one character at a time)'
-          : 'Next name: Name Factory (bricks)',
-      craft ? '次の名前から：名前工房' : '次の名前から：名前工場',
-    );
+    _flash(craft ? 'Next name: Name Workshop (one character at a time)' : 'Next name: Name Factory (bricks)');
   }
 
   void operatorSpeed(double s) {
     speed = s;
     final x = s.round();
-    _flash(s > 1 ? 'Fast-forward ×$x' : 'Normal speed', s > 1 ? '早送り ×$x' : '通常の速さ');
+    _flash(s > 1 ? 'Fast-forward ×$x' : 'Normal speed');
   }
 
   /// Ctrl+Shift+R: the first press opens the help and asks; a second press
@@ -316,7 +302,7 @@ class BoothUi extends ChangeNotifier {
     if (!armed) {
       _armed = DateTime.now();
       help = true;
-      _flash('Press Ctrl+Shift+R again to reset today', 'もう一度押すと今日の記録をリセット', warn: true);
+      _flash('Press Ctrl+Shift+R again to reset today', warn: true);
       return;
     }
     _armed = null;
@@ -326,7 +312,7 @@ class BoothUi extends ChangeNotifier {
         final i = model.built.lastIndexOf(b.name);
         if (i >= 0) model.built.removeAt(i);
       }
-      _flash('Today’s history reset (${gone.length} names)', '今日の記録をリセットしました（${gone.length}名）');
+      _flash('Today’s history reset (${gone.length} names)');
     });
   }
 }

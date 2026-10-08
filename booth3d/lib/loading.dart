@@ -24,10 +24,10 @@ class LoadingCurtain extends StatefulWidget {
   final bool ready;
 
   static String label(String stage) => switch (stage) {
-    'fonts' => 'Fetching fonts · フォントを準備中',
-    'city' => 'Building the city · 街を建設中',
-    'people' => 'Calling the crew · 作業員を集合中',
-    _ => 'Loading · 読み込み中',
+    'fonts' => 'Fetching fonts',
+    'city' => 'Building the city',
+    'people' => 'Calling the crew',
+    _ => 'Loading',
   };
 
   @override
@@ -79,7 +79,7 @@ class _LoadingCurtainState extends State<LoadingCurtain> with SingleTickerProvid
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('名前の街 · Name City', style: UT.name(48, color: BP.ink, weight: 700)),
+                Text('Name City', style: UT.name(48, color: BP.ink, weight: 700)),
                 const SizedBox(height: 28),
                 CustomPaint(size: const Size(_Bricks.width, _Bricks.side), painter: _Bricks(_wave)),
                 const SizedBox(height: 24),

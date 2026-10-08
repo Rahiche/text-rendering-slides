@@ -26,7 +26,7 @@ class GlyphAtlas extends Vignette {
   @override
   String get name => 'atlas';
   @override
-  String get kick => '字形倉庫 · GLYPH ATLAS';
+  String get kick => 'GLYPH ATLAS';
   @override
   String get line => 'Baked once, drawn every frame';
   @override
@@ -74,7 +74,7 @@ class GlyphAtlas extends Vignette {
   @override
   List<(String, TextStyle)> get fontRuns => [
     (_baked.map((e) => e.$1).join(), const TextStyle(fontFamily: BP.display)),
-    ('字形倉庫 GLYPH ATLAS Flutter %', const TextStyle(fontFamily: BP.display)),
+    ('GLYPH ATLAS Flutter %', const TextStyle(fontFamily: BP.display)),
   ];
 
   @override
@@ -114,7 +114,7 @@ class GlyphAtlas extends Vignette {
         vm.Matrix4.translation(vm.Vector3(0, 7.6, -0.05)),
         (c, s) {
           c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF14171D));
-          Vignette.text(c, '字形倉庫 · GLYPH ATLAS', Rect.fromLTWH(0, 0, s.width, s.height * 0.64), s.height * 0.46, const Color(0xFFE8A33D), lang: 'ja');
+          Vignette.text(c, 'GLYPH ATLAS', Rect.fromLTWH(0, 0, s.width, s.height * 0.64), s.height * 0.46, const Color(0xFFE8A33D), lang: 'ja');
           Vignette.text(
             c,
             'BAKED ONCE · DRAWN EVERY FRAME',

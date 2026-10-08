@@ -36,9 +36,8 @@ class NameOk extends NameCheck {
 }
 
 class NameRejected extends NameCheck {
-  const NameRejected(this.en, this.ja);
+  const NameRejected(this.en);
   final String en;
-  final String ja;
 }
 
 /// Tidies a typed name: full-width ASCII (a Japanese keyboard in full-width
@@ -66,17 +65,14 @@ final _letter = RegExp(r'\p{L}', unicode: true);
 /// Cleans up and checks a name typed at the booth.
 NameCheck checkName(String raw) {
   final name = cleanName(raw);
-  if (name.isEmpty) return const NameRejected('Type your name first', 'まずお名前を入力してください');
+  if (name.isEmpty) return const NameRejected('Type your name first');
   if (name.characters.length > maxNameLength) {
-    return const NameRejected(
-      'A little shorter, please: $maxNameLength letters max',
-      'もう少し短くお願いします（$maxNameLength文字まで）',
-    );
+    return const NameRejected('A little shorter, please: $maxNameLength letters max');
   }
   if (!_allowed.hasMatch(name) || !_letter.hasMatch(name)) {
-    return const NameRejected('Letters only, please: no emoji or symbols', '文字だけでお願いします（絵文字・記号なし）');
+    return const NameRejected('Letters only, please: no emoji or symbols');
   }
-  if (isBlocked(name)) return const NameRejected("Let's build a different name", '別の名前にしましょう');
+  if (isBlocked(name)) return const NameRejected("Let's build a different name");
   return NameOk(name);
 }
 

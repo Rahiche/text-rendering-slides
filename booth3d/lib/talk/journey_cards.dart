@@ -70,7 +70,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       : '0x${hex(first, 4)} ${font.segments[segment].delta < 0 ? '−' : '+'} ${font.segments[segment].delta.abs()} = #${font.glyphId(first)}';
   return [
     TalkCard(
-      '地図',
       "One word's journey",
       "Text('$word') on its way to pixels. layout() takes it down through the framework and dart:ui "
           'into the engine; paint() records it, and the GPU draws it. Every stop is a place in this city.',
@@ -82,7 +81,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'ウィジェット',
       "Text('$word')",
       'A widget only describes: a string and a style. Its RenderParagraph owns a TextPainter, '
           'which builds the paragraph. Constraints go down, a size comes back up.',
@@ -93,7 +91,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      '文字列',
       'A Dart String',
       "A Dart String is UTF-16: 16-bit code units. Every letter of '$word' is one unit, one code "
           'point, one grapheme.',
@@ -105,7 +102,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'エンジンへ',
       'Into the engine',
       'TextPainter.layout() builds a ui.Paragraph. Across dart:ui, the engine\'s ParagraphBuilder '
           'hands the text to SkParagraph, which keeps it as UTF-8.',
@@ -119,7 +115,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'Unicode 解析',
       'Unicode analysis',
       'SkUnicode (ICU) marks the boundaries — graphemes, words, line breaks — and each code '
           "point's bidi level and script. itemize() turns them into runs.",
@@ -132,7 +127,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'フォント',
       'Find the glyphs',
       "Each code point is looked up in the style's fonts in order: fontFamily, fontFamilyFallback, "
           "then the platform's. The font's cmap maps it to a glyph id.",
@@ -143,7 +137,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'シェーピング',
       'Shape',
       'HarfBuzz shapes the whole run at once: glyphs, advances, positions. Space Grotesk\'s liga '
           'joins t t into one glyph, its advance split between them.',
@@ -157,7 +150,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'レイアウト',
       'Lay out',
       'The paragraph wraps the shaped run into lines for the width it\'s given — shaped once, '
           'wrapped many — and measures each: width, ascent, descent, baseline.',
@@ -169,7 +161,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      '記録',
       'Record',
       "paint() doesn't draw yet. canvas.drawParagraph is recorded into a display list — glyph ids "
           'and positions — and the frame goes from the UI thread to the raster thread.',
@@ -180,7 +171,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      'ラスタライズ',
       'Rasterize',
       'On the raster thread each glyph key — font · glyph · size · subpixel x — not yet in the '
           'atlas is rasterized once: its outline filled as coverage, grey on the edges.',
@@ -195,7 +185,6 @@ List<TalkCard> journeyCards(String word, WorksName? name, FontData? font) {
       ],
     ),
     TalkCard(
-      '描画',
       'Draw',
       'Each glyph is a quad — two triangles — its corners pointing into the atlas (t t is one '
           'glyph). The shader multiplies the text color by the coverage: one draw call.',

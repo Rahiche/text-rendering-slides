@@ -15,22 +15,22 @@ import 'site_plan.dart';
 import 'devices.dart' show signFrame;
 
 /// One of the alley's stalls: the rule its script breaks (the talk's
-/// "Every script breaks a rule"), on its sign in Japanese and English, the
-/// script, its colour (the slides'), and what the caption says about it.
+/// "Every script breaks a rule"), on its sign, the script, its colour (the
+/// slides'), and what the caption says about it.
 class AlleyRule {
-  const AlleyRule(this.ja, this.en, this.script, this.color, this.note);
-  final String ja, en, script;
+  const AlleyRule(this.en, this.script, this.color, this.note);
+  final String en, script;
   final Color color;
   final String note;
 }
 
 const alleyRules = [
-  AlleyRule('右から左', 'Right-to-left', 'HEBREW', BP.coral, 'שלום — written from the right'),
-  AlleyRule('つながる', 'Joining', 'ARABIC', BP.amber, 'ب ي ت → بيت — each letter takes a shape for its neighbours'),
-  AlleyRule('並べ替え', 'Reordering', 'DEVANAGARI', BP.violet, 'क + ि → कि — typed after, drawn before'),
-  AlleyRule('積み重ね', 'Stacking', 'THAI', BP.pink, 'ป + ั + ่ → ปั่ — marks stack on the letter'),
-  AlleyRule('組み立て', 'Composition', 'HANGUL', Color(0xFF7FE0FF), 'ㅎ + ㅏ + ㄴ → 한 — one syllable, one block'),
-  AlleyRule('縦書き', 'Vertical', 'JAPANESE', Color(0xFF9FF0D6), 'top to bottom — not built into Flutter'),
+  AlleyRule('Right-to-left', 'HEBREW', BP.coral, 'שלום — written from the right'),
+  AlleyRule('Joining', 'ARABIC', BP.amber, 'ب ي ت → بيت — each letter takes a shape for its neighbours'),
+  AlleyRule('Reordering', 'DEVANAGARI', BP.violet, 'क + ि → कि — typed after, drawn before'),
+  AlleyRule('Stacking', 'THAI', BP.pink, 'ป + ั + ่ → ปั่ — marks stack on the letter'),
+  AlleyRule('Composition', 'HANGUL', Color(0xFF7FE0FF), 'ㅎ + ㅏ + ㄴ → 한 — one syllable, one block'),
+  AlleyRule('Vertical', 'JAPANESE', Color(0xFF9FF0D6), 'top to bottom — not built into Flutter'),
 ];
 
 /// Where the alley is: the park's long path, past its cross path; three
@@ -129,7 +129,7 @@ class ScriptAlley {
   static List<(String, TextStyle)> get fontRuns => [
     ('שלום ← بيت ب ي ت क ि कि ป น ั ่ ปั่น', _style(null)),
     ('ㅎ ㅏ ㄴ 한', _style('ko')),
-    ('縦書き 文字横丁 右から左 つながる 並べ替え 積み重ね 組み立て', _style('ja')),
+    ('縦書き', _style('ja')),
   ];
 
   Future<void> init() async {
@@ -296,10 +296,10 @@ class ScriptAlley {
     batch.build(scene, 'script alley', castsShadows: false, lightChannelMask: 0x01);
   }
 
-  /// The stalls' signs (their rule in Japanese and English, the script) and
-  /// the gate's: 文字横丁 · SCRIPT ALLEY.
+  /// The stalls' signs (their rule, the script) and the gate's: SCRIPT
+  /// ALLEY.
   Future<void> _buildSigns() async {
-    Future<void> sign(String ja, String en, Color bg, Color ink, double w, double h, vm.Matrix4 at) async {
+    Future<void> sign(String title, String sub, Color bg, Color ink, double w, double h, vm.Matrix4 at) async {
       final tex = await paintedTexture(640, (640 * h / w).round(), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = bg);
         c.drawRect(
@@ -309,8 +309,8 @@ class ScriptAlley {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 5,
         );
-        _text(c, ja, Rect.fromLTWH(0, s.height * 0.08, s.width, s.height * 0.58), s.height * 0.44, ink, 'ja');
-        _text(c, en, Rect.fromLTWH(0, s.height * 0.62, s.width, s.height * 0.3), s.height * 0.2, ink, null);
+        _text(c, title, Rect.fromLTWH(0, s.height * 0.1, s.width, s.height * 0.52), s.height * 0.38, ink, null);
+        _text(c, sub, Rect.fromLTWH(0, s.height * 0.62, s.width, s.height * 0.3), s.height * 0.2, ink, null);
       });
       final mat = PhysicallyBasedMaterial()
         ..baseColorTexture = tex
@@ -326,8 +326,8 @@ class ScriptAlley {
     await Future.wait([
       for (var i = 0; i < 6; i++)
         sign(
-          alleyRules[i].ja,
-          '${alleyRules[i].en.toUpperCase()} · ${alleyRules[i].script}',
+          alleyRules[i].en.toUpperCase(),
+          alleyRules[i].script,
           alleyRules[i].color,
           const Color(0xFF14203A),
           2.3,
@@ -335,8 +335,8 @@ class ScriptAlley {
           AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, 2.86, -0.66)),
         ),
       sign(
-        '文字横丁',
-        'SCRIPT ALLEY · EVERY SCRIPT BREAKS A RULE',
+        'SCRIPT ALLEY',
+        'EVERY SCRIPT BREAKS A RULE',
         const Color(0xFFF4EBD8),
         const Color(0xFF8E2A1E),
         4.6,

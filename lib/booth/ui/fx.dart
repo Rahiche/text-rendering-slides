@@ -50,8 +50,7 @@ void _receipt(UiInk k, BoothModel m, BoothUi ui, double t) {
   final textX = stubW + 64;
   const h = UG.toastH;
   final en = k.tp(s.en, UT.label(22, weight: 600));
-  final ja = k.tp(s.ja, UT.label(19, color: BP.inkDim, weight: 500));
-  final tw = math.min(UG.input.width - textX - 16, math.max(en.width, ja.width));
+  final tw = math.min(UG.input.width - textX - 16, en.width);
   // Rises out of the input's top edge, and sinks back when done.
   final dy = (1 - eo(age / 0.3) + ei(c01((age - s.life) / 0.35))) * (h + 14);
   final r = Rect.fromLTWH(UG.left, UG.toastBottom - h + dy, textX + tw + 18, h);
@@ -95,8 +94,7 @@ void _receipt(UiInk k, BoothModel m, BoothUi ui, double t) {
   } else {
     k.bang(b, 18, col, 3);
   }
-  k.put(en, Offset(r.left + textX, r.top + 8), maxW: tw);
-  k.put(ja, Offset(r.left + textX, r.top + 35), maxW: tw);
+  k.put(en, Offset(r.left + textX, r.center.dy - en.height / 2), maxW: tw);
   c.restore();
 }
 

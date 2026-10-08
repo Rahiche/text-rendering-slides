@@ -23,7 +23,7 @@ class HyphenMill extends Vignette {
   @override
   String get name => 'hyphen';
   @override
-  String get kick => 'ハイフン · HYPHENATION';
+  String get kick => 'HYPHENATION';
   @override
   String get line => 'Break inside a word';
   @override
@@ -60,7 +60,7 @@ class HyphenMill extends Vignette {
   static const _style = TextStyle(fontFamily: BP.display, fontSize: 160, fontWeight: FontWeight.w700);
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('split hyphenation hyphen- ation ハイフン HYPHENATION U+00AD', _style)];
+  List<(String, TextStyle)> get fontRuns => [('split hyphenation hyphen- ation HYPHENATION U+00AD', _style)];
 
   @override
   Future<void> init() async {
@@ -105,7 +105,7 @@ class HyphenMill extends Vignette {
     final nodes = await Future.wait([
       sign(4.6, 0.8, vm.Matrix4.translation(vm.Vector3(-1.0, 3.35, _z + 1.05)), (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF1E2433));
-        Vignette.text(c, 'ハイフン · HYPHENATION', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.42, const Color(0xFFF2C94C), lang: 'ja');
+        Vignette.text(c, 'HYPHENATION', Rect.fromLTWH(0, 0, s.width, s.height * 0.62), s.height * 0.42, const Color(0xFFF2C94C), lang: 'ja');
         Vignette.text(c, 'break inside a word', Rect.fromLTWH(0, s.height * 0.6, s.width, s.height * 0.34), s.height * 0.24, const Color(0xFFF4EBD8));
       }, glow: 0.5),
       sign(

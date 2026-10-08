@@ -155,8 +155,8 @@ class Site3D {
   final _letters = <_Letter>[];
   final _shapes = <LetterShape>[];
 
-  // 完成！ sign and the recycling truck.
-  final _banner = Node(name: 'banner 完成');
+  // The BUILT! sign and the recycling truck.
+  final _banner = Node(name: 'banner built');
   final _truck = Node(name: 'truck');
 
   /// The truck's body (sprung: it dips when it brakes) and its wheels
@@ -407,7 +407,7 @@ class Site3D {
     _banner.add(Node()..addComponent(InstancedMeshComponent(bulbs)));
     _banner.visible = false;
     scene.add(_banner);
-    vectorizeText('完成！').then((gs) {
+    vectorizeText('BUILT!').then((gs) {
       // Lay the characters out side by side, 1.15 tall.
       final metas = [for (final g in gs) (g.$1, g.$2, extrudeGlyph(g.$2, unitsPerPx: 1.15 / 105, depth: 0.22))];
       var total = 0.0;
@@ -771,14 +771,14 @@ class Site3D {
     }
     final close = shot.startsWith('finish') ? finish.closeUpAt(shot.substring(7)) : null;
     if (shot.startsWith('delivery')) {
-      caption.update(t, 'delivery ${shot.split(' ')[1]}', kick: '資材搬入 · DELIVERY', line: '${plan.total} bricks', note: 'one for each pixel of “${j.name}”');
+      caption.update(t, 'delivery ${shot.split(' ')[1]}', kick: 'DELIVERY', line: '${plan.total} bricks', note: 'one for each pixel of “${j.name}”');
     } else if (close case final s?) {
       if (s.plaster) {
-        caption.update(t, shot, kick: '左官 · PLASTER', line: 'Anti-aliasing', note: 'the jagged pixel edges, smoothed over');
+        caption.update(t, shot, kick: 'PLASTER', line: 'Anti-aliasing', note: 'the jagged pixel edges, smoothed over');
       } else {
         final hue = _hues[plan.letters.letters[s.letter].glyph % _hues.length];
         final hex = (hue.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase();
-        caption.update(t, shot, kick: '塗装 · PAINT', line: '#$hex', note: "the letter's fill, from the top down", swatch: hue);
+        caption.update(t, shot, kick: 'PAINT', line: '#$hex', note: "the letter's fill, from the top down", swatch: hue);
       }
     } else if (shot.startsWith('alley ')) {
       final a = shot.split(' ').last, stall = alley.stallAt(a);
@@ -786,14 +786,14 @@ class Site3D {
         caption.update(t, null);
       } else {
         final r = alleyRules[stall];
-        caption.update(t, 'alley $a', kick: '文字横丁 · SCRIPT ALLEY', line: r.en, note: r.note);
+        caption.update(t, 'alley $a', kick: 'SCRIPT ALLEY', line: r.en, note: r.note);
       }
     } else if (shot.startsWith('verdict')) {
-      caption.update(t, 'verdict', kick: '次の建物 · NEXT BUILD', line: m.upcoming, note: "the new manager's blueprint");
+      caption.update(t, 'verdict', kick: 'NEXT BUILD', line: m.upcoming, note: "the new manager's blueprint");
     } else if (shot.startsWith('director demolish')) {
-      caption.update(t, 'demolish', kick: '解体 · DEMOLITION', line: 'Making way', note: 'for “${m.upcoming}”, next in line');
+      caption.update(t, 'demolish', kick: 'DEMOLITION', line: 'Making way', note: 'for “${m.upcoming}”, next in line');
     } else if (shot.startsWith('director cleanup')) {
-      caption.update(t, 'cleanup', kick: '片付け · CLEANUP', line: '${plan.total} bricks recycled', note: 'back to the yard for the next name');
+      caption.update(t, 'cleanup', kick: 'CLEANUP', line: '${plan.total} bricks recycled', note: 'back to the yard for the next name');
     } else {
       caption.update(t, null);
     }

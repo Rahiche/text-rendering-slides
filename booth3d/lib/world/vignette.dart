@@ -13,6 +13,7 @@ import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
 import 'site_plan.dart' show BuildPlan;
+import 'devices.dart' show signFrame;
 
 /// A small scene of its own somewhere in the city: one idea from the talk
 /// acted out over and over (a code point asking font after font for its
@@ -423,7 +424,8 @@ class Vignettes {
       if (b == null) continue;
       final n = Node(name: '${v.name} backdrop', mesh: Mesh(boardGeometry(b.w, b.h, thick: 0.04), mat))
         ..castsShadows = false
-        ..visible = false;
+        ..visible = false
+        ..add(signFrame(b.w, b.h));
       v.detail.add(n);
       v.backdropNode = n;
     }

@@ -11,6 +11,7 @@ import 'shot.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
 import 'site_plan.dart';
+import 'devices.dart' show signFrame;
 
 /// One of the alley's stalls: the rule its script breaks (the talk's
 /// "Every script breaks a rule"), on its sign in Japanese and English, the
@@ -198,7 +199,8 @@ class ScriptAlley {
         ..emissiveStrength = 0.35;
       final n = Node(name: 'alley board', mesh: Mesh(boardGeometry(boardW, boardH, thick: 0.04), mat))
         ..castsShadows = false
-        ..visible = false;
+        ..visible = false
+        ..add(signFrame(boardW, boardH));
       scene.add(n);
       _boards.add(n);
     }

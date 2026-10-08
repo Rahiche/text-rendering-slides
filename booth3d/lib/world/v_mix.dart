@@ -9,6 +9,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'kit.dart';
 import 'shot.dart';
 import 'vignette.dart';
+import 'devices.dart' show signFrame;
 
 /// 混在 · One mixed paragraph, hung in the air over the city while a talk
 /// calls on it: nine runs in eight scripts, each in its own colour, laid
@@ -221,7 +222,9 @@ class TalkMix extends Vignette {
       ..emissiveStrength = 0.35;
     _panel = Node(name: 'talk mix panel', mesh: Mesh(boardGeometry(pw, ph, thick: 0.05), mat))
       ..castsShadows = false
-      ..visible = false;
+      ..visible = false
+      // (Its corners: the board's, 28 px of its 1024.)
+      ..add(signFrame(pw, ph, rim: 0.3, depth: 0.3, corner: pw * 28 / 1024));
     detail.add(_panel);
   }
 

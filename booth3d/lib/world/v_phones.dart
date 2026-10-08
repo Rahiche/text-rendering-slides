@@ -1,16 +1,14 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart';
 import 'package:flutter_scene/scene.dart';
-import 'package:text_slides/booth/craft/extrude.dart';
-import 'package:text_slides/booth/craft/geometry.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'kit.dart';
 import 'shot.dart';
+import 'devices.dart';
 import 'vignette.dart';
 
 /// 端末 · Phones, hung over the lawn behind the site, only while a talk
@@ -64,7 +62,7 @@ class TalkPhones extends Vignette {
 
   /// A phone's size (m), its screen's, the screen's pixels; how high they
   /// hang (their middles); the two phones' places in the second turn.
-  static const _w = 1.62, _h = 3.4, _depth = 0.16, _sw = 1.5, _sh = 3.26, _px = 540, _py = 1174;
+  static const _w = 1.62, _h = 3.4, _px = 540, _py = 1174;
   static const _y = 8.5, _apart = 1.4;
 
   /// The turns: the first held at [_hold1], gone by [_end1]; the second
@@ -82,19 +80,16 @@ class TalkPhones extends Vignette {
 
   /// A browser window's size (m), its body's, its pixels; where the two
   /// hang (their middles, across).
-  static const _bw = 2.6, _bh = 1.6, _bpx = 1300, _bpy = 800, _bx = 1.42;
+  static const _bw = 2.6, _bh = 1.6, _bpx = 1300, _bpy = 800, _bx = 1.5;
 
   static const _lineText = 'Each line is filled up to maxWidth; the next word that won\'t fit starts a new one.';
   static const _sameText = 'These words wrap at different places on each phone\'s own text engine.';
 
-  late final Node _a, _b, _aScreen, _bScreen, _aWide;
-  late final PhysicallyBasedMaterial _aMat, _bMat, _wideMat;
-
-  /// The browsers: their bodies, their windows, the windows' pictures
-  /// (the HTML page, found; the canvas page in tofu, with its font, found
-  /// nothing).
-  late final Node _html, _canvas, _htmlWin, _canvasWin;
-  late final PhysicallyBasedMaterial _htmlMat, _canvasMat;
+  /// The phones (an iPhone and a Pixel), and the browsers' windows; the
+  /// windows' pictures (the HTML page, found; the canvas page in tofu,
+  /// with its font, found nothing).
+  late final Phone3D _a, _b;
+  late final Window3D _html, _canvas;
   late final Texture2D _htmlPage, _htmlFound, _canvasTofu, _canvasFont, _canvasFound;
   late final Texture2D _tall, _wideLines, _iosNative, _androidNative, _flutter, _jaPlain, _jaGlued, _punct;
   bool _ready = false;
@@ -109,10 +104,6 @@ class TalkPhones extends Vignette {
 
   @override
   Future<void> init() async {
-    final body = slab(_w, _h, 0.2, _depth);
-    // (Titanium, not mirror silver: a bright frame blooms over the screen.)
-    final silver = pbr(Vignette.c(0x8E9298), metallic: 0.7, roughness: 0.42);
-    final graphite = pbr(Vignette.c(0x2A2E35), metallic: 0.7, roughness: 0.34);
     // The paragraph for the same-everywhere turn, at a size where the two
     // platforms' own fonts break it in different places.
     final size = _differingSize();
@@ -146,79 +137,14 @@ class TalkPhones extends Vignette {
     _canvasTofu = textures[10];
     _canvasFont = textures[11];
     _canvasFound = textures[12];
-    _htmlMat = screenMat(_htmlPage);
-    _canvasMat = screenMat(_canvasTofu);
-    final monitor = slab(_bw + 0.14, _bh + 0.14, 0.08, 0.08);
-    final dark = pbr(Vignette.c(0x22262E), metallic: 0.6, roughness: 0.4);
-    _html = _phone(monitor, dark);
-    _canvas = _phone(monitor, dark);
-    _htmlWin = _screenNode(_htmlMat, _bw, _bh);
-    _canvasWin = _screenNode(_canvasMat, _bw, _bh);
-    _aMat = screenMat(_tall);
-    _bMat = screenMat(_androidNative);
-    _wideMat = screenMat(_wideLines);
-    _a = _phone(body, silver);
-    _b = _phone(body, graphite);
-    _aScreen = _screenNode(_aMat, _sw, _sh);
-    _bScreen = _screenNode(_bMat, _sw, _sh);
-    _aWide = _screenNode(_wideMat, _sh, _sw);
+    _a = Phone3D(detail, make: PhoneMake.iphone, w: _w, h: _h, screen: _tall, wide: _wideLines, name: 'talk iphone');
+    _b = Phone3D(detail, make: PhoneMake.pixel, w: _w, h: _h, screen: _androidNative, name: 'talk pixel');
+    _html = Window3D(detail, w: _bw, h: _bh, page: _htmlPage, name: 'talk html window');
+    _canvas = Window3D(detail, w: _bw, h: _bh, page: _canvasTofu, name: 'talk canvas window');
     if (const String.fromEnvironment('BOOTH3D_TIMES') != '') {
       debugPrint('PHONES ja size ${jaSize.toStringAsFixed(0)}, Text() splits ${[for (final k in split) _phrases[k]].join(' ')}; halt ${_haltWorks(84) ? 'from the font' : 'by letter spacing'}');
     }
     _ready = true;
-  }
-
-  /// A rounded slab [w]×[h]×[depth] (m), corners of radius [r]: a rounded
-  /// rectangle traced at a millimetre a pixel and extruded.
-  static GlyphMesh slab(double w, double h, double r, double depth) {
-    final mw = w * 1000, mh = h * 1000, mr = r * 1000;
-    final pts = <double>[];
-    const steps = 10;
-    for (final (cx, cy, a0) in [(mw - mr, mh - mr, 0.0), (mr, mh - mr, math.pi / 2), (mr, mr, math.pi), (mw - mr, mr, 1.5 * math.pi)]) {
-      for (var k = 0; k <= steps; k++) {
-        final a = a0 + k / steps * math.pi / 2;
-        pts.addAll([cx + mr * math.cos(a), cy + mr * math.sin(a)]);
-      }
-    }
-    final g = GlyphGeometry(
-      w: mw.ceil(),
-      h: mh.ceil(),
-      contours: [Contour(Float64List.fromList(pts), hole: false, area: mw * mh)],
-      strokes: const [],
-      spans: const [],
-      inkLeft: 0,
-      inkTop: 0,
-      inkRight: mw,
-      inkBottom: mh,
-    );
-    return extrudeGlyph(g, unitsPerPx: 0.001, depth: depth, simplify: 0);
-  }
-
-  Node _phone(GlyphMesh body, Material m) {
-    final n = Node(name: 'talk phone', mesh: Mesh(glyphGeometry(body), m))..visible = false;
-    detail.add(n);
-    return n;
-  }
-
-  /// A screen lights itself: barely lit by the sun (its colour mostly its
-  /// own glow), so both phones read the same whichever way they face.
-  static PhysicallyBasedMaterial screenMat(Texture2D t) => PhysicallyBasedMaterial()
-    ..baseColorTexture = t
-    ..baseColorFactor = vm.Vector4(0.1, 0.1, 0.1, 1)
-    ..alphaMode = AlphaMode.mask
-    ..alphaCutoff = 0.5
-    ..metallicFactor = 0
-    ..roughnessFactor = 0.6
-    ..emissiveTexture = t
-    ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
-    ..emissiveStrength = 0.82;
-
-  Node _screenNode(Material m, double w, double h) {
-    final n = Node(name: 'talk phone screen', mesh: Mesh(boardGeometry(w, h, thick: 0.01), m))
-      ..castsShadows = false
-      ..visible = false;
-    detail.add(n);
-    return n;
   }
 
   /// A size (px) at which SF Pro and Roboto break [_sameText] differently
@@ -329,9 +255,10 @@ class TalkPhones extends Vignette {
     return paintedTexture(_py, _px, (c, s) {
       chrome(c, s, '', '', bar: false);
       void row(String name, Color accent, InlineSpan text, double y, String gap, Color gapColor) {
-        label(c, name, Offset(_margin, y), 26, accent, weight: FontWeight.w700, family: BP.mono);
+        label(c, name, Offset(_safe, y), 26, accent, weight: FontWeight.w700, family: BP.mono);
         final tp = TextPainter(text: text, textDirection: TextDirection.ltr)..layout();
-        final x0 = _margin, ty = y + 34;
+        const x0 = _safe;
+        final ty = y + 34;
         final a = tp.getBoxesForSelection(const TextSelection(baseOffset: _meet, extentOffset: _meet + 1)).first;
         final b = tp.getBoxesForSelection(const TextSelection(baseOffset: _meet + 1, extentOffset: _meet + 2)).first;
         // (Each mark is half an em of ink and half of blank: the gap runs
@@ -373,6 +300,10 @@ class TalkPhones extends Vignette {
 
   static const _margin = 44.0;
 
+  /// On its side, the island's at the left: the content starts clear of it
+  /// (the safe area iOS keeps in landscape).
+  static const _safe = 96.0;
+
   /// A screen: the status bar, an app bar ([title], [sub]), [text] laid out
   /// in [style] at [size] across the screen's width (on its side if
   /// [wide]); [guide]: the maxWidth line at the right margin. Corners round
@@ -383,15 +314,15 @@ class TalkPhones extends Vignette {
       chrome(c, s, title, sub, flutter: flutter);
       // The paragraph, as this text stack lays it out; each line's last
       // word marked (where it broke).
-      final maxWidth = s.width - 2 * _margin;
+      final left = wide ? _safe : _margin, maxWidth = s.width - left - _margin;
       final tp = TextPainter(
         text: _marked(text, style.copyWith(fontSize: size, height: 1.38, color: const Color(0xFF16181D)), maxWidth),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: maxWidth);
-      tp.paint(c, const Offset(_margin, 236));
+      tp.paint(c, Offset(left, 236));
       if (guide) {
         // maxWidth: the line the words fill up to.
-        final x = _margin + maxWidth;
+        final x = left + maxWidth;
         for (var y = 226.0; y < 236 + tp.height + 10; y += 22) {
           c.drawLine(Offset(x, y), Offset(x, y + 12), Paint()
             ..color = const Color(0xFFF5A524)
@@ -474,9 +405,11 @@ class TalkPhones extends Vignette {
   void pose(double u, double t, double night) {
     if (!_ready) return;
     if (visited) _act = u < 15 ? 1 : (u < 35 ? 2 : (u < _from4 ? 3 : (u < 58 ? 4 : 5)));
-    for (final n in [_a, _b, _aScreen, _bScreen, _aWide, _html, _canvas, _htmlWin, _canvasWin]) {
-      n.visible = false;
+    for (final d in [_a, _b]) {
+      d.hide();
     }
+    _html.hide();
+    _canvas.hide();
     if (_act == 5 && u >= _from5 && u < _end5) _browsing(u, t);
     if (_act == 1 && u < _end1) _rotate(u, t);
     if (_act == 2 && u >= _from2 && u < _end2) _same(u, t);
@@ -495,27 +428,16 @@ class TalkPhones extends Vignette {
 
   final _m = vm.Matrix4.identity();
 
-  /// [n] at (x, y, z) of the frame, turned by yaw and roll, scaled [s].
-  void _put(Node n, double x, double y, double z, {double s = 1, double yaw = 0, double roll = 0}) {
-    if (s <= 0.001) return;
-    _m.setFromTranslationRotationScale(vm.Vector3(x, y, z), vm.Quaternion.euler(yaw, 0, roll), vm.Vector3.all(s));
-    n
-      ..visible = true
-      ..localTransform = frame * _m;
+  /// The matrix for something's middle at (x, y) of the frame, turned by
+  /// yaw and roll, scaled [s] (null: too small to show).
+  vm.Matrix4? _at(double x, double y, {double s = 1, double yaw = 0, double roll = 0}) {
+    if (s <= 0.001) return null;
+    _m.setFromTranslationRotationScale(vm.Vector3(x, y, 0), vm.Quaternion.euler(yaw, 0, roll), vm.Vector3.all(s));
+    return frame * _m;
   }
 
-  /// A phone and its screen, its middle at (x, y): the body stands on its
-  /// bottom edge (the slab's ink), the screen just in front of its face.
-  void _phoneAt(Node body, Node screen, double x, double y, {double s = 1, double yaw = 0, double roll = 0, bool face = true, double h = _h, double depth = _depth}) {
-    if (s <= 0.001) return;
-    // (Offsets turned by the matrix the nodes get: vector_math's
-    // Quaternion.rotated turns the other way.)
-    final r = vm.Quaternion.euler(yaw, 0, roll).asRotationMatrix();
-    final down = r.transformed(vm.Vector3(0, -h * s / 2, 0));
-    _put(body, x + down.x, y + down.y, down.z, s: s, yaw: yaw, roll: roll);
-    if (!face) return;
-    final front = r.transformed(vm.Vector3(0, 0, -(depth / 2 + 0.008) * s));
-    _put(screen, x + front.x, y + front.y, front.z, s: s, yaw: yaw, roll: roll);
+  void _phoneAt(Phone3D p, double x, double y, {double s = 1, double yaw = 0, double roll = 0}) {
+    if (_at(x, y, s: s, yaw: yaw, roll: roll) case final m?) p.place(m);
   }
 
   void _rotate(double u, double t) {
@@ -524,12 +446,11 @@ class TalkPhones extends Vignette {
     final turn = eio(seg(u, _turn0, _turn1));
     final wide = u >= _turn1;
     // On its side: the screen laid out again at the new width (upright).
-    _aMat.baseColorTexture = _aMat.emissiveTexture = _tall;
-    _wideMat.baseColorTexture = _wideMat.emissiveTexture = _wideLines;
-    _phoneAt(_a, _aScreen, 0, _y + bob, s: s, roll: math.pi / 2 * turn, face: !wide);
-    if (wide && s > 0.001) {
-      _put(_aWide, 0, _y + bob, -(_depth / 2 + 0.008) * s, s: s);
-    }
+    _a
+      ..screen = _tall
+      ..wideScreen = _wideLines
+      ..wide = wide;
+    _phoneAt(_a, 0, _y + bob, s: s, roll: math.pi / 2 * turn);
   }
 
   void _same(double u, double t) {
@@ -539,23 +460,31 @@ class TalkPhones extends Vignette {
     // then Flutter.
     final spin = 2 * math.pi * eio(seg(u, _spin0, _spin1));
     final flutter = u >= (_spin0 + _spin1) / 2;
-    _aMat.baseColorTexture = _aMat.emissiveTexture = flutter ? _flutter : _iosNative;
-    _bMat.baseColorTexture = _bMat.emissiveTexture = flutter ? _flutter : _androidNative;
-    for (final (i, (body, screen)) in [(_a, _aScreen), (_b, _bScreen)].indexed) {
+    _a
+      ..screen = flutter ? _flutter : _iosNative
+      ..wide = false;
+    _b
+      ..screen = flutter ? _flutter : _androidNative
+      ..wide = false;
+    for (final (i, p) in [_a, _b].indexed) {
       final side = i == 0 ? -1.0 : 1.0;
       final bob = 0.06 * math.sin(t * 1.3 + i * 1.7);
-      _phoneAt(body, screen, side * _apart * apart, _y + bob, s: s, yaw: spin + side * 0.08 * (1 - smooth(_spin0, _spin1, u)));
+      _phoneAt(p, side * _apart * apart, _y + bob, s: s, yaw: spin + side * 0.08 * (1 - smooth(_spin0, _spin1, u)));
     }
   }
 
   void _phrasing(double u, double t) {
     final s = _overshoot(seg(u, _from3 + 0.2, _from3 + 1.0));
     final apart = eio(seg(u, _from3 + 0.1, _from3 + 1.1));
-    _aMat.baseColorTexture = _aMat.emissiveTexture = _jaPlain;
-    _bMat.baseColorTexture = _bMat.emissiveTexture = _jaGlued;
-    for (final (i, (body, screen)) in [(_a, _aScreen), (_b, _bScreen)].indexed) {
+    _a
+      ..screen = _jaPlain
+      ..wide = false;
+    _b
+      ..screen = _jaGlued
+      ..wide = false;
+    for (final (i, p) in [_a, _b].indexed) {
       final side = i == 0 ? -1.0 : 1.0;
-      _phoneAt(body, screen, side * _apart * apart, _y + 0.06 * math.sin(t * 1.3 + i * 1.7), s: s);
+      _phoneAt(p, side * _apart * apart, _y + 0.06 * math.sin(t * 1.3 + i * 1.7), s: s);
     }
   }
 
@@ -563,11 +492,11 @@ class TalkPhones extends Vignette {
   void _browsing(double u, double t) {
     final s = _overshoot(seg(u, _from5 + 0.2, _from5 + 1.0)) * (1 - eio(seg(u, _hold5, _hold5 + 0.5)));
     final apart = eio(seg(u, _from5 + 0.1, _from5 + 1.1));
-    _htmlMat.baseColorTexture = _htmlMat.emissiveTexture = u < _findAt ? _htmlPage : _htmlFound;
-    _canvasMat.baseColorTexture = _canvasMat.emissiveTexture = u < _fontAt ? _canvasTofu : (u < _findAt ? _canvasFont : _canvasFound);
-    for (final (i, (body, win)) in [(_html, _htmlWin), (_canvas, _canvasWin)].indexed) {
+    _html.page = u < _findAt ? _htmlPage : _htmlFound;
+    _canvas.page = u < _fontAt ? _canvasTofu : (u < _findAt ? _canvasFont : _canvasFound);
+    for (final (i, win) in [_html, _canvas].indexed) {
       final side = i == 0 ? -1.0 : 1.0;
-      _phoneAt(body, win, side * _bx * apart, _y + 0.05 * math.sin(t * 1.2 + i * 1.7), s: s, h: _bh + 0.14, depth: 0.08);
+      if (_at(side * _bx * apart, _y + 0.05 * math.sin(t * 1.2 + i * 1.7), s: s) case final m?) win.place(m);
     }
   }
 
@@ -637,13 +566,15 @@ class TalkPhones extends Vignette {
     final turn = eio(seg(u, _from4 + 0.4, _from4 + 1.4)), wide = u >= _from4 + 1.4;
     final out = 1 - eio(seg(u, _hold4, _hold4 + 0.5));
     final bob = 0.06 * math.sin(t * 1.3);
-    _aMat.baseColorTexture = _aMat.emissiveTexture = _jaPlain;
-    _bMat.baseColorTexture = _bMat.emissiveTexture = _jaGlued;
-    _wideMat.baseColorTexture = _wideMat.emissiveTexture = _punct;
-    _phoneAt(_b, _bScreen, _apart, _y + 0.06 * math.sin(t * 1.3 + 1.7), s: (1 - away) * out);
-    final x = -_apart * (1 - mid);
-    _phoneAt(_a, _aScreen, x, _y + bob, s: out, roll: math.pi / 2 * turn, face: !wide);
-    if (wide && out > 0.001) _put(_aWide, x, _y + bob, -(_depth / 2 + 0.008) * out, s: out);
+    _a
+      ..screen = _jaPlain
+      ..wideScreen = _punct
+      ..wide = wide;
+    _b
+      ..screen = _jaGlued
+      ..wide = false;
+    _phoneAt(_b, _apart, _y + 0.06 * math.sin(t * 1.3 + 1.7), s: (1 - away) * out);
+    _phoneAt(_a, -_apart * (1 - mid), _y + bob, s: out, roll: math.pi / 2 * turn);
   }
 
   // ── The camera ────────────────────────────────────────────────────────────

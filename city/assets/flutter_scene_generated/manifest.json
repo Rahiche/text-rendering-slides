@@ -1,0 +1,55 @@
+{
+  "schema": 3,
+  "package": "booth3d",
+  "entries": [
+    {
+      "family": "scene",
+      "id": "assets/models/anvil",
+      "file": "scene.anvil.8fa921fc.fsceneb",
+      "stamp": "9b57fcbefecb2988",
+      "source": "assets/models/anvil.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/hammer",
+      "file": "scene.hammer.8ec7f43f.fsceneb",
+      "stamp": "d540a4e47963cb03",
+      "source": "assets/models/hammer.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tram_car",
+      "file": "scene.tram_car.eaf2e098.fsceneb",
+      "stamp": "9b311a8f7c147c07",
+      "source": "assets/models/tram_car.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_round",
+      "file": "scene.tree_round.6ef70ca5.fsceneb",
+      "stamp": "e25b4d60a341d872",
+      "source": "assets/models/tree_round.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_tall",
+      "file": "scene.tree_tall.8c64be6a.fsceneb",
+      "stamp": "7ec90f1fa2003373",
+      "source": "assets/models/tree_tall.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_wide",
+      "file": "scene.tree_wide.41cd6589.fsceneb",
+      "stamp": "3cac217f1dfc721f",
+      "source": "assets/models/tree_wide.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/vehicles",
+      "file": "scene.vehicles.1d655fbd.fsceneb",
+      "stamp": "02f3980cecc311f9",
+      "source": "assets/models/vehicles.glb"
+    }
+  ]
+}

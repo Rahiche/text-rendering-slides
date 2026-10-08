@@ -1,0 +1,126 @@
+{
+  "headline-flutter": {
+    "text": {
+      "lines": [
+        "Flutterで日本語の改行をき",
+        "れいにする方法"
+      ],
+      "longestLine": 483.8439636230469
+    },
+    "kumihan": {
+      "lines": [
+        "Flutterで日本語の",
+        "改行をきれいにする方法"
+      ],
+      "longestLine": 440.3999938964844
+    }
+  },
+  "headline-flutter-narrow": {
+    "text": {
+      "lines": [
+        "Flutterで日本語の改",
+        "行をきれいにする方",
+        "法"
+      ],
+      "longestLine": 363.8439636230469
+    },
+    "kumihan": {
+      "lines": [
+        "Flutterで",
+        "日本語の改行を",
+        "きれいにする方法"
+      ],
+      "longestLine": 320.3999938964844
+    }
+  },
+  "weather": {
+    "text": {
+      "lines": [
+        "今日は天気です。明日",
+        "も晴れるでしょう。"
+      ],
+      "longestLine": 316.79998779296875
+    },
+    "kumihan": {
+      "lines": [
+        "今日は天気です。",
+        "明日も",
+        "晴れるでしょう。"
+      ],
+      "longestLine": 254.0800018310547
+    }
+  },
+  "katakana": {
+    "text": {
+      "lines": [
+        "テキストレンダリングの",
+        "仕組みを理解しよう"
+      ],
+      "longestLine": 438.79998779296875
+    },
+    "kumihan": {
+      "lines": [
+        "テキストレンダリングの",
+        "仕組みを理解しよう"
+      ],
+      "longestLine": 438.79998779296875
+    }
+  },
+  "kinsoku": {
+    "text": {
+      "lines": [
+        "ちょっとキャ",
+        "ッシュをクリ",
+        "アしてから、",
+        "もう一度ダウ",
+        "ンロードして",
+        "ください。"
+      ],
+      "longestLine": 168.0
+    },
+    "kumihan": {
+      "lines": [
+        "ちょっと",
+        "キャッシュを",
+        "クリアしてか",
+        "ら、もう一度",
+        "ダウンロード",
+        "してくださ",
+        "い。"
+      ],
+      "longestLine": 168.0
+    }
+  },
+  "yakumono": {
+    "text": {
+      "lines": [
+        "「こんにちは」「世界」。（注）「例」、それから。"
+      ],
+      "longestLine": 768.0
+    },
+    "kumihan": {
+      "lines": [
+        "「こんにちは」「世界」。（注）「例」、それから。"
+      ],
+      "longestLine": 688.0
+    }
+  },
+  "paragraph": {
+    "text": {
+      "lines": [
+        "Flutterは、SkParagraphとHarfBuzzを使ってテキス",
+        "トをレイアウトします。日本語の改行は、単語の途",
+        "中で分割されることがあります。"
+      ],
+      "longestLine": 416.8968505859375
+    },
+    "kumihan": {
+      "lines": [
+        "Flutterは、SkParagraphとHarfBuzzを使って",
+        "テキストをレイアウトします。日本語の改行は、",
+        "単語の途中で分割されることがあります。"
+      ],
+      "longestLine": 393.6600036621094
+    }
+  }
+}

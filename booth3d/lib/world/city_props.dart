@@ -1,7 +1,7 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' show Color;
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -27,7 +27,7 @@ class CityProps {
   final _canopies = <(vm.Vector3, double)>[];
 
   Future<void> init() async {
-    _trees();
+    await _trees();
     _fairyLights();
     _benches();
     _cones();
@@ -35,29 +35,33 @@ class CityProps {
     _postBox();
   }
 
-  /// [d] with every triangle given its own vertices, so normals come out
-  /// flat (a faceted, low-poly look).
-  static MeshGeometry _faceted(MeshData d) {
-    final idx = d.indices ?? [for (var i = 0; i < d.vertexCount; i++) i];
-    final p = Float32List(idx.length * 3);
-    for (var i = 0; i < idx.length; i++) {
-      p
-        ..[i * 3] = d.positions[idx[i] * 3]
-        ..[i * 3 + 1] = d.positions[idx[i] * 3 + 1]
-        ..[i * 3 + 2] = d.positions[idx[i] * 3 + 2];
+  /// The trees, modelled in Blender (tool/blender/trees.py): a round, a
+  /// tall and a wide one, each a trunk with its branches and a lumpy crown,
+  /// shaded in their vertex colours; and where each one's crown is (its
+  /// middle's height and its radius, for the fairy lights).
+  static const _treeModels = ['round', 'tall', 'wide'];
+  static const _crowns = [(3.8, 1.45), (4.4, 1.2), (3.45, 1.6)];
+
+  /// A model's parts, by name, as mesh data in the city's frame.
+  static Future<Map<String, MeshData>> _parts(String asset) async {
+    final bytes = await rootBundle.load(asset);
+    final root = await Node.fromGlbBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+    final out = <String, MeshData>{};
+    void walk(Node n) {
+      if (n.mesh != null) out[n.name] = n.extractMeshData(transform: n.globalTransform);
+      n.children.forEach(walk);
     }
-    return MeshGeometry.fromMeshData(MeshData.build(positions: p));
+
+    walk(root);
+    return out;
   }
 
-  void _trees() {
-    final trunks = InstancedMesh(
-      geometry: CylinderGeometry(bottomRadius: 0.17, topRadius: 0.11, height: 2.4, radialSegments: 8),
-      material: pbr(lin(const Color(0xFF5A4636)), roughness: 0.9),
-    );
-    final leaves = InstancedMesh(
-      geometry: _faceted(IcosphereGeometry(radius: 1, subdivisions: 1).extractMeshData()),
-      material: pbr(rgb(1, 1, 1), roughness: 0.85),
-    );
+  Future<void> _trees() async {
+    final bark = pbr(lin(const Color(0xFF6A5442)), roughness: 0.92);
+    final foliage = pbr(rgb(1, 1, 1), roughness: 0.82);
+    final models = await Future.wait([for (final m in _treeModels) _parts('assets/models/tree_$m.glb')]);
+    final trunks = [for (final m in models) InstancedMesh(geometry: MeshGeometry.fromMeshData(m['trunk']!), material: bark)];
+    final crowns = [for (final m in models) InstancedMesh(geometry: MeshGeometry.fromMeshData(m['crown']!), material: foliage)];
     const greens = [0x22705A, 0x2B8166, 0x338D6E, 0x1F6450, 0x3B9878];
     const sakura = [0xF29AC4, 0xF7B0D2, 0xE889B6];
     var k = 0;
@@ -68,16 +72,14 @@ class CityProps {
       final s = size * (0.85 + 0.35 * rnd(k, 1));
       final isPink = pink ?? rnd(k, 2) < 0.28;
       final c = isPink ? sakura[k % sakura.length] : greens[k % greens.length];
-      trunks.addInstance(trs(vm.Vector3(x, 1.2 * s, z), s: vm.Vector3.all(s)));
-      _solid('tree trunks', x, 1.2 * s, z, 0.15 * s, 1.2 * s, 0.15 * s);
-      final r = 1.5 * s;
-      final crown = vm.Vector3(x, 2.4 * s + r * 0.55, z);
-      leaves.addInstance(trs(crown, rotY: rnd(k, 3) * 6, s: vm.Vector3.all(r)), color: v4(hex3(c)));
-      if (isPink && z < Plan.parkZ0 + 34 && x.abs() < Plan.plazaX + 1) _canopies.add((crown, r));
-      leaves.addInstance(
-        trs(vm.Vector3(x + (rnd(k, 4) - 0.5) * r, 2.4 * s + r * 1.15, z + (rnd(k, 5) - 0.5) * r), rotY: rnd(k, 6) * 6, s: vm.Vector3.all(r * 0.68)),
-        color: v4(hex3(c, 1.12)),
-      );
+      // Which tree, turned any way; sakura spread wide.
+      final v = isPink ? (rnd(k, 7) < 0.6 ? 2 : 0) : (rnd(k, 7) * 3).floor() % 3;
+      final at = trs(vm.Vector3(x, 0, z), rotY: rnd(k, 3) * 6, s: vm.Vector3.all(s));
+      trunks[v].addInstance(at);
+      crowns[v].addInstance(at, color: v4(hex3(c)));
+      _solid('tree trunks', x, 1.2 * s, z, 0.2 * s, 1.2 * s, 0.2 * s);
+      final (cy, r) = _crowns[v];
+      if (isPink && z < Plan.parkZ0 + 34 && x.abs() < Plan.plazaX + 1) _canopies.add((vm.Vector3(x, cy * s, z), r * s));
     }
 
     // The park: loose rows, kept low and open right behind the wall (the
@@ -107,7 +109,7 @@ class CityProps {
         tree(s * (Plan.walkBlock - 0.5), z, size: 0.8, pink: false);
       }
     }
-    for (final (name, m) in [('trunks', trunks), ('leaves', leaves)]) {
+    for (final (name, m) in [for (var i = 0; i < 3; i++) ...[('trunks ${_treeModels[i]}', trunks[i]), ('leaves ${_treeModels[i]}', crowns[i])]]) {
       scene.add(
         Node(name: name)
           ..lightChannelMask = 0x01

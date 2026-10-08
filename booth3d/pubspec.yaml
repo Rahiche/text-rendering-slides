@@ -61,6 +61,8 @@ flutter:
   uses-material-design: true
   assets:
     - flutter_scene_generated/
+    # Made in Blender: tool/blender/*.py.
+    - assets/models/
   # The booth UI (board, input, tally) from the slides package draws with
   # these families.
   fonts:

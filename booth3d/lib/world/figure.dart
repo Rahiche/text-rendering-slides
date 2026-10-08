@@ -132,7 +132,7 @@ class Figures {
   final rig = FigureRig();
   final _bodies = <_Body>[];
 
-  late final InstancedMesh _torso, _torsoSlim, _head, _upperArm, _forearm, _hand, _thigh, _shin, _foot;
+  late final InstancedMesh _torso, _torsoSlim, _hips, _head, _upperArm, _forearm, _hand, _thigh, _shin, _foot;
   late final InstancedMesh _hardHat, _cap, _vest, _stripes, _skirt, _backpack, _bag, _board, _parasol;
   final _hairs = <InstancedMesh>[];
   late final PhysicallyBasedMaterial _stripeMat;
@@ -156,6 +156,7 @@ class Figures {
 
     _torso = im(_torsoGeometry(slim: false), cloth, 'torsos');
     _torsoSlim = im(_torsoGeometry(slim: true), cloth, 'slim torsos');
+    _hips = im(_hipsGeometry(), cloth, 'hips');
     _head = im(_headGeometry(), skin, 'heads');
     for (final h in Hair.values.skip(1)) {
       _hairs.add(im(_hairGeometry(h), hair, 'hair ${h.name}'));
@@ -185,6 +186,8 @@ class Figures {
     b.torso = look.slim ? _torsoSlim : _torso;
     b.torsoAt = one(b.torso!, look.top);
     one(_head, look.skin);
+    // (The seat of the trousers, or under the skirt in its colour.)
+    one(_hips, look.skirt ?? look.legs);
     if (look.hair != Hair.none) {
       b.hair = _hairs[look.hair.index - 1];
       b.hairAt = one(b.hair!, look.hairColor);
@@ -222,6 +225,7 @@ class Figures {
     if (b.hidden) return;
     b.hidden = true;
     b.torso!.setInstanceTransform(b.torsoAt, hidden);
+    _hips.setInstanceTransform(n, hidden);
     _head.setInstanceTransform(n, hidden);
     b.hair?.setInstanceTransform(b.hairAt, hidden);
     for (var k = 2 * n; k < 2 * n + 2; k++) {
@@ -326,6 +330,7 @@ class Figures {
       b.aloft = aloft;
     }
     _put(b.torso!, b.torsoAt, r.chest, g, size, g);
+    _put(_hips, n, r.pelvis, g, size, g);
     // Children's heads are big for their size.
     final hs = size < 0.95 ? math.pow(size, 0.55).toDouble() : size;
     _put(_head, n, r.head, hs, hs, hs);
@@ -758,17 +763,19 @@ class Figures {
 
   static final _w = vm.Vector4(1, 1, 1, 1);
 
-  /// The torso, from the crotch to the neck, its origin at the hip joints'
-  /// height: hips, waist, chest, shoulders (the arms' tops round them off).
+  /// The torso, from the shirt's hem to the neck, its origin at the hip
+  /// joints' height: waist, chest, shoulders (the arms' tops round them
+  /// off). The hem hangs a little loose, wide of the trousers' seat
+  /// ([_hipsGeometry]) and the tops of the legs, so it ends in one clean
+  /// line: the legs never poke through it.
   static MeshGeometry _torsoGeometry({required bool slim}) {
     final m = _Mesh();
     // (y, half width, half depth, z offset)
     final rings = slim
         ? const [
-            [-0.128, 0.0, 0.0, 0.012],
-            [-0.115, 0.115, 0.085, 0.012],
-            [-0.07, 0.172, 0.112, 0.008],
-            [0.0, 0.17, 0.108, 0.0],
+            [-0.036, 0.0, 0.0, 0.008],
+            [-0.032, 0.208, 0.128, 0.008],
+            [0.0, 0.178, 0.112, 0.0],
             [0.09, 0.138, 0.094, -0.004],
             [0.2, 0.142, 0.096, -0.008],
             [0.3, 0.156, 0.112, -0.022],
@@ -779,10 +786,9 @@ class Figures {
             [0.562, 0.0, 0.0, 0.004],
           ]
         : const [
-            [-0.128, 0.0, 0.0, 0.012],
-            [-0.115, 0.118, 0.085, 0.012],
-            [-0.07, 0.162, 0.108, 0.006],
-            [0.0, 0.168, 0.112, 0.0],
+            [-0.036, 0.0, 0.0, 0.006],
+            [-0.032, 0.205, 0.13, 0.006],
+            [0.0, 0.176, 0.116, 0.0],
             [0.09, 0.157, 0.104, -0.006],
             [0.2, 0.162, 0.108, -0.01],
             [0.32, 0.178, 0.116, -0.012],
@@ -793,6 +799,29 @@ class Figures {
             [0.575, 0.0, 0.0, 0.005],
           ];
     m.loft(rings, seg: 14, e: 2.6, color: _w);
+    return m.build();
+  }
+
+  /// The seat of the trousers, from the crotch up under the shirt's hem
+  /// (its origin at the hip joints, as the torso's; it moves with the
+  /// pelvis, the shirt with the chest).
+  static MeshGeometry _hipsGeometry() {
+    final m = _Mesh();
+    m.loft(
+      const [
+        [-0.13, 0.0, 0.0, 0.012],
+        [-0.117, 0.12, 0.087, 0.012],
+        [-0.07, 0.172, 0.112, 0.007],
+        [-0.036, 0.172, 0.112, 0.003],
+        // (Above the hem, well inside the shirt: the chest twists against
+        // the pelvis as they walk, and the seat must never show through.)
+        [-0.008, 0.148, 0.096, 0.0],
+        [0.008, 0.0, 0.0, 0.0],
+      ],
+      seg: 14,
+      e: 2.6,
+      color: _w,
+    );
     return m.build();
   }
 
@@ -946,9 +975,12 @@ class Figures {
   static MeshGeometry _thighGeometry() =>
       (_Mesh()..loft(
             const [
-              [0.07, 0.0, 0.0, 0.0],
-              [0.045, 0.062, 0.062, 0.0],
-              [0.0, 0.08, 0.086, 0.0],
+              // (Its top, round the hip joint, slim: always under the shirt
+              // and the trousers' seat, it mustn't show through the shirt
+              // as the chest twists against the pelvis in a stride.)
+              [0.04, 0.0, 0.0, 0.0],
+              [0.025, 0.045, 0.048, 0.0],
+              [0.0, 0.062, 0.066, 0.0],
               [-0.1, 0.075, 0.08, 0.0],
               [-0.24, 0.066, 0.068, 0.004],
               [-0.37, 0.055, 0.056, 0.0],
@@ -1046,8 +1078,8 @@ class Figures {
   }
 
   static const _vestRings = [
-    [-0.07, 0.18, 0.124, 0.006],
-    [0.07, 0.172, 0.118, -0.006],
+    [-0.07, 0.215, 0.138, 0.006],
+    [0.07, 0.198, 0.128, -0.006],
     [0.2, 0.174, 0.12, -0.012],
     [0.32, 0.19, 0.128, -0.014],
     [0.42, 0.2, 0.124, -0.006],
@@ -1106,9 +1138,9 @@ class Figures {
             const [
               [-0.45, 0.25, 0.22, 0.01],
               [-0.3, 0.225, 0.19, 0.008],
-              [-0.15, 0.198, 0.158, 0.006],
-              [0.0, 0.178, 0.128, 0.004],
-              [0.1, 0.165, 0.112, 0.0],
+              [-0.15, 0.222, 0.17, 0.006],
+              [0.0, 0.21, 0.14, 0.004],
+              [0.1, 0.185, 0.122, 0.0],
             ],
             seg: 16,
             e: 2.2,

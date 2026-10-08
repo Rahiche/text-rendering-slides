@@ -6,6 +6,11 @@ import 'package:vector_math/vector_math.dart' as vm;
 import 'kit.dart';
 import 'shapes.dart';
 
+/// Every device made (their roots), for the loading screen's warm-up: the
+/// glass's clear coat is a pipeline of its own, compiled then, not the
+/// first time a device appears on stage.
+final deviceRoots = <Node>[];
+
 /// Whose phone: an iPhone (titanium, a flat-sided frame, the Dynamic
 /// Island, three lenses in a square bump) or a Pixel (a rounder aluminium
 /// frame, a punch-hole camera, the camera bar across its back).
@@ -79,6 +84,7 @@ class Phone3D {
       add(roundedSlab(bt * 2, len * h, bdz, corner: bt, edge: bt * 0.9), frame, at(side * (w / 2 + bt * 0.3), y * h, 0));
     }
     parent.add(root..visible = false);
+    deviceRoots.add(root);
   }
 
   final PhoneMake make;
@@ -145,6 +151,7 @@ class Window3D {
     add(roundedSlab(0.62, 0.075, 0.035, corner: 0.0375, edge: 0.014), _bar, 0, by, 0);
     add(roundedSlab(0.1, 0.1, 0.035, corner: 0.05, edge: 0.014), _bar, -0.46, by, 0);
     parent.add(root..visible = false);
+    deviceRoots.add(root);
   }
 
   final double w, h;

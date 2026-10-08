@@ -12,6 +12,7 @@ import 'kit.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
+import 'shapes.dart' show bevelBox;
 import 'site_plan.dart' show BuildPlan;
 import 'devices.dart' show signFrame;
 
@@ -139,7 +140,7 @@ abstract class Vignette {
     double yaw = 0,
     double rotX = 0,
     double rotZ = 0,
-  }) => b.add(mat, part(CuboidGeometry(vm.Vector3(w, h, d)), place(trs(vm.Vector3(x, y, z), rotY: yaw, rotX: rotX, rotZ: rotZ)), color));
+  }) => b.add(mat, painted(bevelBox(w, h, d).transformed(place(trs(vm.Vector3(x, y, z), rotY: yaw, rotX: rotX, rotZ: rotZ))), color));
 
   /// An upright cylinder of radius [r], [h] tall, centred at (x, y, z).
   void cylinder(

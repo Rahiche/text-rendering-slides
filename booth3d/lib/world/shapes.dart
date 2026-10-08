@@ -90,6 +90,20 @@ MeshData roundedPlate(double w, double h, double corner, {bool back = false, int
 /// A disc of radius [r] facing −z (or +z, [back]).
 MeshData disc(double r, {bool back = false, int steps = 28}) => roundedPlate(2 * r, 2 * r, r, back: back, cornerSteps: steps ~/ 4);
 
+final _bevelled = <(double, double, double), MeshData>{};
+
+/// A box [w]×[h]×[d] with its edges rounded off a little (as a made
+/// thing's are: the bevel catches the light along an edge); a plain box
+/// when it's too thin to show one. The same size, the same mesh.
+MeshData bevelBox(double w, double h, double d) {
+  final m = math.min(w, math.min(h, d));
+  if (m < 0.05) return CuboidGeometry(vm.Vector3(w, h, d)).extractMeshData();
+  return _bevelled.putIfAbsent((w, h, d), () {
+    final e = math.min(0.03, 0.18 * m);
+    return roundedSlab(w, h, d, corner: e, edge: e, cornerSteps: 1, edgeSteps: 2);
+  });
+}
+
 /// [d] as geometry.
 MeshGeometry geometryOf(MeshData d) => MeshGeometry.fromMeshData(d);
 

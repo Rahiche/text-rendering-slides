@@ -10,6 +10,7 @@ import 'kit.dart';
 import 'shot.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
+import 'shapes.dart' show bevelBox;
 import 'site_plan.dart';
 import 'devices.dart' show signFrame;
 
@@ -239,7 +240,7 @@ class ScriptAlley {
       final m = AlleyLayout.frame(i);
       final c = lin(alleyRules[i].color);
       void box(double w, double h, double d, double x, double y, double z, vm.Vector4 col, {double rotX = 0}) =>
-          batch.add(timber, part(CuboidGeometry(vm.Vector3(w, h, d)), m * trs(vm.Vector3(x, y, z), rotX: rotX), col));
+          batch.add(timber, painted(bevelBox(w, h, d).transformed(m * trs(vm.Vector3(x, y, z), rotX: rotX)), col));
       // The counter, its top, a band of the stall's colour.
       box(2.4, 0.92, 0.62, 0, 0.46, 0, dark);
       box(2.56, 0.06, 0.8, 0, 0.95, -0.02, wood);

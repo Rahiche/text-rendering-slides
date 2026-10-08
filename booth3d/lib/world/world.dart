@@ -14,6 +14,7 @@ import '../talk/talk_sections.dart';
 import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
+import 'devices.dart' show deviceRoots;
 import 'director.dart';
 import 'figure.dart' show Figures;
 import 'figure_rig.dart' show FigureMotion;
@@ -71,6 +72,20 @@ class World3D {
     Figures.of(scene).addFixed(city.props.solids);
     stage.value = 'people';
     await life.init();
+    // Every pipeline compiled behind the loading screen (the talk's devices
+    // shown for it: their glass is a pipeline of its own), not the first
+    // time something appears on stage.
+    final hidden = [
+      for (final n in deviceRoots)
+        if (!n.visible) n,
+    ];
+    for (final n in hidden) {
+      n.visible = true;
+    }
+    await scene.warmUp([RenderView(camera: director.camera)], includeOffscreen: true);
+    for (final n in hidden) {
+      n.visible = false;
+    }
     ready = true;
   }
 

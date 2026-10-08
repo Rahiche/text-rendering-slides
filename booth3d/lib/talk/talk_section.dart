@@ -47,6 +47,15 @@ class FactCode extends CardFact {
   final String code;
 }
 
+/// Points on a line between two ends ([left], [right]): each a name at a
+/// value from −1 (the left end) to 1 (the right) ([accent]: the one to
+/// look at).
+class FactScale extends CardFact {
+  const FactScale(this.left, this.right, this.points);
+  final String left, right;
+  final List<(String, double, bool)> points;
+}
+
 /// A word letter by letter (or any short items), a value under each
 /// ([lit]: the one being looked at).
 class FactLetters extends CardFact {
@@ -56,11 +65,14 @@ class FactLetters extends CardFact {
 }
 
 /// Something in the city named where it is (a callout following the
-/// camera): where, and its name.
+/// camera): where, its name; a step's number ([order]: they come up one
+/// after another) and a word after the name ([sub], dimmer).
 class TalkPin {
-  const TalkPin(this.at, this.name);
+  const TalkPin(this.at, this.name, {this.order, this.sub});
   final vm.Vector3 at;
   final String name;
+  final int? order;
+  final String? sub;
 }
 
 /// One beat of the talk: the stop it belongs to (a stop has one or more),

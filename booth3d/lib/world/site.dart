@@ -40,6 +40,7 @@ import 'site_props.dart';
 import 'site_wreck.dart';
 import 'v_atlas.dart';
 import 'v_bidi.dart';
+import 'v_engines.dart';
 import 'v_family.dart';
 import 'v_farm.dart';
 import 'v_forge.dart';
@@ -133,6 +134,7 @@ class Site3D {
       RubyCable(kit),
       HyphenMill(kit),
       TalkWord(kit),
+      TalkEngines(kit),
       TalkScripts(kit),
       TalkPhones(kit),
       TalkMix(kit),

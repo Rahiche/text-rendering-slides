@@ -97,6 +97,7 @@ class Talk extends ChangeNotifier {
               FactRow(:final label, :final value, :final example) => '$label $value ${example ?? ''}',
               FactTable(:final columns, :final rows) => [...columns, for (final r in rows) ...r].join(' '),
               FactCode(:final code) => code,
+              FactScale(:final left, :final right, :final points) => '$left $right ${points.map((p) => p.$1).join(' ')}',
               FactLetters(:final label, :final cells) => '$label ${cells.map((c) => '${c.$1} ${c.$2}').join(' ')}',
             },
         ];
@@ -268,6 +269,13 @@ class Talk extends ChangeNotifier {
     if (!_on) return 0;
     final from = _from == null ? 0.0 : _now.fly * 0.85;
     return seg(_age, from, from + 0.6);
+  }
+
+  /// Seconds since the names began to come up (steps come one by one).
+  double get pinsAge {
+    if (!_on) return 0;
+    final from = _from == null ? 0.0 : _now.fly * 0.85;
+    return _age - from;
   }
 
   /// Where [p] is on the canvas (1600×900) through the camera this frame;

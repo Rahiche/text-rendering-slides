@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:text_slides/booth/ui/ink.dart';
 import 'package:text_slides/deck/theme.dart';
 
+import '../world/ease.dart' show seg;
 import 'talk.dart';
 import 'talk_section.dart';
 
@@ -311,6 +312,11 @@ class _Card extends StatelessWidget {
           ),
       ],
     ),
+    FactScale(:final left, :final right, :final points) => SizedBox(
+      height: 132,
+      width: double.infinity,
+      child: CustomPaint(painter: _ScalePainter(left, right, points)),
+    ),
     FactCode(:final code) => Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -581,8 +587,6 @@ class _PinPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final shown = talk.pinsShown;
     if (shown <= 0.01) return;
-    final k = Curves.easeOutCubic.transform(shown);
-    final amber = BP.amber.withValues(alpha: k);
     // Each name above its place; one that would cover another goes up until
     // it doesn't (the lowest on screen, the nearest, placed first).
     final pins = [
@@ -590,12 +594,22 @@ class _PinPainter extends CustomPainter {
         if (talk.project(p.at) case final o?) (o, p),
     ]..sort((a, b) => b.$1.dy.compareTo(a.$1.dy));
     final placed = <Rect>[];
-    for (final (o, TalkPin(:name)) in pins) {
+    for (final (o, TalkPin(:name, :order, :sub)) in pins) {
+      // (A numbered step comes up after the one before it.)
+      final k = order == null ? Curves.easeOutCubic.transform(shown) : Curves.easeOutCubic.transform(seg(talk.pinsAge, 0.34 * (order - 1), 0.34 * (order - 1) + 0.45));
+      if (k <= 0.01) continue;
+      final amber = BP.amber.withValues(alpha: k);
       final label = TextPainter(
-        text: TextSpan(text: name, style: UT.mono(15, color: BP.amber.withValues(alpha: k), weight: 700, ls: 1.4)),
+        text: TextSpan(
+          children: [
+            TextSpan(text: name, style: UT.mono(15, color: BP.amber.withValues(alpha: k), weight: 700, ls: 1.4)),
+            if (sub != null) TextSpan(text: '  $sub', style: UT.mono(13, color: BP.inkDim.withValues(alpha: k), weight: 500, ls: 0.6)),
+          ],
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
-      final w = label.width + 28, h = label.height + 16;
+      final disc = order == null ? 0.0 : 30.0;
+      final w = label.width + 28 + disc, h = label.height + 16;
       var lift = 58.0;
       Rect box() => Rect.fromLTWH(o.dx - w / 2, o.dy - lift * k - h, w, h);
       while (lift < 420 && placed.any((r) => r.overlaps(box().inflate(5)))) {
@@ -630,14 +644,87 @@ class _PinPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4,
         );
+      if (order != null) {
+        // The step's number, in an amber disc.
+        final c = Offset(b.left + 14 + 11, b.center.dy);
+        canvas.drawCircle(c, 12, Paint()..color = amber);
+        final n = TextPainter(
+          text: TextSpan(text: '$order', style: UT.mono(14, color: BP.panel.withValues(alpha: k), weight: 800)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        n
+          ..paint(canvas, c - Offset(n.width / 2, n.height / 2))
+          ..dispose();
+      }
       label
-        ..paint(canvas, Offset(b.left + 14, b.top + 8))
+        ..paint(canvas, Offset(b.left + 14 + disc, b.top + 8))
         ..dispose();
     }
   }
 
   @override
   bool shouldRepaint(_PinPainter old) => old.talk != talk;
+}
+
+/// A line between two ends, the points on it: each name by its dot,
+/// above and below in turn (neighbours don't collide), the one to look at
+/// in amber.
+class _ScalePainter extends CustomPainter {
+  _ScalePainter(this.left, this.right, this.points);
+  final String left, right;
+  final List<(String, double, bool)> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const pad = 10.0;
+    final y = size.height / 2, x0 = pad, x1 = size.width - pad;
+    double at(double v) => x0 + (v + 1) / 2 * (x1 - x0);
+    canvas.drawLine(
+      Offset(x0, y),
+      Offset(x1, y),
+      Paint()
+        ..color = BP.lineDim
+        ..strokeWidth = 2,
+    );
+    for (final x in [x0, x1]) {
+      canvas.drawLine(Offset(x, y - 7), Offset(x, y + 7), Paint()
+        ..color = BP.lineDim
+        ..strokeWidth = 2);
+    }
+    void text(String s, TextStyle style, Offset o, {double align = 0.5}) {
+      final tp = TextPainter(text: TextSpan(text: s, style: style), textDirection: TextDirection.ltr)..layout();
+      tp
+        ..paint(canvas, o - Offset(tp.width * align, 0))
+        ..dispose();
+    }
+
+    text(left.toUpperCase(), UT.mono(11, color: BP.inkFaint, weight: 600, ls: 1.0), Offset(x0, size.height - 14), align: 0);
+    text(right.toUpperCase(), UT.mono(11, color: BP.inkFaint, weight: 600, ls: 1.0), Offset(x1, size.height - 14), align: 1);
+    final sorted = [...points]..sort((a, b) => a.$2.compareTo(b.$2));
+    for (final (i, (name, v, lit)) in sorted.indexed) {
+      final x = at(v), up = i.isEven;
+      final col = lit ? BP.amber : BP.ink;
+      canvas
+        ..drawLine(Offset(x, y), Offset(x, up ? y - 20 : y + 20), Paint()
+          ..color = col.withValues(alpha: 0.6)
+          ..strokeWidth = 1.4)
+        ..drawCircle(Offset(x, y), lit ? 8 : 5.5, Paint()..color = col);
+      if (lit) {
+        canvas.drawCircle(
+          Offset(x, y),
+          13,
+          Paint()
+            ..color = BP.amber.withValues(alpha: 0.5)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6,
+        );
+      }
+      text(name, UT.name(lit ? 20 : 17, color: col, weight: lit ? 700 : 500, height: 1.0), Offset(x, up ? y - 44 : y + 22));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ScalePainter old) => false;
 }
 
 /// The way: a dot per stop on a line, those passed lit, this one ringed.

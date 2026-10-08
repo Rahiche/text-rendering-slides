@@ -62,14 +62,13 @@ List<TalkSection> talkSections(Site3D site) {
         ),
         [
           CityBeat.at(
-            talkShot(0, 58, -40, 0, 0, 40, 54, drift: 1.0),
+            _cityMap,
             fly: 3.0,
-            shift: 0.22,
+            shift: 0.3,
             cardAt: 2.8,
             chapter: true,
             pins: [
               _pin(6.6, 2.4, 15.2, 'STRING'),
-              _pin(-12.55, 3.3, 6.2, 'PIPELINE'),
               _pin(28.4, 6.6, 29.2, 'ITEMIZE'),
               _pin(-6.6, 3.6, 48.5, 'FALLBACK'),
               _pin(6.4, 3.0, 46.8, 'SHAPING'),
@@ -79,6 +78,23 @@ List<TalkSection> talkSections(Site3D site) {
             ],
           ),
         ],
+      ),
+      CityStop(
+        'pipeline',
+        const TalkCard(
+          'The pipeline',
+          'Seven stages, each owned by a different library: code points become runs, fonts, glyphs, '
+              'lines, positions, and finally pixels. Each is a stop in this city, in this order.',
+          [
+            FactCode(
+              '01 string    unicode\n02 itemize   ICU\n03 fallback  font manager\n04 shaping   HarfBuzz\n'
+              '05 lines     ICU · UAX #14\n06 bidi      ICU · layout\n07 raster    Skia · GPU',
+            ),
+          ],
+        ),
+        // (Still over the city: its stops numbered in the order a string
+        // goes through them.)
+        [CityBeat.at(_cityMap, fly: 1.0, shift: 0.3, pins: _stages)],
       ),
       CityStop(
         'string',
@@ -102,22 +118,6 @@ List<TalkSection> talkSections(Site3D site) {
           ],
         ),
         [CityBeat.scene('family', hold: 6.1, fly: 2.6, pull: 1.1), CityBeat.scene('family', from: 6.1, hold: 10.75, fly: 0.8, pull: 1.1)],
-      ),
-      CityStop(
-        'pipeline',
-        const TalkCard(
-          'The pipeline',
-          'Seven stages, each owned by a different library: code points become runs, fonts, glyphs, '
-              'lines, positions, and finally pixels.',
-          [
-            FactCode(
-              '01 text      unicode\n02 itemize   ICU\n03 fonts     font manager\n04 shape     HarfBuzz\n'
-              '05 wrap      ICU · UAX #14\n06 position  layout\n07 raster    Skia · GPU',
-            ),
-          ],
-        ),
-        // (Head on: the whole line, every stage, under its sign.)
-        [CityBeat.at(talkShot(-11.8, 3.2, -5.5, -12.8, 1.5, 6.0, 48, drift: 0.5), fly: 2.6)],
       ),
       CityStop(
         'itemize',
@@ -398,24 +398,11 @@ List<TalkSection> talkSections(Site3D site) {
     ]),
     section('03', 'How others do it', const ['Aa', 'ش', 'ह', '字'], [
       CityStop(
-        'intro',
-        const TalkCard(
-          'How others do it',
-          "Five engines, five places on a line between owning the whole stack and using the "
-              "platform's.",
-          [
-            FactLetters('', [('Aa', '', false), ('ش', '', false), ('ह', '', false), ('字', '', false)]),
-          ],
-          true,
-        ),
-        [CityBeat.at(_overview, fly: 3.2, shift: 0.2, cardAt: 2.8, chapter: true)],
-      ),
-      CityStop(
         'engines',
         const TalkCard(
-          'Five engines',
-          'Four of the five share one shaper, HarfBuzz; Apple has its own. The differences are in '
-              'the layers around it.',
+          'How others do it',
+          "Five engines, five places between owning the whole stack and using the platform's. Four "
+              'share one shaper, HarfBuzz; Apple has its own.',
           [
             FactRow('Chrome', 'LayoutNG · HarfBuzz · Skia'),
             FactRow('Figma', 'own C++ → WASM · HarfBuzz · WebGPU'),
@@ -423,28 +410,33 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('Android', 'StaticLayout · Minikin · HarfBuzz'),
             FactRow('Flutter', 'RenderParagraph · SkParagraph · Impeller', accent: true),
           ],
+          true,
         ),
-        [CityBeat.at(_overview, fly: 1.0, shift: 0.2, pins: _engines)],
+        [CityBeat.at(_overview, fly: 3.2, shift: 0.2, cardAt: 2.8, chapter: true, pins: _engines)],
       ),
+      // (The four others, each a screen showing what its way of setting
+      // text gives it: hung in a row over the east side street, the camera
+      // gliding along it.)
       CityStop(
         'chrome',
         const TalkCard(
           'Chrome',
-          'Text lives in the DOM, so the browser gets the rest for free.',
+          'Text lives in the DOM, so the browser gets the rest for free: CSS sets it, and the page can '
+              'find it, select it and translate it.',
           [
             FactRow('stack', '<p> → CSS → LayoutNG → HarfBuzz → Skia'),
-            FactRow('for free', 'vertical · ruby · hyphens · balance', accent: true),
+            FactRow('for free', 'balance · hyphens · vertical · ruby', accent: true),
             FactRow('and', 'find · select · translate · a11y · SEO'),
           ],
         ),
-        [CityBeat.at(talkShot(16, 21, -20, 33.6, 13.0, -2.2, 42), fly: 2.8, pins: [_engines[0]])],
+        [CityBeat.scene('engines', hold: 8.6, fly: 3.4, shift: 0.37)],
       ),
       CityStop(
         'figma',
         const TalkCard(
           'Figma',
-          'One canvas with its own text engine: the same on every OS, but text is re-rendered at every '
-              'zoom, and every feature is theirs to build.',
+          'One canvas with its own text engine: the same on every OS, re-rendered at every zoom, and '
+              'every feature theirs to build.',
           [
             FactRow('stack', 'C++ → WASM · HarfBuzz + ICU · own renderer'),
             FactRow('✓', 'RTL (2022) · same on every OS'),
@@ -452,37 +444,37 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('≈ Flutter', 'canvas + own engine', accent: true),
           ],
         ),
-        [CityBeat.at(talkShot(30, 31, -6, 51.5, 25.0, 14.8, 42), fly: 2.6, pins: [_engines[1]])],
+        [CityBeat.scene('engines', from: 10, hold: 18.6, fly: 1.8, shift: 0.37)],
       ),
       CityStop(
         'macos',
         const TalkCard(
           'macOS · Core Text',
           'Apple owns the whole stack, its own shaper included: a paragraph into lines, lines into '
-              'runs, runs into glyphs.',
+              'runs, runs into glyphs, and book typesetting built in.',
           [
             FactCode('CTFrame › CTLine › CTRun › CGGlyph'),
-            FactRow('built in', 'vertical · ruby · hyphenation', accent: true),
+            FactRow('built in', 'justify · hyphenate · vertical · ruby', accent: true),
             FactRow('optical size', 'automatic tracking (SF Pro)'),
             FactRow('AA', 'subpixel off since 10.14'),
           ],
         ),
-        [CityBeat.at(talkShot(30, 24, 28, 51.3, 17, 48.6, 42), fly: 3.0, pins: [_engines[2]])],
+        [CityBeat.scene('engines', from: 20, hold: 28.6, fly: 1.8, shift: 0.37)],
       ),
       CityStop(
         'android',
         const TalkCard(
           'Android · Minikin',
           "Minikin weighs the whole paragraph before it breaks a line. Flutter's text stack came from "
-              'it, and kept only the greedy breaker.',
+              'it, and kept only the first-fit breaker.',
           [
             FactRow('simple', 'first fit · = Flutter', accent: true),
             FactRow('balanced', 'even lines'),
-            FactRow('high quality', 'whole-paragraph optimum'),
+            FactRow('high quality', 'whole-paragraph optimum, hyphens'),
             FactRow('lineage', 'Minikin → libtxt → SkParagraph (2022)'),
           ],
         ),
-        [CityBeat.at(talkShot(14, 20, 38, 34, 13, 57.6, 42), fly: 2.6, pins: [_engines[3]])],
+        [CityBeat.scene('engines', from: 30, hold: 38.6, fly: 1.8)],
       ),
     ]),
     section('04', "Flutter's trade-off", const ['✕', '✓'], [
@@ -503,8 +495,8 @@ List<TalkSection> talkSections(Site3D site) {
         'missing',
         const TalkCard(
           'Not in Flutter',
-          'Owning the stack means rebuilding every platform feature. These are still missing, or '
-              'have only workarounds.',
+          "Owning the stack means rebuilding every platform feature. Chrome's page, set by Flutter: what's "
+              'still missing, or has only workarounds.',
           [
             FactRow('vertical text', '✕ → mongol pkg · rotate'),
             FactRow('ruby', '✕ → WidgetSpan'),
@@ -516,7 +508,9 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('web fonts', '✕ → tofu flash · preload', accent: true),
           ],
         ),
-        [CityBeat.scene('ruby', hold: 6.0, fly: 3.0), CityBeat.scene('hyphen', hold: 8.0, fly: 2.6), CityBeat.stall(5, fly: 2.6)],
+        // (Back to the row of screens, to its last: the web page as Flutter
+        // sets it; then ruby and hyphenation, acted out.)
+        [CityBeat.scene('engines', from: 40, hold: 46, fly: 3.0, shift: 0.37), CityBeat.scene('ruby', hold: 6.0, fly: 3.0), CityBeat.scene('hyphen', hold: 8.0, fly: 2.6)],
       ),
       CityStop(
         'only',
@@ -628,11 +622,14 @@ List<TalkSection> talkSections(Site3D site) {
           "Every engine picks a point between owning the stack and using the platform's. Flutter chose "
               'control, consistency and effects.',
           [
-            FactRow('Figma', '−0.9 · control'),
-            FactRow('Flutter', '−0.72', accent: true),
-            FactRow('Android', '+0.04'),
-            FactRow('Chrome', '+0.62'),
-            FactRow('macOS', '+0.88 · native'),
+            FactScale('owns the stack', 'uses the platform', [
+              ('Figma', -0.9, false),
+              ('Flutter', -0.72, true),
+              ('Android', 0.04, false),
+              ('Chrome', 0.62, false),
+              ('macOS', 0.88, false),
+            ]),
+            FactRow('Flutter chose', 'control · consistency · effects', accent: true),
           ],
           true,
         ),
@@ -647,7 +644,23 @@ List<TalkSection> talkSections(Site3D site) {
   ];
 }
 
-TalkPin _pin(double x, double y, double z, String name) => TalkPin(vm.Vector3(x, y, z), name);
+TalkPin _pin(double x, double y, double z, String name, {int? order, String? sub}) => TalkPin(vm.Vector3(x, y, z), name, order: order, sub: sub);
+
+/// The city from above the avenue, looking north over the plaza and the
+/// park: every stop of section 01 in view.
+final _cityMap = talkShot(0, 58, -40, 0, 0, 40, 54, drift: 1.0);
+
+/// Section 01's stops as the pipeline's stages, in the order a string goes
+/// through them (each with the library that does it).
+final _stages = [
+  _pin(6.6, 2.4, 15.2, 'STRING', order: 1, sub: 'unicode'),
+  _pin(28.4, 6.6, 29.2, 'ITEMIZE', order: 2, sub: 'ICU'),
+  _pin(-6.6, 3.6, 48.5, 'FALLBACK', order: 3, sub: 'font manager'),
+  _pin(6.4, 3.0, 46.8, 'SHAPING', order: 4, sub: 'HarfBuzz'),
+  _pin(1.0, 3.4, 66.6, 'LINES', order: 5, sub: 'ICU'),
+  _pin(-28.4, 6.6, 11.2, 'BIDI', order: 6, sub: 'ICU · layout'),
+  _pin(-9.0, 1.6, 79.0, 'RASTER', order: 7, sub: 'Skia'),
+];
 
 /// The city's east side from above, its rooftop signs: the five engines'
 /// buildings.

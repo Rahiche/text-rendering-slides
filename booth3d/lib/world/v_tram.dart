@@ -2,11 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart';
+import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'figure.dart';
 import 'kit.dart';
+import 'models.dart';
 import 'motion.dart';
 import 'shot.dart';
 import 'vignette.dart';
@@ -77,6 +79,7 @@ class LineTram extends Vignette {
   // ── Building ──────────────────────────────────────────────────────────────
 
   late final List<Glyph3D> _glyphs;
+  final _carNodes = <Node>[];
   int _conductor = -1;
   final _p = FigurePose();
   bool _ready = false;
@@ -94,9 +97,15 @@ class LineTram extends Vignette {
 
   @override
   Future<void> init() async {
-    // (Three carriages of 11 boxes each.)
-    makePool(boxes: 36, glows: 12);
+    makePool(boxes: 4, glows: 12);
     _build();
+    final car = MeshGeometry.fromMeshData((await modelParts('assets/models/tram_car.glb'))['car']!);
+    final paint = pbr(rgb(1, 1, 1), roughness: 0.48, metallic: 0.05);
+    for (var k = 0; k < _cars; k++) {
+      final n = Node(name: 'tram car $k', mesh: Mesh(car, paint));
+      detail.add(n);
+      _carNodes.add(n);
+    }
     final ink = pbr(Vignette.c(0x1E2A4A), roughness: 0.45, emissive: Vignette.c(0x1E2A4A), emissiveStrength: 0.05);
     _glyphs = await letters([for (final (i, w) in _words.indexed) (w, _style(i >= _jaFrom))], ink, unitsPerPx: 0.36 / 160, depth: 0.09);
     _plan();
@@ -250,27 +259,13 @@ class LineTram extends Vignette {
     if (!_ready) return;
     pool.begin();
     final x0 = _trainX(u);
-    // The carriages: cream and green, a stripe, the line's ends marked
-    // (green its start, orange its end), their numbers.
+    // The carriages (made in Blender: tool/blender/tram.py), the line's
+    // ends marked in each (green its start, orange its end).
     for (var k = 0; k < _cars; k++) {
       final cx = _carX(x0, k) + _room / 2;
-      final green = Vignette.c(0x2F8F6A), cream = Vignette.c(0xF1E9D6);
-      // An open car: the deck, a low rail along the front, a back wall,
-      // ends, a canopy on posts.
-      pbox(cx, 0.36, 0, _carLen, 0.36, 1.5, green);
-      pbox(cx, 0.58, 0, _carLen - 0.1, 0.06, 1.42, Vignette.c(0x8A8F98));
-      pbox(cx, 0.92, 0.7, _carLen, 0.62, 0.06, cream);
-      pbox(cx, 0.7, -0.7, _carLen, 0.05, 0.05, cream);
-      for (final dx in [-_carLen / 2 + 0.05, _carLen / 2 - 0.05]) {
-        pbox(cx + dx, 0.95, 0, 0.1, 0.7, 1.5, cream);
-        pbox(cx + dx, 1.75, -0.68, 0.06, 1.6, 0.06, cream);
-        pbox(cx + dx, 1.75, 0.68, 0.06, 1.6, 0.06, cream);
-      }
-      pbox(cx, 2.58, 0, _carLen + 0.12, 0.08, 1.62, green);
+      _carNodes[k].localTransform = place(trs(vm.Vector3(cx, 0, 0)));
       pglow(_carX(x0, k) - 0.03, 1.3, -0.62, 0.04, 1.1, 0.04, vm.Vector4(0.2, 1.6, 0.6, 1));
       pglow(_carX(x0, k) + _room + 0.03, 1.3, -0.62, 0.04, 1.1, 0.04, vm.Vector4(2.2, 0.9, 0.1, 1));
-      // A skirt over the wheels.
-      pbox(cx, 0.15, -0.7, _carLen - 0.3, 0.22, 0.05, Vignette.c(0x22252B));
     }
     // The words: waiting on the platform (in order, the next at the
     // door), boarding (a hop in), riding; one that tries and doesn't fit

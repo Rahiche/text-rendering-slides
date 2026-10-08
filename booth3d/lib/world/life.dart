@@ -13,6 +13,7 @@ import 'motion.dart';
 import 'kit.dart';
 import 'script_alley.dart' show AlleyLayout, alleyRules;
 import 'site_geo.dart' show NodePlace;
+import 'models.dart';
 
 /// Life in Name City: people walking the sidewalks and the park (in jackets,
 /// coats and skirts, with bags, backpacks and the odd parasol; children
@@ -37,7 +38,7 @@ class Life3D {
 
   Future<void> init() async {
     _people.build(scene);
-    _traffic.build(scene);
+    await _traffic.build(scene);
     _signals = _Signals(scene);
     _birds = _Birds(scene);
     _blimp = _Blimp(scene);
@@ -215,12 +216,18 @@ class _Traffic {
     _Kind.bus => 10.5,
   };
 
-  void build(Scene scene) {
+  Future<void> build(Scene scene) async {
     _lightMat = UnlitMaterial()..baseColorFactor = vm.Vector4(1, 1, 1, 1);
     _taxiSignMat = pbr(lin(BP.amber), roughness: 0.4, emissive: lin(BP.amber), emissiveStrength: 0.2);
-    final paint = pbr(rgb(1, 1, 1), roughness: 0.32, metallic: 0.25);
+    // (A clear coat over the paint, as a car's.)
+    final paint = pbr(rgb(1, 1, 1), roughness: 0.38, metallic: 0.2)
+      ..clearcoat = 0.8
+      ..clearcoatRoughness = 0.08;
+    // The vehicles, made in Blender (tool/blender/vehicles.py): the same
+    // sizes, their lamps where they were.
+    final models = await modelParts('assets/models/vehicles.glb');
     for (final k in _Kind.values) {
-      final body = InstancedMesh(geometry: _bodyGeometry(k), material: paint);
+      final body = InstancedMesh(geometry: MeshGeometry.fromMeshData(models[k.name]!), material: paint);
       final lights = InstancedMesh(geometry: _lightGeometry(k), material: _lightMat);
       _meshes[k] = (body, lights);
       // (Cars take the street lamps' light at night, unlike the city.)
@@ -360,70 +367,10 @@ class _Traffic {
     });
   }
 
-  // ── Vehicle models (one merged, vertex-coloured mesh per kind) ───────────
-
-  static final _glass = v4(hex3(0x1A2C46));
-  static final _tyre = v4(hex3(0x14171D));
-  static final _trim = v4(hex3(0x2A3344));
-
-  static MeshData _wheel(double x, double z, double r) => part(
-    CylinderGeometry(bottomRadius: r, topRadius: r, height: 0.24, radialSegments: 12),
-    trs(vm.Vector3(x, r, z), rotX: math.pi / 2),
-    _tyre,
-  );
+  // ── The vehicles' lamps (their bodies: tool/blender/vehicles.py) ──────────
 
   static MeshData _box(double x, double y, double z, double w, double h, double d, vm.Vector4 c) =>
       part(CuboidGeometry(vm.Vector3(w, h, d)), vm.Matrix4.translation(vm.Vector3(x, y, z)), c);
-
-  /// Length along +X; the body colour is white (tinted per instance).
-  static MeshGeometry _bodyGeometry(_Kind k) {
-    final white = vm.Vector4(1, 1, 1, 1);
-    switch (k) {
-      case _Kind.sedan:
-        return merged([
-          _box(0, 0.62, 0, 4.4, 0.62, 1.78, white),
-          _box(-0.25, 1.15, 0, 2.3, 0.5, 1.6, _glass),
-          _box(-0.25, 1.41, 0, 2.1, 0.06, 1.5, white),
-          _box(2.18, 0.45, 0, 0.12, 0.24, 1.7, _trim),
-          _box(-2.18, 0.45, 0, 0.12, 0.24, 1.7, _trim),
-          for (final x in [-1.35, 1.35]) for (final z in [-0.82, 0.82]) _wheel(x, z, 0.33),
-        ]);
-      case _Kind.taxi:
-        final indigo = v4(hex3(0x1E2C52));
-        return merged([
-          _box(0, 0.62, 0, 4.5, 0.62, 1.74, indigo),
-          _box(-0.2, 1.17, 0, 2.4, 0.52, 1.58, _glass),
-          _box(-0.2, 1.44, 0, 2.2, 0.06, 1.5, indigo),
-          _box(0, 0.6, 0, 4.52, 0.08, 1.76, v4(lin3(BP.amber))),
-          for (final x in [-1.4, 1.4]) for (final z in [-0.8, 0.8]) _wheel(x, z, 0.33),
-        ]);
-      case _Kind.kei:
-        return merged([
-          _box(0, 0.75, 0, 3.4, 0.9, 1.48, white),
-          _box(-0.15, 1.45, 0, 2.6, 0.55, 1.4, _glass),
-          _box(-0.15, 1.75, 0, 2.6, 0.08, 1.44, white),
-          for (final x in [-1.1, 1.1]) for (final z in [-0.66, 0.66]) _wheel(x, z, 0.29),
-        ]);
-      case _Kind.van:
-        return merged([
-          _box(0, 1.05, 0, 4.8, 1.55, 1.8, white),
-          _box(1.75, 1.45, 0, 1.0, 0.6, 1.82, _glass),
-          _box(-0.6, 1.5, 0, 2.8, 0.45, 1.82, _glass),
-          for (final x in [-1.55, 1.55]) for (final z in [-0.82, 0.82]) _wheel(x, z, 0.34),
-        ]);
-      case _Kind.bus:
-        final cream = v4(hex3(0xF2EEE4));
-        final stripe = v4(lin3(BP.green));
-        return merged([
-          _box(0, 1.75, 0, 10.5, 2.75, 2.5, cream),
-          _box(0, 2.15, 0, 10.52, 0.95, 2.52, _glass),
-          _box(0, 0.78, 0, 10.52, 0.22, 2.52, stripe),
-          _box(5.2, 1.6, 0, 0.12, 2.0, 2.3, _glass),
-          _box(0, 3.15, 0, 9.5, 0.08, 2.3, v4(hex3(0xDCD6C8))),
-          for (final x in [-3.6, 3.4]) for (final z in [-1.15, 1.15]) _wheel(x, z, 0.5),
-        ]);
-    }
-  }
 
   /// Head lamps (warm white) and tail lamps (red), lit at night.
   static MeshGeometry _lightGeometry(_Kind k) {

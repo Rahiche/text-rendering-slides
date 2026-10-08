@@ -111,7 +111,7 @@ class _Body {
   /// (in full) or far from it (simpler).
   final uses = <_Use>[];
   late final _Use torso, hips, head, eyes, brows;
-  _Use? hair, hat, cap, vest, stripes, skirt, backpack, bag, board, parasol;
+  _Use? hair, hat, cap, vest, lapels, stripes, skirt, backpack, bag, board, parasol;
   final upper = <_Use>[], lower = <_Use>[], hand = <_Use>[], thigh = <_Use>[], shin = <_Use>[], foot = <_Use>[], sole = <_Use>[];
   bool near = false;
   bool hidden = false;
@@ -154,7 +154,7 @@ class _Part {
 class _Slots {
   _Slots(this.mesh);
   final InstancedMesh mesh;
-  final _owners = <_Use>[];
+  final _owners = <_Use?>[];
   int _used = 0;
 
   void put(_Use u) {
@@ -205,7 +205,7 @@ class Figures {
   final _bodies = <_Body>[];
 
   late final _Part _torso, _torsoSlim, _hips, _head, _eyes, _brows, _upperArm, _forearm, _hand, _thigh, _shin, _foot, _sole;
-  late final _Part _hardHat, _cap, _vest, _stripes, _skirt, _backpack, _bag, _board, _parasol;
+  late final _Part _hardHat, _cap, _vest, _lapels, _stripes, _skirt, _backpack, _bag, _board, _parasol;
   final _hairs = <_Part>[];
   final _slots = <_Slots>[];
   late final PhysicallyBasedMaterial _stripeMat;
@@ -215,7 +215,10 @@ class Figures {
   set night(double v) => _stripeMat.emissiveStrength = 0.02 + 0.9 * smooth(0.15, 0.6, v);
 
   void _build() {
-    final cloth = pbr(rgb(1, 1, 1), roughness: 0.82);
+    // (Fabric: a soft sheen where it turns away.)
+    final cloth = pbr(rgb(1, 1, 1), roughness: 0.82)
+      ..sheenColor = vm.Vector4(0.16, 0.16, 0.17, 1)
+      ..sheenRoughness = 0.55;
     final skin = pbr(rgb(1, 1, 1), roughness: 0.55);
     final hair = pbr(rgb(1, 1, 1), roughness: 0.5);
     final eye = pbr(rgb(1, 1, 1), roughness: 0.22);
@@ -257,6 +260,7 @@ class Figures {
     _hardHat = one(_hardHatGeometry(), shiny, 'hard hats');
     _cap = one(_capGeometry(), cloth, 'caps');
     _vest = one(_vestGeometry(), cloth, 'vests');
+    _lapels = one(_lapelsGeometry(), cloth, 'lapels');
     _stripes = one(_stripesGeometry(), _stripeMat, 'vest stripes');
     _skirt = one(_skirtGeometry(), cloth, 'skirts');
     _backpack = one(_backpackGeometry(), cloth, 'backpacks');
@@ -296,7 +300,11 @@ class Figures {
     }
     if (look.hardHat case final c?) b.hat = use(_hardHat, c);
     if (look.cap case final c?) b.cap = use(_cap, c);
-    if (look.layer case final c?) b.vest = use(_vest, c);
+    if (look.layer case final c?) {
+      b.vest = use(_vest, c);
+      // (An open jacket, its sleeves of a piece with it: lapels, a collar.)
+      if (look.sleeves == c) b.lapels = use(_lapels, c);
+    }
     if (look.stripes) b.stripes = use(_stripes, vm.Vector4(1, 1, 1, 1));
     if (look.skirt case final c?) b.skirt = use(_skirt, c);
     if (look.backpack case final c?) b.backpack = use(_backpack, c);
@@ -314,6 +322,17 @@ class Figures {
 
   /// Hides person [n].
   void hide(int n) => _bodies[n].hidden = true;
+
+  /// One tiny instance of every part at [at] (in view), so the shaders'
+  /// warm-up draws them all: the first frame's [commit] takes them away.
+  void prime(vm.Vector3 at) {
+    final m = vm.Matrix4.compose(at, vm.Quaternion.identity(), vm.Vector3.all(0.01));
+    for (final s in _slots) {
+      if (s._owners.isNotEmpty) continue;
+      s.mesh.addInstance(m);
+      s._owners.add(null);
+    }
+  }
 
   /// The nearest the camera people are drawn simpler from (and they stay in
   /// full until a little further).
@@ -448,6 +467,7 @@ class Figures {
     // (A size up: over the hair.)
     if (b.cap case final u?) _set(u, r.head, hs * 1.06, hs * 1.06, hs * 1.06);
     if (b.vest case final u?) _set(u, r.chest, g, size, g);
+    if (b.lapels case final u?) _set(u, r.chest, g, size, g);
     if (b.stripes case final u?) _set(u, r.chest, g, size, g);
     if (b.skirt case final u?) _set(u, r.pelvis, g, size * look.skirtLength, g);
     if (b.backpack case final u?) _set(u, r.chest, size, size, size);
@@ -1097,7 +1117,7 @@ class Figures {
   /// from the waist over the shoulders, open down the front in a V.
   static MeshGeometry _vestGeometry() {
     final m = _Mesh();
-    m.loft(_soft(_vestRings, k: 2), seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+    m.arc(_vestSoft, _vestGap, seg: 28, e: 2.4, color: _w);
     return m.build();
   }
 
@@ -1114,10 +1134,52 @@ class Figures {
   ];
 
   /// The vest's V: open at the front, wider towards the top.
-  static bool _vestKeep(double a, double y) {
-    final face = -math.sin(a); // 1 at the front
-    final open = lerp(0.97, 0.72, smooth(0.07, 0.5, y));
-    return face < open;
+  /// The vest's V at height [y]: how far each side of it is from the front
+  /// (radians round the ring): nearly closed at the bottom, a hand's width
+  /// at the top.
+  static double _vestGap(double y) => lerp(0.05, 0.3, smooth(0.06, 0.48, y));
+
+  /// The vest's rings, eased (as it's built).
+  static final _vestSoft = _soft(_vestRings, k: 2);
+
+  /// An open jacket's lapels, folded back along its V (wider towards the
+  /// top), and its collar, standing round the back of the neck (both
+  /// sides of it).
+  static MeshGeometry _lapelsGeometry() {
+    final m = _Mesh();
+    const steps = 10;
+    for (final side in const [-1.0, 1.0]) {
+      final edge = <vm.Vector3>[], fold = <vm.Vector3>[];
+      for (var i = 0; i <= steps; i++) {
+        final y = lerp(0.26, 0.535, i / steps);
+        final (hw, hd, zo) = _vestAt(y);
+        // (A point on the vest at angle a, [out] off it.)
+        vm.Vector3 at(double a, double out) {
+          final c = math.cos(a), s = math.sin(a), k = 1 + out / math.min(hw, hd);
+          return vm.Vector3(hw * k * c.sign * math.pow(c.abs(), 2 / 2.4), y, zo + hd * k * s.sign * math.pow(s.abs(), 2 / 2.4));
+        }
+
+        final a = -math.pi / 2 + side * _vestGap(y);
+        edge.add(at(a, 0.0048));
+        fold.add(at(a + side * (0.004 + 0.032 * smooth(0.26, 0.5, y)) / hw, 0.0036));
+      }
+      for (var i = 0; i < steps; i++) {
+        final inside = vm.Vector3(0, edge[i].y, 0);
+        m
+          ..tri(edge[i], fold[i], fold[i + 1], _w, inside)
+          ..tri(edge[i], fold[i + 1], edge[i + 1], _w, inside);
+      }
+    }
+    const collar = [
+      [0.546, 0.118, 0.084, 0.006],
+      [0.562, 0.088, 0.072, 0.007],
+      [0.578, 0.072, 0.066, 0.008],
+    ];
+    bool back(double a, double y) => math.sin(a) > -0.8;
+    m
+      ..loft(collar, seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: back)
+      ..loft(collar, seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: back, inward: true);
+    return m.build();
   }
 
   /// The vest's reflective bands: two round it, and two over each shoulder.
@@ -1131,7 +1193,7 @@ class Figures {
             return [y + dy, r.$1 + 0.004, r.$2 + 0.004, r.$3];
           }(),
       ];
-      m.loft(rings, seg: 24, e: 2.4, color: _w, capStart: false, capEnd: false, keep: _vestKeep);
+      m.arc(rings, _vestGap, seg: 28, e: 2.4, color: _w);
     }
     // Over the shoulders: front and back.
     for (final side in const [-1.0, 1.0]) {
@@ -1146,15 +1208,17 @@ class Figures {
     return m.build();
   }
 
+  /// The vest's half width, half depth and z offset at height [y].
   static (double, double, double) _vestAt(double y) {
-    for (var i = 0; i + 1 < _vestRings.length; i++) {
-      final a = _vestRings[i], b = _vestRings[i + 1];
+    final rings = _vestSoft;
+    for (var i = 0; i + 1 < rings.length; i++) {
+      final a = rings[i], b = rings[i + 1];
       if (y <= b[0]) {
         final f = ((y - a[0]) / (b[0] - a[0])).clamp(0.0, 1.0);
         return (lerp(a[1], b[1], f), lerp(a[2], b[2], f), lerp(a[3], b[3], f));
       }
     }
-    final l = _vestRings.last;
+    final l = rings.last;
     return (l[1], l[2], l[3]);
   }
 
@@ -1363,6 +1427,30 @@ class _Mesh {
           _tri(p00, p01, p11, ix, iyy, izz);
           _tri(p00, p11, p10, ix, iyy, izz);
         }
+      }
+    }
+  }
+
+  /// Like [loft], but open at the front: each ring from [gap] (its y)
+  /// radians past the front (−π/2) round the back to as far short of it on
+  /// the other side; a vest's or a jacket's V, its edge exact.
+  void arc(List<List<double>> rings, double Function(double y) gap, {int seg = 24, double e = 2, required vm.Vector4 color}) {
+    final base = <int>[];
+    for (final r in rings) {
+      base.add(_n);
+      final g = gap(r[0]);
+      for (var j = 0; j <= seg; j++) {
+        final a = -math.pi / 2 + g + j / seg * (2 * math.pi - 2 * g);
+        final c = math.cos(a), s = math.sin(a);
+        _v(r[1] * c.sign * math.pow(c.abs(), 2 / e), r[0], r[3] + r[2] * s.sign * math.pow(s.abs(), 2 / e), color);
+      }
+    }
+    for (var k = 0; k + 1 < rings.length; k++) {
+      final iy = (rings[k][0] + rings[k + 1][0]) / 2, iz = (rings[k][3] + rings[k + 1][3]) / 2;
+      for (var j = 0; j < seg; j++) {
+        final p00 = base[k] + j, p10 = base[k + 1] + j;
+        _tri(p00, p00 + 1, p10 + 1, 0, iy, iz);
+        _tri(p00, p10 + 1, p10, 0, iy, iz);
       }
     }
   }

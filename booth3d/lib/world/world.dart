@@ -90,6 +90,7 @@ class World3D {
     for (final n in hidden) {
       n.visible = true;
     }
+    Figures.of(scene).prime(director.camera.target);
     await scene.warmUp([RenderView(camera: director.camera)], includeOffscreen: true);
     for (final n in hidden) {
       n.visible = false;

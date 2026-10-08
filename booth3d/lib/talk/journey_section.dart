@@ -3,18 +3,20 @@ import 'dart:math' as math;
 import 'package:text_slides/booth/raster.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import '../world/ease.dart' show eio, lerp, seg;
 import '../world/glyph_works.dart';
+import '../world/shot.dart';
 import '../world/site_letters.dart';
 import 'journey_cards.dart';
 import 'talk_section.dart';
 
-/// 05 · One word's journey: the deck's eleven stops as places in the city.
-/// The city from above, the Glyph Works from outside, then the works takes
-/// the word's first letter down its line a step a press, the camera
-/// following (the rest of the word shaped with it in the stick, and drawn
-/// with it onto the board).
+/// 05 · One word's journey: seven stops, a press each. The city from
+/// above, the Glyph Works from outside, then the works takes the word's
+/// first letter down its line, the camera following it from step to step
+/// within a stop (the rest of the word shaped with it in the stick, and
+/// drawn with it onto the board).
 ///
-/// The works runs on the section's own clock: a beat plays its step once
+/// The works runs on the section's own clock: a beat plays its steps once
 /// the camera's nearly there, then holds (the maker stays at the step,
 /// idling, as long as the presenter talks). Back cuts to the beat before,
 /// as it was left.
@@ -47,6 +49,65 @@ class JourneySection extends TalkSection {
   Future<void>? _pending;
   @override
   Future<void>? get pending => _pending;
+
+  late final List<TalkBeat> _beats = [
+    // The map: the city from above, the plaza and the works.
+    TalkBeat(
+      0,
+      talkShot(-2, 44, -36, -7, 0, 4, 46, drift: 1.0),
+      fly: 3.2,
+      shift: 0.24,
+      cardAt: 2.8,
+      chapter: true,
+      pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), 'GLYPH WORKS')],
+    ),
+    // Text(): the works from outside, its sign; the maker walks in.
+    TalkBeat(1, talkShot(-11.2, 2.6, 0.2, -12.4, 1.8, 6.0, 50, drift: 0.5), fly: 3.4),
+    // Into the engine: the bytes out of the feeder; then low and close on
+    // the decoder as they go in (under the string's board, the maker
+    // behind it out of the frame), the code point out.
+    _along(2, GlyphWorks.stepShot(0), [((tk) => tk.at[1] - 0.4, talkShot(-14.8, 1.22, 4.85, -15.0, 0.78, 6.0, 40))], fly: 2.6),
+    // Find the glyphs: the font cases.
+    TalkBeat(3, GlyphWorks.stepShot(2), fly: 1.8),
+    // Shape, then lay out: onto the stick, the rest of the word after it;
+    // in close as the line's measured.
+    _along(4, GlyphWorks.stepShot(3), [((tk) => tk.line.$1 - 0.3, talkShot(-13.0, 1.32, 4.7, -13.12, 0.86, 6.3, 36))], fly: 1.8),
+    // Record, then rasterize: the outline bent, then on to the print head.
+    _along(5, GlyphWorks.stepShot(4), [((tk) => tk.at[5] - 0.4, GlyphWorks.stepShot(5))], fly: 2.0),
+    // Draw: onto the board, the rest of the word with it; then the whole
+    // board, square on.
+    _along(6, GlyphWorks.stepShot(6), [((tk) => tk.landed + 0.4, talkShot(-9.85, 1.5, 3.25, -9.85, 0.8, 5.12, 38))], fly: 2.0),
+  ];
+
+  /// A beat at [stop] whose camera goes along with the letter: [first],
+  /// then each of [then] in turn, eased to over [_move] seconds of the
+  /// works' clock from the moment it gives on.
+  TalkBeat _along(int stop, Shot first, List<(double Function(WorksTalk tk), Shot)> then, {required double fly}) => TalkBeat(
+    stop,
+    first,
+    fly: fly,
+    live: () {
+      final tk = works.talk;
+      var s = first;
+      if (tk == null) return s;
+      for (final (at, next) in then) {
+        final u = eio(seg(_clock, at(tk), at(tk) + _move));
+        if (u <= 0) break;
+        s = _mix(s, next, u);
+      }
+      return s;
+    },
+  );
+
+  static const _move = 1.4;
+
+  static Shot _mix(Shot a, Shot b, double u) => Shot(
+    a.eye + (b.eye - a.eye) * u,
+    a.target + (b.target - a.target) * u,
+    fov: lerp(a.fov, b.fov, u),
+    settle: lerp(a.settle, b.settle, u),
+    drift: lerp(a.drift, b.drift, u),
+  );
 
   @override
   void enter() {
@@ -102,72 +163,44 @@ class JourneySection extends TalkSection {
 
   @override
   void caption(int beat, double age) {
-    final step = _works[beat].step;
-    if (step < 0) return;
+    final steps = _works[beat].steps, tk = works.talk;
+    if (steps.isEmpty || tk == null) return;
+    // The step the letter's at: the beat's first until the next begins,
+    // the caption dipping as it changes.
+    var i = 0;
+    while (i + 1 < steps.length && _clock >= tk.at[steps[i + 1]]) {
+      i++;
+    }
     final from = _cut ? 0.0 : _beats[beat].fly * 0.75;
-    works.talkCaption(step, ((age - from) / 0.5).clamp(0.0, 1.0));
+    var show = ((age - from) / 0.5).clamp(0.0, 1.0);
+    for (final s in steps.skip(1)) {
+      show = math.min(show, ((_clock - tk.at[s]).abs() / 0.25).clamp(0.0, 1.0));
+    }
+    works.talkCaption(steps[i], show);
   }
 }
 
 /// A beat's part for the works: its clock at the beat's end (null: as the
-/// beat before left it), the step the works' caption gives (−1: none), and
-/// when (of the camera's way there) the works starts.
+/// beat before left it), the steps the works' caption gives on the way,
+/// and when (of the camera's way there) the works starts.
 class _Works {
-  const _Works(this.until, {this.step = -1, this.lag = 0.7});
+  const _Works(this.until, {this.steps = const [], this.lag = 0.7});
   final double? Function(WorksTalk tk) until;
-  final int step;
+  final List<int> steps;
   final double lag;
 }
 
-double? _hold(WorksTalk tk) => null;
-
-final _beats = <TalkBeat>[
-  // The map: the city from above, the plaza and the works.
-  TalkBeat(
-    0,
-    talkShot(-2, 44, -36, -7, 0, 4, 46, drift: 1.0),
-    fly: 3.2,
-    shift: 0.24,
-    cardAt: 2.8,
-    chapter: true,
-    pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), 'GLYPH WORKS')],
-  ),
-  // Text(): the works from outside, its sign; the maker walks in.
-  TalkBeat(1, talkShot(-11.2, 2.6, 0.2, -12.4, 1.8, 6.0, 50, drift: 0.5), fly: 3.4),
-  // A Dart String: the string's board over the feeder.
-  TalkBeat(2, talkShot(-14.2, 1.75, 4.7, -15.0, 1.45, 7.6, 40), fly: 2.4),
-  // Into the engine: the bytes out of the feeder.
-  TalkBeat(3, GlyphWorks.stepShot(0), fly: 1.8),
-  // Unicode analysis: into the decoder, the code point out.
-  TalkBeat(4, talkShot(-14.75, 1.6, 4.25, -15.15, 0.95, 6.4, 44), fly: 1.6),
-  // Find the glyphs: the font cases.
-  TalkBeat(5, GlyphWorks.stepShot(2), fly: 1.8),
-  // Shape: onto the stick, the rest of the word after it.
-  TalkBeat(6, GlyphWorks.stepShot(3), fly: 1.8),
-  // Lay out: the line measured.
-  TalkBeat(7, talkShot(-13.0, 1.32, 4.7, -13.12, 0.86, 6.3, 36), fly: 1.6),
-  // Record: down the rest of the line, still to come.
-  TalkBeat(8, talkShot(-13.9, 2.3, 4.0, -10.6, 0.75, 5.7, 46), fly: 2.0),
-  // Rasterize: the outline bent, then scanned into pixels.
-  TalkBeat(9, GlyphWorks.stepShot(4), fly: 2.0),
-  TalkBeat(9, GlyphWorks.stepShot(5), fly: 1.6),
-  // Draw: onto the board, the rest of the word with it; the whole board.
-  TalkBeat(10, GlyphWorks.stepShot(6), fly: 2.0),
-  TalkBeat(10, talkShot(-9.85, 1.5, 3.25, -9.85, 0.8, 5.12, 38), fly: 2.2),
-];
-
 final _works = <_Works>[
+  // The map; the maker walks in.
   _Works((tk) => 0),
   _Works((tk) => tk.at[0] - 0.9, lag: 0.55),
-  const _Works(_hold),
-  _Works((tk) => tk.end[0] - 0.05, step: 0),
-  _Works((tk) => tk.end[1] - 0.05, step: 1),
-  _Works((tk) => tk.end[2] - 0.05, step: 2),
-  _Works((tk) => tk.set + 0.25, step: 3),
-  _Works((tk) => tk.line.$2 + 0.1),
-  _Works((tk) => tk.at[4] - 0.25),
-  _Works((tk) => tk.end[4] - 0.05, step: 4),
-  _Works((tk) => tk.end[5] - 0.05, step: 5),
-  _Works((tk) => tk.home + 0.3, step: 6),
-  const _Works(_hold),
+  // The bytes, decoded; the fonts.
+  _Works((tk) => tk.end[1] - 0.05, steps: [0, 1]),
+  _Works((tk) => tk.end[2] - 0.05, steps: [2]),
+  // Shaped, the rest of the word after it; the line measured.
+  _Works((tk) => tk.line.$2 + 0.1, steps: [3]),
+  // A moment (the recording); the outline; the pixels.
+  _Works((tk) => tk.end[5] - 0.05, steps: [4, 5]),
+  // Onto the board; the maker home.
+  _Works((tk) => tk.home + 0.3, steps: [6]),
 ];

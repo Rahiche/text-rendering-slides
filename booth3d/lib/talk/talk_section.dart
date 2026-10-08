@@ -4,9 +4,8 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import '../world/shot.dart';
 
-/// What the talk's card says at a stop: its name (Japanese, as the city's
-/// signs have it, and English), what happens there, and the facts, with the
-/// talk's own numbers. [opener]: a section's first card (its number and
+/// What the talk's card says at a stop: its name, what happens there, and
+/// the facts, with the talk's own numbers. [opener]: a section's first card (its number and
 /// title, large).
 class TalkCard {
   const TalkCard(this.title, this.lede, [this.facts = const [], this.opener = false, this.kicker = '']);

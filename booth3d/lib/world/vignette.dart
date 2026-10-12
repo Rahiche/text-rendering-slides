@@ -342,11 +342,14 @@ class Glyph3D {
 /// What the vignettes share: the scene, the effects, the people (and the
 /// crew, for its arm-aiming), their signs' materials (lit at night).
 class VignetteKit {
-  VignetteKit(this.scene, this.fx, this.crew) : figures = Figures.of(scene);
+  VignetteKit(this.scene, this.fx, this.crew);
   final Scene scene;
   final Fx3D fx;
   final Crew3D crew;
-  final Figures figures;
+
+  /// (Got on first use, in the vignettes' init: the talk makes them on the
+  /// app's first frame, before the people's sculpted parts have loaded.)
+  late final figures = Figures.of(scene);
   final signs = <PhysicallyBasedMaterial>[];
 
   /// Where the vignettes' people are this frame (world), for the crowd to

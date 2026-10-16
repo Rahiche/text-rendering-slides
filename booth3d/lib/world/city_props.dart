@@ -9,9 +9,11 @@ import 'city_plan.dart';
 import 'kit.dart';
 import 'models.dart';
 
-/// Street furniture: the park's trees (mint greens and sakura), benches,
-/// traffic cones round the site, glowing vending machines and a red post
-/// box. Everything repeated is one instanced draw.
+/// Street furniture: the park's trees (mint greens and sakura), benches
+/// with a litter bin by each, fire hydrants at the kerbs, traffic cones
+/// round the site, vending machines and a red post box. Everything repeated
+/// is one instanced draw. The bins and hydrants are scans (Poly Haven, CC0:
+/// tool/blender/props.py, assets/models/CREDITS.md).
 class CityProps {
   CityProps(this.scene);
 
@@ -30,6 +32,7 @@ class CityProps {
     await _trees();
     _fairyLights();
     _benches();
+    await _scanned();
     _cones();
     _vending();
     _postBox();
@@ -130,7 +133,7 @@ class CityProps {
 
   void _benches() {
     final wood = v4(hex3(0xB97A4A));
-    final iron = v4(hex3(0x1F2A3C));
+    final iron = v4(hex3(0x2C2F33));
     final geo = merged([
       part(CuboidGeometry(vm.Vector3(1.7, 0.07, 0.46)), vm.Matrix4.translation(vm.Vector3(0, 0.46, 0)), wood),
       part(CuboidGeometry(vm.Vector3(1.7, 0.36, 0.06)), vm.Matrix4.translation(vm.Vector3(0, 0.74, 0.22)), wood),
@@ -163,11 +166,50 @@ class CityProps {
     );
   }
 
+  /// Where each bench stands (they all stand along z).
+  final _benchAt = <(double, double)>[];
+
   /// A bench's seat and its back (towards [back] in x: the benches all
   /// stand along z), as solids.
   void _bench(double x, double z, double back) {
+    _benchAt.add((x, z));
     _solid('benches', x, 0.25, z, 0.25, 0.25, 0.86);
     _solid('benches', x + back * 0.22, 0.74, z, 0.04, 0.2, 0.86);
+  }
+
+  /// The scanned street furniture: a litter bin at the end of each bench,
+  /// fire hydrants at the avenue's and the side streets' kerbs (clear of
+  /// the lamps, the crossings and the camera's arc round the plaza).
+  Future<void> _scanned() async {
+    final (hydrantParts, binParts, hydrantMat, binMat) = await (
+      modelParts('assets/models/hydrant.glb'),
+      modelParts('assets/models/bin.glb'),
+      photoPbr('hydrant_fire_hydrant', dir: 'assets/models'),
+      photoPbr('bin_metal_trash_can', dir: 'assets/models'),
+    ).wait;
+    final bins = InstancedMesh(geometry: MeshGeometry.fromMeshData(binParts['bin_metal_trash_can']!), material: binMat);
+    for (final (x, z) in _benchAt) {
+      final bz = z + 1.35;
+      bins.addInstance(trs(vm.Vector3(x, 0, bz), rotY: rnd(x.round(), z.round(), 3) * 6.28));
+      _solid('bins', x, 0.45, bz, 0.4, 0.45, 0.4);
+    }
+    final hydrants = InstancedMesh(geometry: MeshGeometry.fromMeshData(hydrantParts['hydrant_fire_hydrant']!), material: hydrantMat);
+    final spots = <(double, double)>[
+      for (final s in [-1.0, 1.0]) ...[
+        (s * 29.5, Plan.aveZ1 + 0.55),
+        (s * 42.5, Plan.aveZ1 + 0.55),
+        (s * 30.0, Plan.aveZ0 - 0.55),
+        (s * 55.0, Plan.aveZ0 - 0.55),
+        (s * (Plan.walkBlock - 0.55), 28.5),
+      ],
+    ];
+    for (final (x, z) in spots) {
+      hydrants.addInstance(trs(vm.Vector3(x, 0.02, z), rotY: z > Plan.aveZ1 ? math.pi : 0));
+      _solid('hydrants', x, 0.4, z, 0.2, 0.4, 0.2);
+    }
+    scene
+      ..add(Node(name: 'bins')..addComponent(InstancedMeshComponent(bins)))
+      ..add(Node(name: 'hydrants')..addComponent(InstancedMeshComponent(hydrants)));
   }
 
   void _cones() {

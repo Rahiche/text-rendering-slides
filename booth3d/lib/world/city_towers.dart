@@ -11,14 +11,14 @@ import 'city_plan.dart';
 import 'kit.dart';
 
 /// The skyline: "glyph towers" — buildings that are giant extruded
-/// characters from many scripts, in glass and stone, their windows lighting
-/// up at night and their outlines traced in neon — with plain blocks along
-/// the side streets (some carrying rooftop signs). All of it stands behind
-/// and beside the plaza, never between it and the camera.
+/// characters from many scripts, in glass and stone — with plain blocks
+/// along the side streets (some carrying rooftop signs). All of it stands
+/// behind and beside the plaza, never between it and the camera.
 ///
-/// It is all static, so it is merged: facades share a few materials (their
-/// colours are vertex colours), outlines take their neon colour from a
-/// swatch texture — a few draws for the whole skyline.
+/// The facades are photographed walls with windows drawn into them
+/// (tool/textures/facades.py: curtain-wall glass, dark panels, pale
+/// cladding, old stone, concrete tile), laid at a real bay and storey. It is
+/// all static, so it is merged: a draw a facade style for the whole skyline.
 class CityTowers {
   CityTowers(this.scene);
 
@@ -37,123 +37,36 @@ class CityTowers {
   static final _towerView = (vm.Vector3(33, 0, 92), vm.Vector3(18.5, 0, 69));
 
   final _batch = Batch();
-  late final Texture2D _paneBase, _paneGlow, _paneMR, _edges;
-
-  /// Light groups: buildings come on through dusk in three waves.
-  static const _waves = [0.12, 0.3, 0.5];
-  final _glass = <PhysicallyBasedMaterial>[], _stone = <PhysicallyBasedMaterial>[], _sides = <PhysicallyBasedMaterial>[];
+  final _styles = <PhysicallyBasedMaterial>[];
   late final _roofMat = pbr(rgb(1, 1, 1), roughness: 0.85);
 
-  /// Window cell size in metres (a bay × a storey); the window texture holds
+  /// Window cell size in metres (a bay × a storey); a facade texture holds
   /// [_cells]×[_cells] of them.
-  static const _cellW = 1.7, _cellH = 2.6, _cells = 16;
+  static const _cellW = 1.7, _cellH = 2.6, _cells = 8;
 
-  // Facades: colour and whether it is glass (metallic panes).
+  /// The facade styles (assets/textures/facade_*).
+  static const _styleNames = ['facade_glass', 'facade_panel', 'facade_clad', 'facade_stone', 'facade_tile'];
+
+  // Facades: a style and a tint over it (sRGB; white: as photographed).
   static const _facades = [
-    (0x23456E, true), // navy glass
-    (0x2D5C80, true), // teal glass
-    (0x3A4C6E, true), // slate glass
-    (0xAFBDCC, false), // pale concrete
-    (0xC9B9A2, false), // sand stone
-    (0x8FA3BA, false), // blue-grey
+    (0, 0xFFFFFF), // glass, neutral
+    (1, 0xFFFFFF), // dark panels
+    (2, 0xF2F0EC), // pale cladding
+    (3, 0xFFFFFF), // old stone
+    (4, 0xFFFFFF), // concrete tile
+    (0, 0xD6E6E2), // glass, green-tinted
   ];
-  static const _neon = [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line];
 
   Future<void> init() async {
-    _paneBase = _windowTexture(_PaneLayer.base);
-    _paneGlow = _windowTexture(_PaneLayer.glow);
-    _paneMR = _windowTexture(_PaneLayer.mr);
-    _edges = swatchTexture([for (final c in _neon) lin3(c), vm.Vector3.zero()], rows: 64, profile: (v) => v < 0.07 || v > 0.93 ? 1 : 0);
-    for (var w = 0; w < _waves.length; w++) {
-      _glass.add(_facade(0.85));
-      _stone.add(_facade(0.28));
-      _sides.add(
-        PhysicallyBasedMaterial()
-          ..metallicFactor = 0.2
-          ..roughnessFactor = 0.55
-          ..emissiveTexture = _edges
-          ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
-          ..emissiveStrength = 0,
-      );
-    }
+    _styles.addAll(await Future.wait([for (final n in _styleNames) photoPbr(n)]));
     _blocks();
     await _glyphTowers();
     _batch.build(scene, 'skyline', lightChannelMask: 0x01);
   }
 
-  // ── Textures ──────────────────────────────────────────────────────────────
+  PhysicallyBasedMaterial _facadeMat(int kind) => _styles[_facades[kind % _facades.length].$1];
 
-  static const _px = 16;
-
-  /// 16×16 window cells: frame and pane (base colour), lit panes (glow),
-  /// glossy metallic panes on rough frames (metallic-roughness).
-  Texture2D _windowTexture(_PaneLayer layer) {
-    const n = _cells * _px;
-    final px = Uint8List(n * n * 4);
-    for (var y = 0; y < n; y++) {
-      for (var x = 0; x < n; x++) {
-        final cx = x ~/ _px, cy = y ~/ _px;
-        final ix = x % _px, iy = y % _px;
-        final pane = ix >= 2 && ix <= 13 && iy >= 3 && iy <= 13;
-        final mullion = pane && (ix == 7 || ix == 8);
-        final glass = pane && !mullion;
-        // Floors light up together-ish: a per-floor mood and a per-window coin.
-        final floor = rnd(cy, 3, 11);
-        final lit = rnd(cx, cy, 17) < 0.18 + 0.42 * floor;
-        final warm = rnd(cx, cy, 29);
-        final curtain = rnd(cx, cy, 41);
-        final i = (y * n + x) * 4;
-        int r, g, b;
-        switch (layer) {
-          case _PaneLayer.base:
-            final v = glass ? (40 + 50 * curtain).round() : 225;
-            r = g = b = v;
-          case _PaneLayer.glow:
-            if (!glass || !lit) {
-              r = g = b = 0;
-            } else if (warm < 0.62) {
-              (r, g, b) = (255, 196, 120); // warm lamps
-            } else if (warm < 0.86) {
-              (r, g, b) = (200, 226, 255); // cool office light
-            } else if (warm < 0.94) {
-              (r, g, b) = (255, 150, 200); // a pink room
-            } else {
-              (r, g, b) = (140, 255, 210); // a mint screen glow
-            }
-            final dim = 0.55 + 0.45 * rnd(cx, cy, 53);
-            r = (r * dim).round();
-            g = (g * dim).round();
-            b = (b * dim).round();
-          case _PaneLayer.mr:
-            r = 255;
-            g = glass ? 34 : 210; // roughness
-            b = glass ? 230 : 10; // metallic
-        }
-        px
-          ..[i] = r
-          ..[i + 1] = g
-          ..[i + 2] = b
-          ..[i + 3] = 255;
-      }
-    }
-    return Texture2D.fromPixels(px, n, n, content: layer == _PaneLayer.mr ? TextureContent.data : TextureContent.color);
-  }
-
-  PhysicallyBasedMaterial _facade(double gloss) => PhysicallyBasedMaterial()
-    ..baseColorTexture = _paneBase
-    ..metallicRoughnessTexture = _paneMR
-    ..metallicFactor = gloss
-    ..roughnessFactor = 1
-    ..emissiveTexture = _paneGlow
-    ..emissiveFactor = vm.Vector4(1, 1, 1, 1)
-    ..emissiveStrength = 0;
-
-  PhysicallyBasedMaterial _facadeMat(int kind, int seed) {
-    final wave = seed % _waves.length;
-    return _facades[kind % _facades.length].$2 ? _glass[wave] : _stone[wave];
-  }
-
-  vm.Vector4 _facadeColor(int kind) => v4(hex3(_facades[kind % _facades.length].$1));
+  vm.Vector4 _facadeColor(int kind) => v4(hex3(_facades[kind % _facades.length].$2));
 
   // ── Blocks along the side streets ─────────────────────────────────────────
 
@@ -212,13 +125,13 @@ class CityTowers {
     final across = rotY == 0 ? len : d, along = rotY == 0 ? d : len;
     solids.add((vm.Vector3(at.x, h / 2 + 0.5, at.z), vm.Vector3(across / 2, h / 2 + 0.5, along / 2)));
     final ou = (rnd(seed, 1) * _cells).floorToDouble() / _cells, ov = (rnd(seed, 2) * _cells).floorToDouble() / _cells;
-    _batch.add(_facadeMat(kind, seed), painted(_boxData(len, h, d, ou, ov).transformed(xf), _facadeColor(kind)));
-    _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(len * 0.98, 0.5, d * 0.98)), trs(at + vm.Vector3(0, h + 0.25, 0), rotY: rotY), v4(hex3(0x3B4A60))));
+    _batch.add(_facadeMat(kind), painted(_boxData(len, h, d, ou, ov).transformed(xf), _facadeColor(kind)));
+    _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(len * 0.98, 0.5, d * 0.98)), trs(at + vm.Vector3(0, h + 0.25, 0), rotY: rotY), v4(hex3(0x8C8B87))));
     // A little machinery on some roofs.
     if (rnd(seed, 6) < 0.6) {
       final mx = (rnd(seed, 7) - 0.5) * len * 0.5, mz = (rnd(seed, 8) - 0.5) * d * 0.4;
       final m = trs(at + vm.Vector3(0, h + 0.5, 0), rotY: rotY) * vm.Matrix4.translation(vm.Vector3(mx, 0.7, mz + d * 0.15));
-      _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(2.2, 1.4, 1.8)), m, v4(hex3(0x56657C))));
+      _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(2.2, 1.4, 1.8)), m, v4(hex3(0xA3A5A6))));
     }
   }
 
@@ -301,35 +214,41 @@ class CityTowers {
       final m = meshes[i];
       if (m.vertexCount == 0) continue;
       final kind = s.k % _facades.length;
-      final neon = s.k % _neon.length;
-      final outlined = rnd(s.k, 7) < 0.7;
-      // Faces: windows at world scale; sides: the neon swatch, banded across
-      // the depth (the outline at both edges).
+      // Faces: windows at world scale, over the letter's ink box. Sides:
+      // windows too, along the depth and up the height (a side that's
+      // nearly level, the top or the underside of a stroke, takes the
+      // facade's plain corner).
       final su = m.width / (_cellW * _cells), sv = m.height / (_cellH * _cells);
       final ou = (rnd(s.k, 1) * _cells).floorToDouble() / _cells, ov = (rnd(s.k, 2) * _cells).floorToDouble() / _cells;
+      var top = -double.infinity, back = double.infinity;
+      for (var v = 0; v < m.vertexCount; v++) {
+        top = math.max(top, m.positions[v * 3 + 1]);
+        back = math.min(back, m.positions[v * 3 + 2]);
+      }
       final uv = Float32List.fromList(m.uvs);
       final faces = <int>[], sides = <int>[];
       for (var t = 0; t + 2 < m.indices.length; t += 3) {
         final v = m.indices[t];
         (m.normals[v * 3 + 2].abs() > 0.5 ? faces : sides).addAll([m.indices[t], m.indices[t + 1], m.indices[t + 2]]);
       }
-      final swatch = swatchU(outlined ? neon : _neon.length, _neon.length + 1);
       for (var v = 0; v < m.vertexCount; v++) {
         if (m.normals[v * 3 + 2].abs() > 0.5) {
           uv[v * 2] = ou + m.uvs[v * 2] * su;
           uv[v * 2 + 1] = ov + m.uvs[v * 2 + 1] * sv;
+        } else if (m.normals[v * 3 + 1].abs() > 0.75) {
+          uv[v * 2] = 0.004;
+          uv[v * 2 + 1] = 0.004;
         } else {
-          uv[v * 2] = swatch;
+          uv[v * 2] = ou + (m.positions[v * 3 + 2] - back) / (_cellW * _cells);
+          uv[v * 2 + 1] = ov + (top - m.positions[v * 3 + 1]) / (_cellH * _cells);
         }
       }
       final yaw = math.atan2(s.at.x, s.at.z), xf = trs(s.at, rotY: yaw);
       final c = math.cos(yaw).abs(), n = math.sin(yaw).abs(), hw = m.width / 2 + 1.5, hd = s.depth / 2 + 1.5;
       solids.add((vm.Vector3(s.at.x, m.height / 2, s.at.z), vm.Vector3(c * hw + n * hd, m.height / 2 + 0.6, n * hw + c * hd)));
-      final wave = s.k % _waves.length;
-      _batch.add(_facadeMat(kind, s.k), painted(glyphData(m, faces, uv).transformed(xf), _facadeColor(kind)));
-      _batch.add(_sides[wave], painted(glyphData(m, sides, uv).transformed(xf), v4(mix3(hex3(_facades[kind].$1), lin3(_neon[neon]), 0.55))));
+      _batch.add(_facadeMat(kind), painted(glyphData(m, [...faces, ...sides], uv).transformed(xf), _facadeColor(kind)));
       // A plinth so the letter stands on something.
-      _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(m.width + 3, 1.2, s.depth + 3)), xf * vm.Matrix4.translation(vm.Vector3(0, 0.6, 0)), v4(hex3(0x243650))));
+      _batch.add(_roofMat, part(CuboidGeometry(vm.Vector3(m.width + 3, 1.2, s.depth + 3)), xf * vm.Matrix4.translation(vm.Vector3(0, 0.6, 0)), v4(hex3(0x6A6B6C))));
     }
   }
 
@@ -356,19 +275,6 @@ class CityTowers {
     );
   }
 
-  // ── Night ────────────────────────────────────────────────────────────────
-
-  /// Windows come on in waves through dusk; outlines glow and hum.
-  void update(double night, double t) {
-    for (var w = 0; w < _waves.length; w++) {
-      final at = _waves[w];
-      final on = smooth(at, at + 0.25, night);
-      _glass[w].emissiveStrength = 1.15 * on;
-      _stone[w].emissiveStrength = 1.15 * on;
-      final buzz = 0.9 + 0.1 * math.sin(t * 1.3 + w * 2.1);
-      _sides[w].emissiveStrength = 5.5 * smooth(at + 0.1, at + 0.3, night) * buzz;
-    }
-  }
+  /// (Always day: nothing on the skyline lights up.)
+  void update(double night, double t) {}
 }
-
-enum _PaneLayer { base, glow, mr }

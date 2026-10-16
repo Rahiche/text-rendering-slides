@@ -70,7 +70,7 @@ class World3D {
     await Physics.ensureReady();
     if (const String.fromEnvironment('BOOTH3D_TIMES') != '') debugPrint(Physics.selfTest());
     site.physics.warmUp();
-    sky.init();
+    await sky.init();
     site.init();
     typing.init();
     await Future.wait([city.init(), site.alley.init(), site.vignettes.init()]);

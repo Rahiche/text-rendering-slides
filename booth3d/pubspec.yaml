@@ -63,8 +63,9 @@ flutter:
     - flutter_scene_generated/
     # Made in Blender: tool/blender/*.py.
     - assets/models/
-    # From Poly Haven (CC0): assets/textures/CREDITS.md.
+    # From Poly Haven (CC0): assets/textures/CREDITS.md, assets/sky/CREDITS.md.
     - assets/textures/
+    - assets/sky/
   # The booth UI (board, input, tally) from the slides package draws with
   # these families.
   fonts:

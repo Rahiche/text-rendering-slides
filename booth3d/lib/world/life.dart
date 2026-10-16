@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show Color, FontWeight, FontVariation, Paint, Rect, RRect, Radius;
 
 import 'package:flutter/painting.dart' show Alignment, LinearGradient, Offset, TextDirection, TextPainter, TextSpan, TextStyle;
@@ -219,10 +220,31 @@ class _Traffic {
   Future<void> build(Scene scene) async {
     _lightMat = UnlitMaterial()..baseColorFactor = vm.Vector4(1, 1, 1, 1);
     _taxiSignMat = pbr(lin(BP.amber), roughness: 0.4, emissive: lin(BP.amber), emissiveStrength: 0.2);
-    // (A clear coat over the paint, as a car's.)
-    final paint = pbr(rgb(1, 1, 1), roughness: 0.38, metallic: 0.2)
+    // Each part as what it's made of (vehicles.py puts its class in the UVs,
+    // u = (class + 0.5) / 8): paint (a little metallic, under a clear coat),
+    // glass (smooth, so it mirrors the sky), plastic trim, rubber, alloy
+    // hubs. A row of texels each for roughness and metal, and for the coat.
+    Texture2D row(List<(double, double, double)> texels) {
+      final px = Uint8List(8 * 4);
+      for (var i = 0; i < texels.length; i++) {
+        final (r, g, b) = texels[i];
+        px
+          ..[i * 4] = (r * 255).round()
+          ..[i * 4 + 1] = (g * 255).round()
+          ..[i * 4 + 2] = (b * 255).round()
+          ..[i * 4 + 3] = 255;
+      }
+      return Texture2D.fromPixels(px, 8, 1, content: TextureContent.data, sampling: const TextureSampling(mipmaps: false));
+    }
+
+    // (Occlusion, roughness, metal.)
+    final surface = row([(1, 0.3, 0.15), (1, 0.04, 0), (1, 0.55, 0), (1, 0.9, 0), (1, 0.3, 0.85)]);
+    final coat = row([(1, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]);
+    final paint = pbr(rgb(1, 1, 1), roughness: 1, metallic: 1)
+      ..metallicRoughnessTexture = surface
       ..clearcoat = 0.8
-      ..clearcoatRoughness = 0.08;
+      ..clearcoatTexture = coat
+      ..clearcoatRoughness = 0.06;
     // The vehicles, made in Blender (tool/blender/vehicles.py): the same
     // sizes, their lamps where they were.
     final models = await modelParts('assets/models/vehicles.glb');

@@ -9,7 +9,10 @@ the lamps stay where they were. Front is +x; Blender's y is the city's z
 (across), its z up; the origin is the middle of the car on the road.
 
 Body panels are white in the vertex colours (the city paints each car);
-glass, trim, tyres, the taxi and the bus have their own colours.
+glass, trim, tyres, the taxi and the bus have their own colours. Each part
+says what it's made of in its UVs, u = (class + 0.5) / 8 (paint, glass,
+trim, tyre, hub): the city looks up its roughness, metal and clear coat
+there (life.dart).
 
 Run headless:
   Blender -b --factory-startup -P tool/blender/vehicles.py -- assets/models [--preview dir]
@@ -37,7 +40,7 @@ def lin22(rgb):
 
 
 WHITE = (1.0, 1.0, 1.0)
-GLASS = lin22(0x1A2C46)
+GLASS = lin22(0x1C2428)
 TRIM = lin22(0x2A3344)
 TYRE = lin22(0x14171D)
 HUB = (0.32, 0.33, 0.35)
@@ -50,12 +53,20 @@ ROOFGREY = lin22(0xDCD6C8)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+# What each colour's part is made of (anything else: paint).
+SURFACE = {GLASS: 1, TRIM: 2, TYRE: 3, HUB: 4}
+
+
 def colour(o, rgb):
     me = o.data
     attr = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
     for i in range(len(me.vertices)):
         attr.data[i].color = (rgb[0], rgb[1], rgb[2], 1.0)
     me.color_attributes.active_color = attr
+    uv = me.uv_layers[0] if me.uv_layers else me.uv_layers.new(name="UVMap")
+    u = (SURFACE.get(tuple(rgb), 0) + 0.5) / 8
+    for loop in uv.data:
+        loop.uv = (u, 0.5)
     return o
 
 
@@ -214,7 +225,7 @@ bpy.ops.export_scene.gltf(
     export_apply=True,
     export_yup=True,
     export_normals=True,
-    export_texcoords=False,
+    export_texcoords=True,
     export_materials="NONE",
     export_vertex_color="ACTIVE",
     export_active_vertex_color_when_no_material=True,

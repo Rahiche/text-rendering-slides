@@ -61,8 +61,10 @@ class JourneySection extends TalkSection {
       chapter: true,
       pins: [TalkPin(vm.Vector3(-12.55, 3.3, 6.2), 'GLYPH WORKS')],
     ),
-    // Text(): the works from outside, its sign; the maker walks in.
-    TalkBeat(1, talkShot(-11.2, 2.6, 0.2, -12.4, 1.8, 6.0, 50, drift: 0.5), fly: 3.4),
+    // Text(): the works from outside, its sign; the maker walks in. (Back
+    // a little and over to the right: the line's start, where the word goes
+    // in, clear of the card.)
+    TalkBeat(1, talkShot(-11.2, 2.6, 0.2, -12.4, 1.8, 6.0, 50, drift: 0.5), fly: 3.4, shift: 0.55, pull: 1.2),
     // Into the engine: the bytes out of the feeder; then low and close on
     // the decoder as they go in (under the string's board, the maker
     // behind it out of the frame), the code point out.

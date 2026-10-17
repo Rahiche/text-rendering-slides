@@ -242,6 +242,36 @@ class _Card extends StatelessWidget {
     ),
   );
 
+  /// Row [label]: its value (lit, or counted up as the one to look at),
+  /// and its [example] under it.
+  Widget _row(String label, String value, bool accent, String? example) => Row(
+    crossAxisAlignment: CrossAxisAlignment.baseline,
+    textBaseline: TextBaseline.alphabetic,
+    children: [
+      SizedBox(width: 138, child: Text(_caps(label), style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1))),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (card.follow != null)
+              // (Lit in turn, beat by beat: the light moves down the card.)
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: _lit(label, accent) ? BP.amber : BP.ink),
+                duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+                curve: Curves.easeOutCubic,
+                builder: (context, c, _) => Text(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600)),
+              )
+            else if (accent)
+              _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
+            else
+              Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+            if (example != null) Padding(padding: const EdgeInsets.only(top: 5), child: _breaks(example)),
+          ],
+        ),
+      ),
+    ],
+  );
+
   /// An example line, each | in it an amber mark where a line may break.
   static Widget _breaks(String s) {
     final style = UT.label(16, color: BP.inkDim, weight: 500);
@@ -270,31 +300,23 @@ class _Card extends StatelessWidget {
   }
 
   Widget _fact(CardFact f) => switch (f) {
-    FactRow(:final label, :final value, :final accent, :final example) => Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
+    FactRow(:final label, :final value, :final accent, :final example) => Stack(
+      clipBehavior: Clip.none,
       children: [
-        SizedBox(width: 138, child: Text(_caps(label), style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1))),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (card.follow != null)
-                // (Lit in turn, beat by beat: the light moves down the card.)
-                TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(end: _lit(label, accent) ? BP.amber : BP.ink),
-                  duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
-                  curve: Curves.easeOutCubic,
-                  builder: (context, c, _) => Text(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600)),
-                )
-              else if (accent)
-                _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
-              else
-                Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
-              if (example != null) Padding(padding: const EdgeInsets.only(top: 5), child: _breaks(example)),
-            ],
+        // The row to look at: a bar beside it (moving down the card with
+        // the beats, when the card follows them).
+        Positioned(
+          left: -16,
+          top: 2,
+          bottom: 2,
+          child: AnimatedOpacity(
+            opacity: _lit(label, accent) ? 1 : 0,
+            duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+            curve: Curves.easeOutCubic,
+            child: Container(width: 3, decoration: BoxDecoration(color: BP.amber, borderRadius: BorderRadius.circular(2))),
           ),
         ),
+        _row(label, value, accent, example),
       ],
     ),
     FactTable(:final columns, :final rows, :final lit) => Table(

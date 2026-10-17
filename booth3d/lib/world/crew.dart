@@ -147,6 +147,7 @@ class Crew3D {
     const skins = [0xEAC9AE, 0xC59A7C, 0xE0BB9E, 0x9A6C52, 0xF0D2BC, 0xD6AE90, 0xB88B6E, 0xE8C6AC, 0xDDB89C, 0xF2D4C0, 0xC09073, 0xE6C2A6, 0xD9B194, 0xEFCDB4, 0xA97A5E];
     const hairs = [0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x1A1714, 0x2A211B, 0x8F8B86, 0x1A1714, 0x2A211B, 0x1A1714, 0x5A3F2C, 0x2A211B, 0x3D2B20, 0x1A1714, 0x2A211B];
     final l = FigureLook()
+      ..lead = true
       ..skin = rgbHex(skins[i % skins.length])
       ..hairColor = rgbHex(hairs[i % hairs.length])
       ..girth = 0.94 + 0.14 * rnd(i, 3)
@@ -197,9 +198,10 @@ class Crew3D {
           ..slim = i == planners + 1
           ..hair = i == planners + 1 ? Hair.bob : l.hair;
       default:
-        // The makers.
+        // The makers (their lab coats: the city's figures' own).
         final coat = lin(const Color(0xFFD7E3EC));
         l
+          ..rigged = false
           ..top = coat
           ..skirt = coat
           ..skirtLength = 1.05

@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_scene/scene.dart' show SceneView;
+import 'package:flutter_scene/scene.dart' as scene3d show RenderView, kRenderLayerAll;
 import 'package:text_slides/booth/model.dart';
 import 'package:text_slides/booth/platform.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
@@ -296,7 +297,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
     final view = world.ready
         ? SceneView(
             world.scene,
-            cameraBuilder: (_) => world.director.camera,
+            // (Not the layer only shadows are cast from.)
+            viewsBuilder: (_) => [scene3d.RenderView(camera: world.director.camera, layerMask: scene3d.kRenderLayerAll & ~Figures.shadowLayer)],
             pixelRatio: _capturing ? 1 : Tuning.ratio ?? _quality.ratio,
           )
         : const ColoredBox(color: BP.bg);

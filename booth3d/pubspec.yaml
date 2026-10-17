@@ -66,6 +66,8 @@ flutter:
     # From Poly Haven (CC0): assets/textures/CREDITS.md, assets/sky/CREDITS.md.
     - assets/textures/
     - assets/sky/
+    # MakeHuman (CC0) people and CC0 motion clips: assets/people/CREDITS.md.
+    - assets/people/
   # The booth UI (board, input, tally) from the slides package draws with
   # these families.
   fonts:

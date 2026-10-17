@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 import 'figure_rig.dart';
 import 'kit.dart';
 import 'models.dart';
+import 'rigged.dart';
 import 'site_geo.dart' show setTrs;
 
 export 'figure_rig.dart';
@@ -75,6 +77,12 @@ class FigureLook {
   vm.Vector4? backpack, bag, parasol;
   bool clipboard = false;
 
+  /// Whether, near the camera, they may be one of the rigged people
+  /// (rigged.dart; false: always as the city's figures draw them, as for
+  /// a costume those don't have); [lead], one of the scene's own people
+  /// (the crew), first to be one and from further away.
+  bool rigged = true, lead = false;
+
   static final _white = vm.Vector4(1, 1, 1, 1);
 }
 
@@ -126,14 +134,26 @@ class _Body {
 
   /// How fast they were going (m/s, from the frame before).
   double vx = 0, vz = 0;
+
+  /// Near the camera, who of the rigged people they are (null: never one):
+  /// the body and clothes, the hairstyle, how they stand about; the one
+  /// they are now, if any, and whether it was shown this frame.
+  String? outfit, hairStyle;
+  String stand = 'idle';
+  RiggedPerson? avatar;
+  bool shown = false;
 }
 
 /// One of a person's instances of a part (one side's, of a pair): where it's
 /// drawn this frame, in what colour; whether it's shown.
 class _Use {
-  _Use(this.part, this.color);
+  _Use(this.part, this.color, [this.carried = false]);
   final _Part part;
   final vm.Vector4 color;
+
+  /// Something worn on or carried by them (a hat, a bag): still drawn
+  /// when they're one of the rigged people.
+  final bool carried;
   final m = vm.Matrix4.identity();
   bool on = false;
 }
@@ -156,6 +176,11 @@ class _Slots {
   final InstancedMesh mesh;
   final _owners = <_Use?>[];
   int _used = 0;
+
+  /// Its twin that only casts shadows (on [Figures.shadowLayer], which the
+  /// camera doesn't see): the shadows of the rigged people, cast by the
+  /// city's figure posed as each is.
+  _Slots? shadow;
 
   void put(_Use u) {
     final i = _used++;
@@ -193,9 +218,19 @@ class Figures {
 
   static final _of = Expando<Figures>('figures');
 
-  /// The sculpted parts (people.glb), loaded before anyone's drawn.
+  /// The sculpted parts (people.glb), loaded before anyone's drawn; the
+  /// rigged people (BOOTH3D_RIGGED=false: none).
   static Map<String, MeshData>? _parts;
-  static Future<void> load() async => _parts ??= await modelParts('assets/models/people.glb');
+  static Rigged? _rigged;
+  static const riggedOn = bool.fromEnvironment('BOOTH3D_RIGGED', defaultValue: true);
+
+  /// The layer only shadows are cast from (the camera's view leaves it out:
+  /// `RenderView.layerMask`).
+  static const shadowLayer = 1 << 30;
+  static Future<void> load() async {
+    _parts ??= await modelParts('assets/models/people.glb');
+    if (riggedOn) _rigged ??= await Rigged.load();
+  }
 
   /// The scene's figures (made on first use).
   static Figures of(Scene scene) => _of[scene] ??= Figures._(scene);
@@ -231,6 +266,15 @@ class Figures {
       scene.add(Node(name: 'people $name')..addComponent(InstancedMeshComponent(mesh)));
       final slots = _Slots(mesh);
       _slots.add(slots);
+      if (_rigged != null) {
+        final twin = InstancedMesh(geometry: g, material: m, cullInstances: true);
+        scene.add(
+          Node(name: 'people $name (shadows)')
+            ..layers = shadowLayer
+            ..addComponent(InstancedMeshComponent(twin)),
+        );
+        slots.shadow = _Slots(twin);
+      }
       return slots;
     }
 
@@ -273,8 +317,10 @@ class Figures {
   int add(FigureLook look) {
     final b = _Body(look, _bodies.length);
     _bodies.add(b);
-    _Use use(_Part p, vm.Vector4 c) {
-      final u = _Use(p, c);
+    // (Who of the rigged people they'd be first: their look matches it.)
+    _cast(b);
+    _Use use(_Part p, vm.Vector4 c, [bool carried = false]) {
+      final u = _Use(p, c, carried);
       b.uses.add(u);
       return u;
     }
@@ -298,8 +344,8 @@ class Figures {
       b.foot.add(use(_foot, look.shoes));
       b.sole.add(use(_sole, look.soles ?? _soleFor(look.shoes)));
     }
-    if (look.hardHat case final c?) b.hat = use(_hardHat, c);
-    if (look.cap case final c?) b.cap = use(_cap, c);
+    if (look.hardHat case final c?) b.hat = use(_hardHat, c, true);
+    if (look.cap case final c?) b.cap = use(_cap, c, true);
     if (look.layer case final c?) {
       b.vest = use(_vest, c);
       // (An open jacket, its sleeves of a piece with it: lapels, a collar.)
@@ -307,11 +353,151 @@ class Figures {
     }
     if (look.stripes) b.stripes = use(_stripes, vm.Vector4(1, 1, 1, 1));
     if (look.skirt case final c?) b.skirt = use(_skirt, c);
-    if (look.backpack case final c?) b.backpack = use(_backpack, c);
-    if (look.bag case final c?) b.bag = use(_bag, c);
-    if (look.clipboard) b.board = use(_board, vm.Vector4(1, 1, 1, 1));
-    if (look.parasol case final c?) b.parasol = use(_parasol, c);
+    if (look.backpack case final c?) b.backpack = use(_backpack, c, true);
+    if (look.bag case final c?) b.bag = use(_bag, c, true);
+    if (look.clipboard) b.board = use(_board, vm.Vector4(1, 1, 1, 1), true);
+    if (look.parasol case final c?) b.parasol = use(_parasol, c, true);
     return b.n;
+  }
+
+  /// Who of the rigged people [b] would be, by their look: the crew in
+  /// work clothes (a suit for the manager), everyone else by their build
+  /// and what they wear (no children: there are no children's bodies).
+  /// Their look then matches it ([_match]): from afar, they're the same.
+  void _cast(_Body b) {
+    final look = b.look;
+    if (_rigged == null || !look.rigged || look.size < 0.8) return;
+    double r(int k) => rnd(b.n, 31, k);
+    String pick(List<String> from, int k) => from[(r(k) * from.length).floor() % from.length];
+    final coat = look.skirt != null && look.skirt == look.top, jacket = look.layer != null && look.sleeves == look.layer;
+    if (jacket && !look.stripes) {
+      b.outfit = look.slim ? pick(const ['office_f1', 'office_f2', 'office_f3'], 0) : pick(const ['office_m1', 'office_m2', 'office_m3'], 0);
+    } else if (look.hardHat != null) {
+      b.outfit = look.slim ? 'worker_c' : pick(const ['worker_a', 'worker_b', 'worker_d'], 0);
+    } else if (look.slim) {
+      b.outfit = look.skirt != null && !coat
+          ? pick(const ['casual_f1', 'casual_f2', 'office_f1'], 0)
+          : coat
+          ? pick(const ['office_f1', 'office_f2', 'office_f3'], 0)
+          : pick(const ['casual_f3', 'casual_f4', 'casual_f4'], 0);
+    } else {
+      b.outfit = coat ? pick(const ['office_m1', 'office_m2', 'office_m3'], 0) : pick(const ['casual_m1', 'casual_m2', 'casual_m3', 'casual_m4', 'casual_m4'], 0);
+    }
+    _match(look, b.outfit!);
+    b.hairStyle = switch (look.hair) {
+      Hair.none => null,
+      Hair.short => 'hair_short',
+      Hair.medium => 'hair_medium',
+      Hair.bob => 'hair_bob',
+      Hair.long => 'hair_long',
+    };
+    // How they stand about: easy, arms folded, on the phone (hands that
+    // hold something, easy).
+    final k = r(1), holding = look.bag != null || look.parasol != null || look.clipboard;
+    b.stand = holding || k < 0.6
+        ? 'idle'
+        : k < 0.82 || look.hardHat != null
+        ? 'arms_folded'
+        : 'phone';
+  }
+
+  /// [l] as [outfit] looks from afar (sRGB; the plain garments, tinted to
+  /// the look's own colours, keep them): what's open, what's long, bare
+  /// forearms or not, the shoes.
+  static void _match(FigureLook l, String outfit) {
+    vm.Vector4 c(int hex) => rgbHex(hex);
+    void plain({required bool shortSleeves}) => l
+      ..layer = l.stripes ? l.layer : null
+      ..sleeves = null
+      ..skirt = null
+      ..shins = null
+      ..bareArms = shortSleeves;
+    void suit(int jacket, int shirt, int legs) => l
+      ..top = c(shirt)
+      ..layer = c(jacket)
+      ..sleeves = c(jacket)
+      ..legs = c(legs)
+      ..skirt = null
+      ..shins = null
+      ..bareArms = false;
+    switch (outfit) {
+      case 'worker_a' || 'worker_b' || 'worker_c' || 'worker_d':
+        plain(shortSleeves: true);
+        l.shoes = c(0x2E261E);
+      case 'casual_m1' || 'casual_f4':
+        plain(shortSleeves: false);
+        l.shoes = c(0x2B282A);
+      case 'casual_m4':
+        plain(shortSleeves: true);
+        l.shoes = c(0x2B282A);
+      case 'casual_m2':
+        plain(shortSleeves: false);
+        l
+          ..top = c(0x4A2E35)
+          ..legs = c(0x3F5F80)
+          ..shoes = c(0x4A4946);
+      case 'casual_m3':
+        plain(shortSleeves: true);
+        l
+          ..top = c(0xE6E5E0)
+          ..legs = c(0x3F5F80)
+          ..shoes = c(0x253553);
+      case 'casual_f3':
+        plain(shortSleeves: true);
+        l
+          ..top = c(0x2B548B)
+          ..legs = c(0x3F5F80)
+          ..shoes = c(0x2B282A);
+      case 'casual_f1':
+        plain(shortSleeves: true);
+        l
+          ..skirt = c(0x3A3D3C)
+          ..skirtLength = 1.5
+          ..legs = l.skin
+          ..shins = l.skin
+          ..shoes = c(0x1C1C1C);
+      case 'casual_f2':
+        plain(shortSleeves: true);
+        l
+          ..skirt = l.top
+          ..skirtLength = 1.0
+          ..legs = l.skin
+          ..shins = l.skin
+          ..shoes = c(0x6B5A4A);
+      case 'office_m1':
+        suit(0x1C2539, 0xEEF0F2, 0x1C2539);
+        l.shoes = c(0x161616);
+      case 'office_m2':
+        suit(0x34364D, 0x34364D, 0x34364D);
+        l
+          ..layer = null
+          ..shoes = c(0x3E2A1E);
+      case 'office_m3':
+        suit(0x2E2E2E, 0xEDEDED, 0x2A2A2A);
+        l.shoes = c(0x161616);
+      case 'office_f1':
+        // (A skirt suit, its cloth tinted to the look's.)
+        plain(shortSleeves: false);
+        l
+          ..skirt = l.top
+          ..skirtLength = 1.0
+          ..shins = l.shins ?? c(0x2A2A30)
+          ..legs = l.shins ?? c(0x2A2A30)
+          ..shoes = c(0x1C1C1C);
+      case 'office_f2':
+        suit(0x40292E, 0x40292E, 0x2A2A30);
+        l
+          ..layer = null
+          ..skirt = c(0x37272A)
+          ..skirtLength = 1.0
+          ..shins = c(0x2A2A30)
+          ..shoes = c(0x161616);
+      case 'office_f3':
+        suit(0x474349, 0x474349, 0x474349);
+        l
+          ..layer = null
+          ..shoes = c(0x1C1C1C);
+    }
   }
 
   /// The look person [n] was added with.
@@ -332,7 +518,21 @@ class Figures {
       s.mesh.addInstance(m);
       s._owners.add(null);
     }
+    // And a rigged person, as tiny (into the pool after).
+    final lib = _rigged;
+    if (lib != null && _primed == null) {
+      final a = _primed = lib.spawn(scene, 'worker_a');
+      a.dress(skin: _w, hairColor: _w, hair: 'hair_short', vest: _w, gloves: _w);
+      final p = FigurePose()..rest();
+      p.pos.setFrom(at);
+      rig.solve(p, size: 0.01);
+      a
+        ..show(rig, p, 0.01, FigureMotion.clock)
+        ..visible = true;
+    }
   }
+
+  RiggedPerson? _primed;
 
   /// The nearest the camera people are drawn simpler from (and they stay in
   /// full until a little further).
@@ -342,17 +542,114 @@ class Figures {
   /// showing, in full near [eye] (the camera), simpler far from it. Once a
   /// frame, after everyone's been drawn.
   void commit(vm.Vector3 eye) {
+    if (_primed case final a?) {
+      a.visible = false;
+      (_pool[a.name] ??= []).add(a);
+      _primed = null;
+    }
+    _release(eye);
     for (final b in _bodies) {
+      if (b.avatar case final a?) a.visible = b.shown && !b.hidden;
       if (b.hidden || b.seen.isNaN) continue;
       final dx = b.x - eye.x, dy = b.y - eye.y, dz = b.z - eye.z;
       final d2 = dx * dx + dy * dy + dz * dz;
       b.near = d2 < (b.near ? _farAt * _farAt : _nearAt * _nearAt);
       for (final u in b.uses) {
-        if (u.on) u.part.at(b.near)?.put(u);
+        if (!u.on) continue;
+        if (!b.shown || u.carried) {
+          u.part.at(b.near)?.put(u);
+        } else {
+          // (A rigged person's shadow: the figure, simpler, unseen.)
+          u.part.at(false)?.shadow?.put(u);
+        }
       }
     }
     for (final s in _slots) {
       s.end();
+      s.shadow?.end();
+    }
+    _assign(eye);
+  }
+
+  // ── The rigged people near the camera ───────────────────────────────────
+
+  /// How many rigged people at most, how near the camera someone comes to
+  /// be one (from the next frame), and how far they go before they're the
+  /// city's figure again.
+  static const _onAt = 20.0, _offAt = 24.0;
+
+  /// (Fewer on the web: BOOTH3D_AVATARS=n, n at most.)
+  static const _avatarCap = int.fromEnvironment('BOOTH3D_AVATARS', defaultValue: -1);
+  static const _avatars = _avatarCap >= 0 ? _avatarCap : (kIsWeb ? 14 : 24);
+
+  /// (The crew, from this far.)
+  static const _leadOnAt = 30.0, _leadOffAt = 34.0;
+
+  /// Rigged people's heads in full up to this far (and until a little
+  /// further).
+  static const _fullAt = 9.0, _fullOffAt = 11.0;
+  static double _off(_Body b) => b.look.lead ? _leadOffAt : _offAt;
+  final _pool = <String, List<RiggedPerson>>{};
+  final _wanting = <_Body>[];
+  int _live = 0;
+
+  static double _d2(_Body b, vm.Vector3 eye) {
+    final dx = b.x - eye.x, dz = b.z - eye.z;
+    return dx * dx + dz * dz;
+  }
+
+  /// Whoever's gone too far (or wasn't drawn) is the city's figure again,
+  /// this frame: their rigged person back to the pool.
+  void _release(vm.Vector3 eye) {
+    for (final b in _bodies) {
+      final a = b.avatar;
+      if (a == null) continue;
+      final d2 = _d2(b, eye);
+      if (!b.hidden && b.seen == _frameAt && d2 < _off(b) * _off(b)) {
+        // (The full head near the camera, the simpler one further off.)
+        a.near = d2 < (a.near ? _fullOffAt * _fullOffAt : _fullAt * _fullAt);
+        continue;
+      }
+      a.visible = false;
+      (_pool[a.name] ??= []).add(a);
+      b
+        ..avatar = null
+        ..shown = false;
+      _live--;
+    }
+  }
+
+  /// The nearest who could be rigged people and aren't are, from the next
+  /// frame (as many as there may be).
+  void _assign(vm.Vector3 eye) {
+    final lib = _rigged;
+    if (lib == null || _live >= _avatars) return;
+    _wanting.clear();
+    for (final b in _bodies) {
+      final on = b.look.lead ? _leadOnAt : _onAt;
+      if (b.avatar == null && b.outfit != null && !b.hidden && b.seen == _frameAt && _d2(b, eye) < on * on) _wanting.add(b);
+    }
+    // (The crew first, then the nearest.)
+    _wanting.sort((a, b) => a.look.lead != b.look.lead ? (a.look.lead ? -1 : 1) : _d2(a, eye).compareTo(_d2(b, eye)));
+    for (final b in _wanting) {
+      if (_live >= _avatars) break;
+      final free = _pool[b.outfit!];
+      final a = free != null && free.isNotEmpty ? free.removeLast() : lib.spawn(scene, b.outfit!);
+      final l = b.look;
+      a.dress(
+        skin: _toned(l.skin),
+        hairColor: l.hairColor,
+        hair: l.hardHat != null || l.cap != null ? null : b.hairStyle,
+        top: l.top,
+        legs: l.legs,
+        vest: l.stripes ? l.layer : null,
+        gloves: l.gloves,
+        stand: b.stand,
+        seed: b.n,
+        near: _d2(b, eye) < _fullAt * _fullAt,
+      );
+      b.avatar = a;
+      _live++;
     }
   }
 
@@ -491,7 +788,50 @@ class Figures {
       final at = r.palms[1];
       _set(u, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
     }
+    // Near the camera, one of the rigged people instead: posed as the rig
+    // has them; what's on their head or in their hands goes with them.
+    final a = b.avatar;
+    b.shown = a != null;
+    if (a != null) {
+      a.show(r, p, size, now);
+      final head = a.head(_headAt);
+      // (Its shadow's head where its head is: none on its own face.)
+      _set(b.head, head, 1, 1, 1);
+      if (b.hair case final u?) _set(u, head, 1, 1, 1);
+      if (b.hat case final u?) {
+        _t
+          ..setFrom(head)
+          ..multiply(setTrs(_m, 0, p.hatUp, 0, yaw: p.hatSpin, roll: 0.3 * math.sin(p.hatSpin)));
+        _set(u, _t, 1, 1, 1);
+      }
+      if (b.cap case final u?) _set(u, head, 1.06, 1.06, 1.06);
+      for (var s = 0; s < 2; s++) {
+        a.palm(s, _palms[s]);
+      }
+      if (b.bag case final u?) {
+        final at = _palms[0];
+        _set(u, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      }
+      if (b.parasol case final u?) {
+        final at = _palms[1];
+        _set(u, FigureRig.yawAt(_t, at.x, at.y, at.z, p.yaw), size, size, size);
+      }
+      if (b.board case final u? when u.on) {
+        // (Moved as far as the hand is from the rig's.)
+        final st = u.m.storage, d = _palms[0], q = r.palms[0];
+        st[12] += d.x - q.x;
+        st[13] += d.y - q.y;
+        st[14] += d.z - q.z;
+      }
+    }
+    // (A walk's or a stand's mark holds for the frame it's posed in.)
+    p
+      ..walked = 0
+      ..stood = false;
   }
+
+  final _palms = [vm.Vector3.zero(), vm.Vector3.zero()];
+  final _headAt = vm.Matrix4.identity();
 
   // ── Out of each other's way ───────────────────────────────────────────────
 

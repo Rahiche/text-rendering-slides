@@ -6,6 +6,7 @@ import 'package:text_slides/booth/model.dart';
 
 import 'perf_stub.dart' if (dart.library.io) 'perf_io.dart';
 import 'tuning.dart';
+import 'world/rig_mesh.dart' show rigGeometries;
 import 'world/world.dart';
 
 /// --dart-define=BOOTH3D_PERF=true: every few seconds, print frame times,
@@ -88,7 +89,7 @@ class PerfLog {
       '${(_frames / secs).toStringAsFixed(1).padLeft(5)}  ${am(_build)}    ${am(_raster)}     ${am(_update)}  '
       '${_late.toString().padLeft(4)}  ${currentRssMb().toString().padLeft(6)}  ${nodes.toString().padLeft(5)}  '
       '${shown.toString().padLeft(5)}  ${_jobs.toString().padLeft(4)}  ${world.sky.night.toStringAsFixed(2)}  ${(ratio?.call() ?? 0).toStringAsFixed(2)}  '
-      '${j == null ? '-' : '${j.name} · ${j.phase.name}'}',
+      '${j == null ? '-' : '${j.name} · ${j.phase.name}'}  meshes $rigGeometries',
     );
     _frames = 0;
     _late = 0;

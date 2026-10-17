@@ -115,6 +115,54 @@ class FigurePose {
   /// hand is ([FigureRig.solve] with it) is where it's drawn.
   FigureMotion? motion;
 
+  /// What an ordinary walk ([Gait.walk]) or stand ([Idle.stand]) made of
+  /// this pose, for people who move their own way (rigged.dart: a captured
+  /// walk's swing, a captured stand): how much of it is the walk (none for
+  /// a run), whether it's a stand; and the arms and legs as they left them
+  /// (one posed since is the pose's own: holding something, pointing).
+  double walked = 0;
+  bool stood = false;
+  final _left = Float64List(12);
+
+  /// Marks this pose as [Gait.walk] or [Idle.stand] leaves it.
+  void markWalk(double amount) {
+    walked = amount;
+    stood = false;
+    _snap();
+  }
+
+  void markStand() {
+    stood = true;
+    walked = 0;
+    _snap();
+  }
+
+  void _snap() {
+    for (var s = 0; s < 2; s++) {
+      _left[s * 3] = armPitch[s];
+      _left[s * 3 + 1] = armRoll[s];
+      _left[s * 3 + 2] = elbow[s];
+      _left[6 + s * 3] = legPitch[s];
+      _left[7 + s * 3] = footAhead[s] + 3 * footOut[s] + 7 * footLift[s];
+      _left[8 + s * 3] = knee[s];
+    }
+  }
+
+  static bool _same(double a, double b) => a == b || (a.isNaN && b.isNaN);
+
+  /// Whether arm [s] is as the walk or stand left it.
+  bool armLeft(int s) =>
+      !reachingWith(s) && !clipboard && _same(armPitch[s], _left[s * 3]) && _same(armRoll[s], _left[s * 3 + 1]) && _same(elbow[s], _left[s * 3 + 2]);
+
+  /// Whether the legs are as the stand left them (no step, no crouch).
+  bool get legsLeft {
+    if (stoop != 0 || bob.abs() > 0.005) return false;
+    for (var s = 0; s < 2; s++) {
+      if (!_same(legPitch[s], _left[6 + s * 3]) || footAhead[s] + 3 * footOut[s] + 7 * footLift[s] != _left[7 + s * 3] || !_same(knee[s], _left[8 + s * 3])) return false;
+    }
+    return true;
+  }
+
   void rest() {
     hatUp = 0;
     hatSpin = 0;
@@ -134,6 +182,8 @@ class FigurePose {
     clipboard = false;
     visible = true;
     steer = true;
+    walked = 0;
+    stood = false;
   }
 
   /// [q]'s pose, joint by joint.
@@ -183,6 +233,9 @@ class FigurePose {
       stride = q.stride;
       clipboard = q.clipboard;
       steer = q.steer;
+      walked = q.walked;
+      stood = q.stood;
+      _left.setAll(0, q._left);
     }
   }
 }

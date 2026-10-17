@@ -145,6 +145,7 @@ abstract final class Gait {
       p.armRoll[s] = lerp(p.armRoll[s], lerp(wRoll, rRoll, run), a);
       p.elbow[s] = lerp(p.elbow[s].isNaN ? 0.58 : p.elbow[s], lerp(wElbow, rElbow, run), a);
     }
+    p.markWalk(a * (1 - run));
   }
 
   /// Stepping sideways (standing, facing on): [dist] metres moved to the
@@ -315,6 +316,8 @@ abstract final class Idle {
     breathe(p, t, m);
     Idle.shift(p, t, m, size: size, amount: shift);
     glance(p, t, m, size: size, look: look, at: at);
+    // (A fidget's hands are its own.)
+    p.markStand();
     if (fidget > 0) fiddle(p, t, m, fidget);
   }
 

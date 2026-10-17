@@ -700,9 +700,11 @@ class _People {
     }
     l.legs = pick(_bottoms, 9);
     if (p.role == _Role.keeper) {
-      // A happi in the stall's colour over a white shirt.
+      // A happi in the stall's colour over a white shirt (the city's
+      // figures' own).
       final c = lin(alleyRules[p.stall].color);
       return l
+        ..rigged = false
         ..top = rgbHex(0xF2F0EA)
         ..layer = c
         ..sleeves = c

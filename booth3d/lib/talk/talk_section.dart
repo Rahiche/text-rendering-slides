@@ -8,7 +8,7 @@ import '../world/shot.dart';
 /// the facts, with the talk's own numbers. [opener]: a section's first card (its number and
 /// title, large).
 class TalkCard {
-  const TalkCard(this.title, this.lede, [this.facts = const [], this.opener = false, this.kicker = '']);
+  const TalkCard(this.title, this.lede, [this.facts = const [], this.opener = false, this.kicker = '', this.follow]);
 
   final String title, lede;
 
@@ -16,6 +16,11 @@ class TalkCard {
   final String kicker;
   final List<CardFact> facts;
   final bool opener;
+
+  /// For a stop of several beats: the rows ([FactRow.label]) to look at in
+  /// each beat, in turn (several split by '|'), lit as the scene shows
+  /// them; instead of the rows' own [FactRow.accent].
+  final List<String>? follow;
 }
 
 sealed class CardFact {

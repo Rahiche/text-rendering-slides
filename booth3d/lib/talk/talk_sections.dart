@@ -51,57 +51,28 @@ List<TalkSection> talkSections(Site3D site) {
     ]),
     section('01', 'From code points to pixels', const ['A', 'ب', 'क', '文', 'ก', '😀'], [
       CityStop(
-        'intro',
-        const TalkCard(
-          'From code points to pixels',
-          'A string goes in, pixels come out. In between, every step of the way is a place in this city.',
-          [
-            FactLetters('', [('A', '', false), ('ب', '', false), ('क', '', false), ('文', '', false), ('ก', '', false), ('😀', '', false)]),
-          ],
-          true,
-        ),
-        [
-          CityBeat.at(
-            _cityMap,
-            fly: 3.0,
-            shift: 0.3,
-            cardAt: 2.8,
-            chapter: true,
-            pins: [
-              _pin(6.6, 2.4, 15.2, 'STRING'),
-              _pin(28.4, 6.6, 29.2, 'ITEMIZE'),
-              _pin(-6.6, 3.6, 48.5, 'FALLBACK'),
-              _pin(6.4, 3.0, 46.8, 'SHAPING'),
-              _pin(1.0, 3.4, 66.6, 'LINES'),
-              _pin(-28.4, 6.6, 11.2, 'BIDI'),
-              _pin(-9.0, 1.6, 79.0, 'RASTER'),
-            ],
-          ),
-        ],
-      ),
-      CityStop(
         'pipeline',
         const TalkCard(
-          'The pipeline',
-          'Seven stages, each owned by a different library: code points become runs, fonts, glyphs, '
-              'lines, positions, and finally pixels. Each is a stop in this city, in this order.',
+          'From code points to pixels',
+          'A string goes in, pixels come out. In between, seven stages, each owned by a different '
+              'library and each a stop in this city, in the order a string goes through them.',
           [
             FactCode(
               '01 string    unicode\n02 itemize   ICU\n03 fallback  font manager\n04 shaping   HarfBuzz\n'
               '05 lines     ICU · UAX #14\n06 bidi      ICU · layout\n07 raster    Skia · GPU',
             ),
           ],
+          true,
         ),
-        // (Still over the city: its stops numbered in the order a string
-        // goes through them.)
-        [CityBeat.at(_cityMap, fly: 1.0, shift: 0.3, pins: _stages)],
+        // (Over the city, its stops numbered as a string goes through them.)
+        [CityBeat.at(_cityMap, fly: 3.0, shift: 0.3, cardAt: 2.8, chapter: true, pins: _stages)],
       ),
       CityStop(
         'string',
         const TalkCard(
           'A string ≠ text',
           "Dart's String.length counts UTF-16 units, not what you see. The family is one grapheme: "
-              'four people joined by three zero-width joiners. Let go, it is four.',
+              'four people joined by three zero-width joiners. Take the joiners out, and it is four.',
           [
             // (What a reader sees, code points, UTF-16 units, UTF-8 bytes.)
             FactTable(
@@ -176,6 +147,10 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('CJK', 'almost anywhere, but 。 never starts a line (kinsoku)', accent: true, example: '行|頭|に|来|ま|せ|ん。'),
             FactRow('too long', 'an emergency break inside the word', example: 'Donaudampfsch|ifffahrt'),
           ],
+          false,
+          '',
+          // (The tram's lines, Latin and Japanese; then the phone's refill.)
+          ['spaces|CJK', 'spaces'],
         ),
         // (The tram's paragraph; then a phone turned on its side: the same
         // words, a new maxWidth, new lines.)
@@ -271,8 +246,8 @@ List<TalkSection> talkSections(Site3D site) {
         'alley',
         const TalkCard(
           'Every script breaks a rule',
-          'Each script breaks an assumption Latin lets you make. Script Alley has a stall for six of '
-              'them.',
+          'Six things Latin lets you assume, and a script that breaks each one: a stall for each in '
+              'Script Alley.',
           [
             FactRow('direction', 'right to left · Hebrew'),
             FactRow('shape', 'by its neighbours · Arabic'),
@@ -329,7 +304,7 @@ List<TalkSection> talkSections(Site3D site) {
         const TalkCard(
           'Stacking',
           "Thai marks stack on their letter: a vowel above it, a tone mark above that, raised so they "
-              "don't collide. And no spaces between words: a dictionary finds them.",
+              "don't collide.",
           [
             FactLetters('ป + ั + ่', [('ป', 'base', false), ('ั', 'vowel', false), ('่', 'tone', true)]),
             FactRow('result', 'ปั่น', accent: true),
@@ -489,7 +464,8 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(talkShot(30, 26, 13, 52.6, 20.5, 33.5, 42), fly: 3.4, pins: [_engines[4]], cardAt: 2.8, chapter: true)],
+        // (Flutter's building: its name on its roof, no pin over it.)
+        [CityBeat.at(talkShot(30, 26, 13, 52.6, 20.5, 33.5, 42), fly: 3.4, cardAt: 2.8, chapter: true)],
       ),
       CityStop(
         'missing',
@@ -507,6 +483,11 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('web find · SEO', '✕ → semantics tree'),
             FactRow('web fonts', '✕ → tofu flash · preload', accent: true),
           ],
+          false,
+          '',
+          // (The page Flutter sets: no vertical text, no balanced lines; then
+          // ruby, then hyphenation, acted out.)
+          ['vertical text|optimal breaks', 'ruby', 'hyphenation'],
         ),
         // (Back to the row of screens, to its last: the web page as Flutter
         // sets it; then ruby and hyphenation, acted out.)
@@ -524,6 +505,9 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('every glyph', 'a box for each grapheme'),
             FactRow('3D', 'Matrix4, no relayout'),
           ],
+          false,
+          '',
+          ['same everywhere', 'paint', 'every glyph|3D'],
         ),
         // (The same everywhere: two phones, native then Flutter; a variable
         // font; every glyph a box, turned in 3D.)

@@ -266,9 +266,12 @@ class RiggedPerson {
     // stand wide.)
     final walk = walking ? p.walked : 0.0, stand = !walking && p.stood ? 1.0 : 0.0;
     final clip = walk > 0 ? 'walk' : (stand > 0 ? this.stand : _clip);
+    // (A hand at work keeps the back the scene's too: a clip's spine sways
+    // with its own arms.)
+    final busy = !p.armLeft(0) || !p.armLeft(1);
     final targets = [
       0.0,
-      walk > 0 ? 0.85 * walk : stand,
+      (walk > 0 ? 0.85 * walk : stand) * (busy ? 0.25 : 1),
       for (var s = 0; s < 2; s++) (walk > 0 ? walk : stand) * (p.armLeft(RigBones.figureSide(s)) ? 1 : 0),
     ];
     final ease = 1 - math.exp(-dt / 0.12);

@@ -372,7 +372,8 @@ class Figures {
     final coat = look.skirt != null && look.skirt == look.top, jacket = look.layer != null && look.sleeves == look.layer;
     if (jacket && !look.stripes) {
       b.outfit = look.slim ? pick(const ['office_f1', 'office_f2', 'office_f3'], 0) : pick(const ['office_m1', 'office_m2', 'office_m3'], 0);
-    } else if (look.hardHat != null) {
+    } else if (look.hardHat != null || look.stripes) {
+      // (Hi-vis: work clothes, with or without the hard hat.)
       b.outfit = look.slim ? 'worker_c' : pick(const ['worker_a', 'worker_b', 'worker_d'], 0);
     } else if (look.slim) {
       b.outfit = look.skirt != null && !coat

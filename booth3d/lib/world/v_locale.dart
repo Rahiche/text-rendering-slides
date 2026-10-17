@@ -16,8 +16,9 @@ import 'vignette.dart';
 /// each press: the ja press stamps the glyph as Japanese has it, the
 /// zh-Hans press as Chinese does — the same character, drawn two ways (one
 /// code point for both: the locale picks the font). The two plates go up
-/// side by side over the code point, to compare. Then the next: 直, 角,
-/// 骨, 写.
+/// on the wall, the Japanese over the Chinese, the code point under them;
+/// then the next beside them: 直, 角, 骨, 写, until the four are there to
+/// compare.
 class LocaleOffice extends Vignette {
   LocaleOffice(super.kit);
 
@@ -49,9 +50,15 @@ class LocaleOffice extends Vignette {
   static const _colors = [0x3A6EA5, 0xE8A33D];
 
   /// The presses (x either side, their table's top), the line's depth, the
-  /// chute's mouth; the display (its plates' middles, size, depth).
+  /// chute's mouth; the wall the plates go up on (its middle, depth; a
+  /// column a character, a row a language: the plates' size, their
+  /// spacing).
   static const _pressX = 2.2, _tableY = 1.0, _z = 3.0, _chuteY = 3.75;
-  static const _showX = 0.52, _showY = 2.75, _showZ = 3.62, _plate = 0.86;
+  static const _showY = 2.95, _showZ = 3.62, _plate = 0.6, _colDx = 0.74, _rowDy = 0.68;
+
+  /// Plate [s] of character [i]: where it goes up to on the wall.
+  static double _colX(int i) => (i - 1.5) * _colDx;
+  static double _rowY(int s) => _showY + (s == 0 ? 0.5 : -0.5) * _rowDy;
 
   /// Each character's turn: from [_first], one every [_every] seconds.
   static const _first = 0.6, _every = 2.7;
@@ -89,7 +96,7 @@ class LocaleOffice extends Vignette {
       }
       box(b, m, 0.94, 0.14, 0.3, s * _pressX, _tableY + 1.32, _z + 0.2, dark);
     }
-    box(b, m, 2.6, 1.6, 0.08, 0, _showY - 0.1, _showZ + 0.24, Vignette.c(0x1E2433));
+    box(b, m, 3.5, 1.84, 0.08, 0, _showY - 0.12, _showZ + 0.24, Vignette.c(0x1E2433));
     b.buildInto(detail, 'locale presses', lightChannelMask: 0x01);
     final ink = const Color(0xFF14203A);
     final nodes = await Future.wait([
@@ -163,18 +170,32 @@ class LocaleOffice extends Vignette {
             glow: 0.25,
             thick: 0.03,
           ),
-      // The code point under the pair on show.
+      // The code point under each column.
       for (var i = 0; i < 4; i++)
         sign(
-          1.0,
-          0.24,
-          vm.Matrix4.translation(vm.Vector3(0, _showY - _plate / 2 - 0.2, _showZ - 0.02)),
+          0.68,
+          0.2,
+          vm.Matrix4.translation(vm.Vector3(_colX(i), _rowY(1) - _plate / 2 - 0.16, _showZ - 0.02)),
           (c, sz) {
             c.drawRect(Offset.zero & sz, Paint()..color = const Color(0xFF14203A));
-            Vignette.text(c, '${_codes[i]} · ${_chars[i]}', Rect.fromLTWH(0, 0, sz.width, sz.height), sz.height * 0.56, const Color(0xFFF4EBD8), lang: 'ja');
+            Vignette.text(c, _codes[i], Rect.fromLTWH(0, 0, sz.width, sz.height), sz.height * 0.6, const Color(0xFFF4EBD8), family: 'monospace');
           },
-          px: 400,
+          px: 320,
           glow: 0.6,
+          thick: 0.01,
+        ),
+      // Each row's language, at its left.
+      for (var s = 0; s < 2; s++)
+        sign(
+          0.36,
+          0.22,
+          vm.Matrix4.translation(vm.Vector3(_colX(0) - _plate / 2 - 0.26, _rowY(s), _showZ - 0.02)),
+          (c, sz) {
+            c.drawRect(Offset.zero & sz, Paint()..color = Color(0xFF000000 | _colors[s]));
+            Vignette.text(c, _langs[s], Rect.fromLTWH(0, 0, sz.width, sz.height), sz.height * 0.6, const Color(0xFFF4F1EA));
+          },
+          px: 200,
+          glow: 0.5,
           thick: 0.01,
         ),
     ]);
@@ -190,6 +211,7 @@ class LocaleOffice extends Vignette {
           FigureLook()
             ..top = rgbHex(0xF2F0EA)
             ..layer = rgbHex(_colors[s])
+            ..stripes = true
             ..legs = rgbHex(0x2B3442)
             ..shoes = rgbHex(0x1B1C20)
             ..skin = rgbHex(s == 0 ? 0xE8C6AC : 0xD9B194)
@@ -222,24 +244,22 @@ class LocaleOffice extends Vignette {
       final a = _at(i);
       // Down the chute to the table, then a copy to each press.
       final drop = eio(seg(u, a, a + 0.5)), split = eio(seg(u, a + 0.55, a + 1.0));
-      // The press comes down on it; the plate it leaves goes up on show,
-      // until the next pair takes its place.
+      // The press comes down on it; the plate it leaves goes up on the
+      // wall, to its column, and stays.
       final press = math.sin(math.pi * seg(u, a + 1.05, a + 1.45)), stamped = u >= a + 1.25, up = eio(seg(u, a + 1.5, a + 2.4));
-      final next = i < 3 ? _at(i + 1) + 1.5 : 1e9, gone = eio(seg(u, next, next + 0.5));
-      _codeTags[i].visible = u >= a + 2.2 && gone < 0.5;
+      _codeTags[i].visible = u >= a + 2.2;
       for (var s = 0; s < 2; s++) {
         final side = s == 0 ? -1.0 : 1.0;
         if (u >= a - 0.6 && u < a + 1.25) stamp[s] = math.max(stamp[s], press);
         final card = _cards[i * 2 + s]..visible = u >= a && !stamped;
         if (card.visible) _place(card, side * _pressX * split + side * 0.02 * (1 - split), lerp(_chuteY - 0.2, _tableY + 0.16, drop), _z - 0.1);
-        final plate = _plates[i * 2 + s]..visible = stamped && gone < 1;
+        final plate = _plates[i * 2 + s]..visible = stamped;
         if (plate.visible) {
-          // (The pair before drops back out of sight behind the board.)
           _place(
             plate,
-            lerp(side * _pressX, side * _showX, up),
-            lerp(_tableY + _plate / 2 + 0.02, _showY, up) + 0.2 * math.sin(math.pi * up) - 1.6 * gone,
-            lerp(_z - 0.1, _showZ, up) + 0.5 * gone,
+            lerp(side * _pressX, _colX(i), up),
+            lerp(_tableY + _plate / 2 + 0.02, _rowY(s), up) + 0.2 * math.sin(math.pi * up),
+            lerp(_z - 0.1, _showZ, up),
           );
         }
         if (u > a + 1.2 && u < a + 1.6) {
@@ -256,7 +276,7 @@ class LocaleOffice extends Vignette {
       pbox(side * _pressX, y - 0.15, _z - 0.08, 0.64, 0.04, 0.22, Vignette.c(_colors[s]));
       // The clerk beside it: a hand on its lever, pulled for each stamp.
       final p = _poses[s]..rest();
-      p.pos.setValues(side * (_pressX + 1.25), 0.2, _z - 0.15);
+      p.pos.setValues(side * (_pressX + 1.02), 0.2, _z - 0.15);
       p.yaw = -side * 1.15;
       Idle.stand(p, t, Manner.of(220 + s), look: 0.3, at: vm.Vector3(0, 1.4, _z));
       worldPose(p);

@@ -261,6 +261,14 @@ class _Card extends StatelessWidget {
   /// A label in capitals, but code as it's written (s.length).
   static String _caps(String label) => label.contains(RegExp(r'[.(_]')) ? label : label.toUpperCase();
 
+  /// Whether row [label] is the one to look at now: as the card follows
+  /// its beats, else its own [accent].
+  bool _lit(String label, bool accent) {
+    final f = card.follow;
+    if (f == null || f.isEmpty) return accent;
+    return f[beat.clamp(0, f.length - 1)].split('|').contains(label);
+  }
+
   Widget _fact(CardFact f) => switch (f) {
     FactRow(:final label, :final value, :final accent, :final example) => Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -271,9 +279,18 @@ class _Card extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              accent
-                  ? _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
-                  : Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+              if (card.follow != null)
+                // (Lit in turn, beat by beat: the light moves down the card.)
+                TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: _lit(label, accent) ? BP.amber : BP.ink),
+                  duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+                  curve: Curves.easeOutCubic,
+                  builder: (context, c, _) => Text(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600)),
+                )
+              else if (accent)
+                _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
+              else
+                Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
               if (example != null) Padding(padding: const EdgeInsets.only(top: 5), child: _breaks(example)),
             ],
           ),

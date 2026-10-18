@@ -31,6 +31,8 @@ class Phone3D {
     final cr = (ip ? 0.135 : 0.12) * w, edge = (ip ? 0.24 : 0.45) * d;
     final glass = 0.008 * w, bezel = 0.03 * w;
     final sw = w - 2 * bezel, sh = h - 2 * bezel;
+    // (What stands proud of its faces, in proportion: a phone of any size.)
+    final e = d / 80;
     final frame = ip ? _titanium : _aluminium, back = ip ? _frostedBack : _obsidianBack;
     void add(MeshData m, Material mat, vm.Matrix4 at, {bool shadow = false}) => root.add(
       Node(name: '$name part', mesh: Mesh(geometryOf(m), mat), localTransform: at)..castsShadows = shadow,
@@ -38,12 +40,12 @@ class Phone3D {
     vm.Matrix4 at(double x, double y, double z, {double rotX = 0, double rotZ = 0}) => trs(vm.Vector3(x, y, z), rotX: rotX, rotZ: rotZ);
     // The frame; the glass over its front and its back.
     add(roundedSlab(w, h, d, corner: cr, edge: edge, cornerSteps: 10, edgeSteps: 5), frame, at(0, 0, 0), shadow: true);
-    add(roundedPlate(w - 2 * glass, h - 2 * glass, cr - glass), _blackGlass, at(0, 0, -d / 2 - 0.002));
-    add(roundedPlate(w - 2 * glass, h - 2 * glass, cr - glass, back: true), back, at(0, 0, d / 2 + 0.002));
+    add(roundedPlate(w - 2 * glass, h - 2 * glass, cr - glass), _blackGlass, at(0, 0, -d / 2 - e));
+    add(roundedPlate(w - 2 * glass, h - 2 * glass, cr - glass, back: true), back, at(0, 0, d / 2 + e));
     // The screen, upright and on its side.
-    _portrait = Node(name: '$name screen', mesh: Mesh(geometryOf(roundedPlate(sw, sh, cr - bezel)), screenMat), localTransform: at(0, 0, -d / 2 - 0.004))
+    _portrait = Node(name: '$name screen', mesh: Mesh(geometryOf(roundedPlate(sw, sh, cr - bezel)), screenMat), localTransform: at(0, 0, -d / 2 - 2 * e))
       ..castsShadows = false;
-    _landscape = Node(name: '$name screen wide', mesh: Mesh(geometryOf(roundedPlate(sh, sw, cr - bezel)), wideMat), localTransform: at(0, 0, -d / 2 - 0.004, rotZ: -math.pi / 2))
+    _landscape = Node(name: '$name screen wide', mesh: Mesh(geometryOf(roundedPlate(sh, sw, cr - bezel)), wideMat), localTransform: at(0, 0, -d / 2 - 2 * e, rotZ: -math.pi / 2))
       ..castsShadows = false
       ..visible = false;
     root
@@ -52,12 +54,12 @@ class Phone3D {
     // The front camera: the island, or a punch hole.
     final top = h / 2 - bezel;
     if (ip) {
-      add(roundedPlate(0.3 * sw, 0.085 * sw, 0.0425 * sw), _blackGlass, at(0, top - 0.028 * sw - 0.0425 * sw, -d / 2 - 0.006));
+      add(roundedPlate(0.3 * sw, 0.085 * sw, 0.0425 * sw), _blackGlass, at(0, top - 0.028 * sw - 0.0425 * sw, -d / 2 - 3 * e));
     } else {
-      add(disc(0.026 * sw), _blackGlass, at(0, top - 0.055 * sw, -d / 2 - 0.006));
+      add(disc(0.026 * sw), _blackGlass, at(0, top - 0.055 * sw, -d / 2 - 3 * e));
     }
     // The cameras on the back.
-    final bz = d / 2 + 0.002;
+    final bz = d / 2 + e;
     if (ip) {
       final b = 0.44 * w, bd = 0.028 * w;
       final cx = -w / 2 + glass + 0.06 * w + b / 2, cy = h / 2 - glass - 0.06 * w - b / 2;
@@ -65,15 +67,15 @@ class Phone3D {
       for (final (lx, ly) in [(-0.22, 0.22), (-0.22, -0.22), (0.22, 0.0)]) {
         _lens(cx + lx * b, cy + ly * b, bz + bd, 0.165 * b, frame);
       }
-      add(disc(0.055 * b, back: true), _flash, at(cx + 0.22 * b, cy + 0.25 * b, bz + bd + 0.002));
-      add(disc(0.06 * b, back: true), _blackGlass, at(cx + 0.22 * b, cy - 0.25 * b, bz + bd + 0.002));
+      add(disc(0.055 * b, back: true), _flash, at(cx + 0.22 * b, cy + 0.25 * b, bz + bd + e));
+      add(disc(0.06 * b, back: true), _blackGlass, at(cx + 0.22 * b, cy - 0.25 * b, bz + bd + e));
     } else {
       final bw = w - 2 * glass - 0.04 * w, bh = 0.2 * w, bd = 0.03 * w, cy = h / 2 - 0.36 * w;
       add(roundedSlab(bw, bh, bd, corner: bh / 2, edge: 0.4 * bd), _visor, at(0, cy, bz + bd / 2));
       for (final lx in [-0.24, -0.05]) {
         _lens(lx * w, cy, bz + bd, 0.33 * bh, frame);
       }
-      add(disc(0.09 * bh, back: true), _flash, at(0.2 * w, cy, bz + bd + 0.002));
+      add(disc(0.09 * bh, back: true), _flash, at(0.2 * w, cy, bz + bd + e));
     }
     // The buttons on the sides.
     final bt = 0.012 * w, bdz = 0.42 * d;
@@ -96,11 +98,11 @@ class Phone3D {
   /// A lens: its barrel (the frame's metal) standing out of the back, the
   /// glass in it (centred at x, y; its foot at [z]).
   void _lens(double x, double y, double z, double r, Material metal) {
-    const depth = 0.035;
+    final depth = 0.22 * d;
     final barrel = CylinderGeometry(bottomRadius: r, topRadius: r * 0.96, height: depth, radialSegments: 28);
     root
       ..add(Node(name: 'phone lens', mesh: Mesh(barrel, metal), localTransform: trs(vm.Vector3(x, y, z + depth / 2), rotX: math.pi / 2))..castsShadows = false)
-      ..add(Node(name: 'phone lens glass', mesh: Mesh(geometryOf(disc(r * 0.78, back: true)), _lensGlass), localTransform: trs(vm.Vector3(x, y, z + depth + 0.001)))..castsShadows = false);
+      ..add(Node(name: 'phone lens glass', mesh: Mesh(geometryOf(disc(r * 0.78, back: true)), _lensGlass), localTransform: trs(vm.Vector3(x, y, z + depth + d / 160)))..castsShadows = false);
   }
 
   /// Which screen shows: upright, or on its side.
@@ -175,6 +177,54 @@ class Window3D {
     ..clearcoat = 0.7
     ..clearcoatRoughness = 0.12;
   static final _bar = pbr(lin3v(0xEEF1F5), roughness: 0.3, emissive: lin3v(0xEEF1F5), emissiveStrength: 0.25);
+}
+
+/// A laptop, open on a table: its base (the keyboard's well, the trackpad)
+/// on the table, the lid [tilt] back from upright, the page on its screen
+/// ([w]×[h], facing −z, as the lid's), all in proportion to the screen.
+/// Its middle front edge at its origin, on the table.
+class Laptop3D {
+  Laptop3D(Node parent, {required this.w, required this.h, required Texture2D page, double tilt = 0.26, String name = 'laptop'}) : root = Node(name: name) {
+    pageMat = deviceScreen(page);
+    final bezel = 0.03 * w, lw = w + 2 * bezel, lh = h + 2 * bezel + 0.05 * w, ld = 0.017 * w;
+    final bd = 0.7 * lw, bt = 0.034 * w, e = ld / 6;
+    void add(Node to, MeshData data, Material mat, vm.Matrix4 at, {bool shadow = false}) =>
+        to.add(Node(name: '$name part', mesh: Mesh(geometryOf(data), mat), localTransform: at)..castsShadows = shadow);
+    // (A quarter turn about x lays a slab or a plate flat, its face up.)
+    const flat = math.pi / 2;
+    // The base; the keyboard's well and the trackpad set in its top.
+    add(root, roundedSlab(lw, bd, bt, corner: 0.03 * w, edge: 0.4 * bt), _shell, trs(vm.Vector3(0, bt / 2, bd / 2), rotX: flat), shadow: true);
+    add(root, roundedPlate(0.86 * lw, 0.42 * bd, 0.01 * w), _keys, trs(vm.Vector3(0, bt + e, 0.62 * bd), rotX: flat));
+    add(root, roundedPlate(0.36 * lw, 0.28 * bd, 0.012 * w), _pad, trs(vm.Vector3(0, bt + e, 0.2 * bd), rotX: flat));
+    // The lid, from the hinge at the base's back edge: its shell, the black
+    // glass round the screen, the page.
+    final lid = Node(name: '$name lid', localTransform: trs(vm.Vector3(0, bt, bd), rotX: tilt));
+    add(lid, roundedSlab(lw, lh, ld, corner: 0.03 * w, edge: 0.4 * ld), _shell, trs(vm.Vector3(0, lh / 2, 0)), shadow: true);
+    add(lid, roundedPlate(lw - 0.004 * w, lh - 0.004 * w, 0.028 * w), Phone3D._blackGlass, trs(vm.Vector3(0, lh / 2, -ld / 2 - e)));
+    lid.add(Node(name: '$name page', mesh: Mesh(geometryOf(roundedPlate(w, h, 0.006 * w)), pageMat), localTransform: trs(vm.Vector3(0, bezel + 0.05 * w + h / 2, -ld / 2 - 2 * e)))..castsShadows = false);
+    root.add(lid);
+    parent.add(root..visible = false);
+    deviceRoots.add(root);
+  }
+
+  final double w, h;
+  final Node root;
+  late final PhysicallyBasedMaterial pageMat;
+
+  set page(Texture2D t) => pageMat
+    ..baseColorTexture = t
+    ..emissiveTexture = t;
+
+  /// Shown, its origin placed by [m].
+  void place(vm.Matrix4 m) => root
+    ..visible = true
+    ..localTransform = m;
+
+  void hide() => root.visible = false;
+
+  static final _shell = pbr(lin3v(0xC8CBD0), metallic: 0.9, roughness: 0.32);
+  static final _keys = pbr(lin3v(0x1E2024), roughness: 0.6);
+  static final _pad = pbr(lin3v(0xB9BCC2), metallic: 0.6, roughness: 0.28);
 }
 
 /// A sign's frame: a slim aluminium edge round a board [w]×[h] (its face

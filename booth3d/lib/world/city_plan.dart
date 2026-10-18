@@ -49,6 +49,7 @@ abstract final class Plan {
     (28.0, 84.0, 40.0, 100.0), (-15.8, 73.6, -2.2, 84.4), // tower, farm
     (1.5, 69.5, 18.5, 87.0), (24.0, 21.5, 41.0, 37.0), // relay, itemize
     (-41.0, 19.5, -24.0, 31.0), (-11.0, 55.0, -2.5, 65.0), (2.5, 50.5, 11.5, 64.0), // locale, ruby, hyphenation
+    (-41.0, 33.0, -24.0, 49.0), // the demos store
   ];
 
   /// Whether (x, z) is on one of the [lots] ([margin] metres round it).

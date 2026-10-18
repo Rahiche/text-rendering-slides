@@ -392,10 +392,14 @@ class Talk extends ChangeNotifier {
   /// first, across, then down (a crane's move, never through a wall).
   static Shot _between(Shot a, Shot b, double u, double over) {
     final e = u * u * u * (u * (u * 6 - 15) + 10);
-    final eye = a.eye + (b.eye - a.eye) * e;
+    final eye = a.eye + (b.eye - a.eye) * e, target = a.target + (b.target - a.target) * e;
     final arc = math.min(6.0, 0.12 * (b.eye - a.eye).length) * math.sin(math.pi * e);
-    eye.y += math.max(arc, over * smooth(0, 0.3, u) * (1 - smooth(0.7, 1, u)));
-    return Shot(eye, a.target + (b.target - a.target) * e, fov: lerp(a.fov, b.fov, e), drift: lerp(a.drift, b.drift, e));
+    final lift = math.max(arc, over * smooth(0, 0.3, u) * (1 - smooth(0.7, 1, u)));
+    eye.y += lift;
+    // (From close up, what it looks at rises with it at first: a crane up,
+    // not a sudden tilt down at what it was close on.)
+    target.y += lift * (1 - (a.target - a.eye).length / 4).clamp(0.0, 1.0) * (1 - e);
+    return Shot(eye, target, fov: lerp(a.fov, b.fov, e), drift: lerp(a.drift, b.drift, e));
   }
 
   /// How far above the straight way from [a] to [b] the camera has to go

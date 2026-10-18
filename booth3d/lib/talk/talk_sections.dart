@@ -167,7 +167,7 @@ List<TalkSection> talkSections(Site3D site) {
             view: Shot(vm.Vector3(0, 4.5, -22), vm.Vector3(-6.94, 1.0, 0), fov: 27, drift: 0.3),
             viewFrom: 9.8,
           ),
-          CityBeat.scene('phones', hold: 7.0, fly: 3.0),
+          CityBeat.scene('phones', hold: 8.0, fly: 3.0),
         ],
       ),
       CityStop(

@@ -6,42 +6,49 @@ import 'package:flutter_scene/scene.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import 'figure.dart';
 import 'kit.dart';
+import 'motion.dart';
 import 'shot.dart';
 import 'devices.dart';
 import 'vignette.dart';
 
-/// 端末 · Phones, hung over the lawn behind the site, only while a talk
-/// calls on them: big enough to read from the back of a room, their
-/// screens laid out by the real text stack. Four turns:
+/// デモ · The Demos store: a glass pavilion on the west side street, as a
+/// phone maker's flagship store is, where the talk's demos wait on long
+/// oak tables, each on a device about its real size, its screen laid out
+/// by the real text stack. Only a talk plays them. A table a turn:
 ///
-/// * line breaking (0–8 s): one phone, a paragraph filled up to its
-///   maxWidth (an amber line at the right margin); turned on its side, the
-///   width more than doubles and the same words break into fewer, longer
-///   lines;
-/// * the same everywhere (20–32 s): an iPhone in SF Pro and an Android
-///   phone in Roboto, each laying the paragraph out its own way (the lines
-///   break in different places); both turn round once and come back as
-///   Flutter draws them, in the app's own font with its own line breaker:
-///   line for line the same;
-/// * phrase breaking (40–47.5 s): a Japanese sentence as Text() breaks it,
-///   anywhere (the words it splits in red), and as KumihanText() does, a
-///   word joiner (U+2060) inside each phrase so the line breaker can only
-///   break between them (the same words, whole, in green);
-/// * punctuation (48–56 s): the first phone turns on its side for
-///   「こんにちは」「世界」。 twice, as Text() spaces it and with the font's
-///   'halt' where 」 meets 「: the gap between the marks, 1 em, then ½;
-/// * the web (60–68 s): two browser windows, an HTML page and a Flutter
-///   web page (its text pixels on a canvas). The Flutter page's Japanese
-///   is tofu until its font arrives from fonts.gstatic.com; then find
-///   (Ctrl+F) for "text": the HTML page finds it, the canvas doesn't.
+/// * line breaking (0–8 s, front left): a phone, a paragraph filled up to
+///   its maxWidth (an amber line at the right margin); turned on its side,
+///   the width more than doubles and the same words break into fewer,
+///   longer lines;
+/// * the same everywhere (20–32 s, front right): an iPhone in SF Pro and an
+///   Android phone in Roboto, each laying the paragraph out its own way
+///   (the lines break in different places); both turn round once on their
+///   turntables and come back as Flutter draws them, in the app's own font
+///   with its own line breaker: line for line the same;
+/// * phrase breaking (40–47.5 s, back left): a Japanese sentence as Text()
+///   breaks it, anywhere (the words it splits in red), and as
+///   KumihanText() does, a word joiner (U+2060) inside each phrase so the
+///   line breaker can only break between them (whole, in green);
+/// * punctuation (48–56 s): the first of those phones turned on its side
+///   for 「こんにちは」「世界」。 twice, as Text() spaces it and with the
+///   font's 'halt' where 」 meets 「: the gap between the marks, 1 em, then ½;
+/// * the web (60–68 s, back right): two laptops, an HTML page and a
+///   Flutter web page (its text pixels on a canvas). The Flutter page's
+///   Japanese is tofu until its font arrives from fonts.gstatic.com; then
+///   find (Ctrl+F) for "text": the HTML page finds it, the canvas doesn't.
+///
+/// Each turn the camera comes from the street: the store whole through its
+/// glass front, DEMOS over the door; in at the door and on to the table,
+/// close on its devices.
 class TalkPhones extends Vignette {
   TalkPhones(super.kit);
 
   @override
   String get name => 'phones';
   @override
-  String get kick => 'PHONES';
+  String get kick => 'DEMOS';
   @override
   String get line => 'the same words, the same lines';
   @override
@@ -56,42 +63,55 @@ class TalkPhones extends Vignette {
   @override
   double get visit => 70;
 
-  /// Over the lawn behind the site, facing the plaza.
+  /// On the west side street, north of the locale office, its glass front
+  /// (z = 0) to the street.
   @override
-  final frame = trs(vm.Vector3(-1.0, 0, 21.0));
+  final frame = trs(vm.Vector3(-28.6, 0, 41.0), rotY: -math.pi / 2);
 
-  /// A phone's size (m), its screen's, the screen's pixels; how high they
-  /// hang (their middles); the two phones' places in the second turn.
-  static const _w = 1.62, _h = 3.4, _px = 540, _py = 1174;
-  static const _y = 8.5, _apart = 1.4;
+  /// The pavilion: [_sw] wide, [_sd] deep, [_sh] tall; its door's half
+  /// width and height.
+  static const _sw = 14.0, _sd = 10.0, _sh = 5.6, _door = 1.4, _doorH = 3.3;
 
-  /// The turns: the first held at [_hold1], gone by [_end1]; the second
-  /// from [_from2], held at [_hold2].
-  static const _turn0 = 3.4, _turn1 = 4.5, _hold1 = 7.0, _end1 = 8.4;
-  static const _from2 = 20.0, _spin0 = 25.6, _spin1 = 26.5, _hold2 = 31.0, _end2 = 32.4;
+  /// The tables (their middles, in turn's order), their length, width and
+  /// top; how far in from a table's front edge its devices stand.
+  static const _tables = [(-3.6, 3.0), (3.6, 3.0), (-3.6, 6.6), (3.6, 6.6)];
+  static const _tl = 3.4, _tw = 1.1, _top = 0.9, _in = 0.3;
 
-  /// The Japanese turns: the phrases' (held at [_from4]: the punctuation
-  /// carries on from it, the same phones), the punctuation's.
-  static const _from3 = 40.0, _from4 = 48.0, _hold4 = 55.5, _end4 = 56.4;
+  /// A phone's size (m: a little over life size), its screen's pixels;
+  /// how far apart two stand, how far back they lean on their stands.
+  static const _w = 0.09, _h = 0.19, _d = 0.0095, _px = 540, _py = 1174, _apart = 0.15, _lean = 0.2;
+
+  /// The turns: the first's quarter turn, its hold; the second's from, its
+  /// spin, its hold.
+  static const _turn0 = 5.0, _turn1 = 6.1;
+  static const _from2 = 20.0, _spin0 = 25.6, _spin1 = 26.5;
+
+  /// The Japanese turns: the phrases' (from [_from3]; the punctuation
+  /// carries on from [_from4], the same phones).
+  static const _from3 = 40.0, _from4 = 48.0;
 
   /// The web's turn: from [_from5]; the font arrives at [_fontAt]; find at
-  /// [_findAt]; held at [_hold5].
-  static const _from5 = 60.0, _fontAt = 63.6, _findAt = 65.2, _hold5 = 68.0, _end5 = 68.9;
+  /// [_findAt].
+  static const _from5 = 60.0, _fontAt = 65.0, _findAt = 66.4;
 
-  /// A browser window's size (m), its body's, its pixels; where the two
-  /// hang (their middles, across).
-  static const _bw = 2.6, _bh = 1.6, _bpx = 1300, _bpy = 800, _bx = 1.5;
+  /// A laptop's screen (m), its page's pixels; how far apart two stand.
+  static const _bw = 0.3, _bh = 0.185, _bpx = 1300, _bpy = 800, _bx = 0.25;
 
   static const _lineText = 'Each line is filled up to maxWidth; the next word that won\'t fit starts a new one.';
   static const _sameText = 'These words wrap at different places on each phone\'s own text engine.';
 
-  /// The phones (an iPhone and a Pixel), and the browsers' windows; the
-  /// windows' pictures (the HTML page, found; the canvas page in tofu,
-  /// with its font, found nothing).
-  late final Phone3D _a, _b;
-  late final Window3D _html, _canvas;
+  /// The devices, a table's each: the phone that turns on its side; the
+  /// iPhone and the Pixel; the phones for Text() and KumihanText(); the
+  /// laptops (the HTML page, found; the canvas page in tofu, with its
+  /// font, found nothing).
+  late final Phone3D _line, _ios, _android, _plain, _glued;
+  late final Laptop3D _html, _canvas;
   late final Texture2D _htmlPage, _htmlFound, _canvasTofu, _canvasFont, _canvasFound;
   late final Texture2D _tall, _wideLines, _iosNative, _androidNative, _flutter, _jaPlain, _jaGlued, _punct;
+
+  /// The store's people: two of its staff, a visitor.
+  final _people = <int>[];
+  final _poses = List.generate(3, (_) => FigurePose());
   bool _ready = false;
   int _act = 0;
 
@@ -137,10 +157,20 @@ class TalkPhones extends Vignette {
     _canvasTofu = textures[10];
     _canvasFont = textures[11];
     _canvasFound = textures[12];
-    _a = Phone3D(detail, make: PhoneMake.iphone, w: _w, h: _h, screen: _tall, wide: _wideLines, name: 'talk iphone');
-    _b = Phone3D(detail, make: PhoneMake.pixel, w: _w, h: _h, screen: _androidNative, name: 'talk pixel');
-    _html = Window3D(detail, w: _bw, h: _bh, page: _htmlPage, name: 'talk html window');
-    _canvas = Window3D(detail, w: _bw, h: _bh, page: _canvasTofu, name: 'talk canvas window');
+    Phone3D phone(PhoneMake make, Texture2D screen, String name, {Texture2D? wide}) =>
+        Phone3D(detail, make: make, w: _w, h: _h, d: _d, screen: screen, wide: wide, name: 'demo $name');
+    _line = phone(PhoneMake.iphone, _tall, 'line iphone', wide: _wideLines);
+    _ios = phone(PhoneMake.iphone, _iosNative, 'ios');
+    _android = phone(PhoneMake.pixel, _androidNative, 'android');
+    _plain = phone(PhoneMake.iphone, _jaPlain, 'text iphone', wide: _punct);
+    _glued = phone(PhoneMake.pixel, _jaGlued, 'kumihan pixel');
+    _html = Laptop3D(detail, w: _bw, h: _bh, page: _htmlPage, name: 'demo html laptop');
+    _canvas = Laptop3D(detail, w: _bw, h: _bh, page: _canvasFont, name: 'demo canvas laptop');
+    await _store();
+    _people
+      ..add(person(_look(0x2B63C9, 0x2A2F3A, wear: 'casual_m4', staff: true)))
+      ..add(person(_look(0x2B63C9, 0x2D3340, wear: 'worker_c', staff: true, slim: true)))
+      ..add(person(_look(0xB5543C, 0x3F5F80)));
     if (const String.fromEnvironment('BOOTH3D_TIMES') != '') {
       debugPrint('PHONES ja size ${jaSize.toStringAsFixed(0)}, Text() splits ${[for (final k in split) _phrases[k]].join(' ')}; halt ${_haltWorks(84) ? 'from the font' : 'by letter spacing'}');
     }
@@ -399,107 +429,6 @@ class TalkPhones extends Vignette {
     tp.dispose();
   }
 
-  // ── Posing ────────────────────────────────────────────────────────────────
-
-  @override
-  void pose(double u, double t, double night) {
-    if (!_ready) return;
-    if (visited) _act = u < 15 ? 1 : (u < 35 ? 2 : (u < _from4 ? 3 : (u < 58 ? 4 : 5)));
-    for (final d in [_a, _b]) {
-      d.hide();
-    }
-    _html.hide();
-    _canvas.hide();
-    if (_act == 5 && u >= _from5 && u < _end5) _browsing(u, t);
-    if (_act == 1 && u < _end1) _rotate(u, t);
-    if (_act == 2 && u >= _from2 && u < _end2) _same(u, t);
-    if (_act == 3 && u >= _from3 && u < _from4) _phrasing(u, t);
-    if (_act == 4 && u < _end4) _punctuating(u, t);
-  }
-
-  /// 0 → 1, a little past 1 before it settles.
-  static double _overshoot(double k) {
-    if (k <= 0) return 0;
-    if (k >= 1) return 1;
-    const c1 = 1.70158, c3 = c1 + 1;
-    final x = k - 1;
-    return 1 + c3 * x * x * x + c1 * x * x;
-  }
-
-  final _m = vm.Matrix4.identity();
-
-  /// The matrix for something's middle at (x, y) of the frame, turned by
-  /// yaw and roll, scaled [s] (null: too small to show).
-  vm.Matrix4? _at(double x, double y, {double s = 1, double yaw = 0, double roll = 0}) {
-    if (s <= 0.001) return null;
-    _m.setFromTranslationRotationScale(vm.Vector3(x, y, 0), vm.Quaternion.euler(yaw, 0, roll), vm.Vector3.all(s));
-    return frame * _m;
-  }
-
-  void _phoneAt(Phone3D p, double x, double y, {double s = 1, double yaw = 0, double roll = 0}) {
-    if (_at(x, y, s: s, yaw: yaw, roll: roll) case final m?) p.place(m);
-  }
-
-  void _rotate(double u, double t) {
-    final s = _overshoot(seg(u, 0.2, 1.0)) * (1 - eio(seg(u, _hold1, _hold1 + 0.5)));
-    final bob = 0.06 * math.sin(t * 1.3);
-    final turn = eio(seg(u, _turn0, _turn1));
-    final wide = u >= _turn1;
-    // On its side: the screen laid out again at the new width (upright).
-    _a
-      ..screen = _tall
-      ..wideScreen = _wideLines
-      ..wide = wide;
-    _phoneAt(_a, 0, _y + bob, s: s, roll: math.pi / 2 * turn);
-  }
-
-  void _same(double u, double t) {
-    final s = _overshoot(seg(u, _from2 + 0.2, _from2 + 1.0)) * (1 - eio(seg(u, _hold2, _hold2 + 0.5)));
-    final apart = eio(seg(u, _from2 + 0.1, _from2 + 1.1));
-    // A turn round each, the screens swapped as they're edge on: native,
-    // then Flutter.
-    final spin = 2 * math.pi * eio(seg(u, _spin0, _spin1));
-    final flutter = u >= (_spin0 + _spin1) / 2;
-    _a
-      ..screen = flutter ? _flutter : _iosNative
-      ..wide = false;
-    _b
-      ..screen = flutter ? _flutter : _androidNative
-      ..wide = false;
-    for (final (i, p) in [_a, _b].indexed) {
-      final side = i == 0 ? -1.0 : 1.0;
-      final bob = 0.06 * math.sin(t * 1.3 + i * 1.7);
-      _phoneAt(p, side * _apart * apart, _y + bob, s: s, yaw: spin + side * 0.08 * (1 - smooth(_spin0, _spin1, u)));
-    }
-  }
-
-  void _phrasing(double u, double t) {
-    final s = _overshoot(seg(u, _from3 + 0.2, _from3 + 1.0));
-    final apart = eio(seg(u, _from3 + 0.1, _from3 + 1.1));
-    _a
-      ..screen = _jaPlain
-      ..wide = false;
-    _b
-      ..screen = _jaGlued
-      ..wide = false;
-    for (final (i, p) in [_a, _b].indexed) {
-      final side = i == 0 ? -1.0 : 1.0;
-      _phoneAt(p, side * _apart * apart, _y + 0.06 * math.sin(t * 1.3 + i * 1.7), s: s);
-    }
-  }
-
-  /// The two browsers: in; the canvas page's font arriving; find.
-  void _browsing(double u, double t) {
-    final s = _overshoot(seg(u, _from5 + 0.2, _from5 + 1.0)) * (1 - eio(seg(u, _hold5, _hold5 + 0.5)));
-    final apart = eio(seg(u, _from5 + 0.1, _from5 + 1.1));
-    _html.page = u < _findAt ? _htmlPage : _htmlFound;
-    _canvas.page = u < _fontAt ? _canvasTofu : (u < _findAt ? _canvasFont : _canvasFound);
-    for (final (i, win) in [_html, _canvas].indexed) {
-      final side = i == 0 ? -1.0 : 1.0;
-      if (_at(side * _bx * apart, _y + 0.05 * math.sin(t * 1.2 + i * 1.7), s: s) case final m?) win.place(m);
-    }
-  }
-
   /// A browser window: a tab ([canvas]: the Flutter web page, its text
   /// pixels on a canvas; else an HTML page), the address bar, two lines
   /// of text — the Japanese in [tofu] until its font's arrived — and
@@ -560,37 +489,221 @@ class TalkPhones extends Vignette {
     }
   });
 
-  /// The second phone away; the first to the middle, on its side.
-  void _punctuating(double u, double t) {
-    final away = eio(seg(u, _from4, _from4 + 0.45)), mid = eio(seg(u, _from4 + 0.2, _from4 + 1.3));
-    final turn = eio(seg(u, _from4 + 0.4, _from4 + 1.4)), wide = u >= _from4 + 1.4;
-    final out = 1 - eio(seg(u, _hold4, _hold4 + 0.5));
-    final bob = 0.06 * math.sin(t * 1.3);
-    _a
+  // ── The store ─────────────────────────────────────────────────────────────
+
+  /// The pavilion: a pale stone floor; stone side and back walls; the
+  /// glass front between steel fins, the door open in its middle; a white
+  /// roof round a skylight, DEMOS on its front; inside, four oak tables (a
+  /// round white stand for each device), a screen on the back wall.
+  /// (Nothing of it casts a shadow: inside is as bright as a store's.)
+  Future<void> _store() async {
+    final b = Batch(), clear = Batch();
+    final stone = pbr(rgb(1, 1, 1), roughness: 0.62), oak = pbr(rgb(1, 1, 1), roughness: 0.5);
+    final steel = pbr(rgb(1, 1, 1), metallic: 0.85, roughness: 0.3);
+    final glass = pbr(rgb(0.86, 0.93, 0.97, 0.14), roughness: 0.05)..alphaMode = AlphaMode.blend;
+    final wall = Vignette.c(0xE7E2D9), floor = Vignette.c(0xD9D4CC), white = Vignette.c(0xF4F3F0), grey = Vignette.c(0x5E646C);
+    const hw = _sw / 2;
+    // The floor, the side walls, the back.
+    box(b, stone, _sw, 0.08, _sd, 0, 0.04, _sd / 2, floor);
+    for (final x in [-hw + 0.15, hw - 0.15]) {
+      box(b, stone, 0.3, _sh, _sd, x, _sh / 2, _sd / 2, wall);
+    }
+    box(b, stone, _sw, _sh, 0.3, 0, _sh / 2, _sd - 0.15, wall);
+    // The roof round its skylight (glass over the tables).
+    const t = 0.32, y = _sh + t / 2, sx = 4.6, sz0 = 1.8, sz1 = 8.2;
+    box(b, stone, _sw + 0.4, t, sz0 + 0.5, 0, y, (sz0 - 0.5) / 2, white);
+    box(b, stone, _sw + 0.4, t, _sd + 0.2 - sz1, 0, y, (sz1 + _sd + 0.2) / 2, white);
+    for (final s in [-1.0, 1.0]) {
+      box(b, stone, hw + 0.2 - sx, t, sz1 - sz0, s * (sx + hw + 0.2) / 2, y, (sz0 + sz1) / 2, white);
+    }
+    box(clear, glass, 2 * sx, 0.03, sz1 - sz0, 0, _sh + t - 0.03, (sz0 + sz1) / 2, Vignette.c(0xFFFFFF));
+    for (var x = -sx + 1.15; x < sx; x += 2.3) {
+      box(b, steel, 0.06, 0.08, sz1 - sz0, x, _sh + t - 0.06, (sz0 + sz1) / 2, grey);
+    }
+    // The front: steel fins between full-height panes; the door open in the
+    // middle, glass over it; a band under the roof for the sign.
+    const top = _sh - 0.75, bay = 2.8;
+    for (var k = -2; k <= 2; k++) {
+      final x = k * bay;
+      if (k == 0) {
+        box(clear, glass, 2 * _door - 0.08, top - _doorH, 0.03, x, (top + _doorH) / 2, 0, Vignette.c(0xFFFFFF));
+        box(b, steel, 2 * _door, 0.1, 0.12, x, _doorH, 0, grey);
+      } else {
+        box(clear, glass, bay - 0.08, top - 0.08, 0.03, x, (top + 0.08) / 2, 0, Vignette.c(0xFFFFFF));
+      }
+    }
+    for (var k = -2; k <= 3; k++) {
+      box(b, steel, 0.08, top, 0.28, (k - 0.5) * bay, top / 2, 0, grey);
+    }
+    box(b, stone, _sw + 0.4, _sh - top, 0.3, 0, (_sh + top) / 2, 0, white);
+    b.buildInto(shell, 'demo store', castsShadows: false);
+    clear.buildInto(shell, 'demo store glass', castsShadows: false);
+    // The tables (their shadows on the floor): an oak top on two slab legs;
+    // a stand for each phone.
+    final tables = Batch();
+    for (final (tx, tz) in _tables) {
+      box(tables, oak, _tl, 0.06, _tw, tx, _top - 0.03, tz, Vignette.c(0xC9A57C));
+      for (final s in [-1.0, 1.0]) {
+        box(tables, oak, 0.06, _top - 0.06, _tw - 0.2, tx + s * (_tl / 2 - 0.35), (_top - 0.06) / 2, tz, Vignette.c(0xB8946B));
+      }
+    }
+    for (final (x, z) in [(_tables[0].$1, _tables[0].$2), for (final i in [1, 2]) for (final s in [-1.0, 1.0]) (_tables[i].$1 + s * _apart, _tables[i].$2)]) {
+      cylinder(tables, stone, 0.055, 0.012, x, _top + 0.006, z - _tw / 2 + _in, white);
+    }
+    tables.buildInto(shell, 'demo tables');
+    // The sign over the door, and the screen on the back wall.
+    await Future.wait([
+      sign(5.2, 0.62, trs(vm.Vector3(0, (_sh + top) / 2, -0.17)), (c, s) {
+        c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFFF4F3F0));
+        label(c, 'DEMOS', Offset(s.width * 0.31, s.height * 0.08), s.height * 0.72, const Color(0xFF1C2230), weight: FontWeight.w700);
+      }, px: 1040, glow: 0.35, thick: 0.03, shell: true),
+      sign(7.4, 2.6, trs(vm.Vector3(0, 2.6, _sd - 0.31)), (c, s) {
+        c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF0E1420));
+        label(c, 'DEMOS', Offset(s.width * 0.07, s.height * 0.16), s.height * 0.3, const Color(0xFFF2F4F8), weight: FontWeight.w700);
+        label(c, 'Flutter text, on every screen', Offset(s.width * 0.07, s.height * 0.56), s.height * 0.1, const Color(0xFF8FB8FF), weight: FontWeight.w600);
+        label(c, 'line breaking · one layout · phrases · punctuation · the web', Offset(s.width * 0.07, s.height * 0.72), s.height * 0.065, const Color(0xFF9AA3B2));
+      }, px: 1480, glow: 0.6, thick: 0.05, shell: true),
+    ]);
+  }
+
+  static FigureLook _look(int top, int legs, {String? wear, bool staff = false, bool slim = false}) => FigureLook()
+    ..top = rgbHex(top)
+    ..legs = rgbHex(legs)
+    ..shoes = rgbHex(0x1B1C20)
+    ..skin = rgbHex(slim ? 0xE8C6AC : 0xD9AE8E)
+    ..hairColor = rgbHex(0x1F1915)
+    ..hair = slim ? Hair.bob : Hair.short
+    ..slim = slim
+    ..wear = wear
+    ..atWork = staff;
+
+  // ── Posing ────────────────────────────────────────────────────────────────
+
+  @override
+  void pose(double u, double t, double night) {
+    if (!_ready) return;
+    if (visited) _act = u < 15 ? 1 : (u < 35 ? 2 : (u < _from4 ? 3 : (u < 58 ? 4 : 5)));
+    // Each table's devices: as their turn has them, else as they wait.
+    _lines(_act == 1 ? u : null);
+    _same(_act == 2 ? u : null);
+    _japanese(_act == 3 || _act == 4 ? u : null);
+    _browsing(_act == 5 ? u : null);
+    // The staff: one by the back wall, one by the side; a visitor at the
+    // first table's far end.
+    for (final (i, (x, z, yaw)) in [(0.2, 8.7, 0.0), (6.1, 4.8, math.pi / 2), (-5.6, 1.95, math.pi)].indexed) {
+      final p = _poses[i]..rest();
+      p.pos.setValues(x, 0.08, z);
+      Idle.stand(p, t, Manner.of(140 + i), look: 0.6);
+      p.yaw += yaw;
+      draw(_people[i], p);
+    }
+  }
+
+  /// Where a device stands on table [k]: [dx] along it from its middle.
+  static vm.Vector3 _spot(int k, double dx) {
+    final (tx, tz) = _tables[k];
+    return vm.Vector3(tx + dx, _top, tz - _tw / 2 + _in);
+  }
+
+  /// Phone [p] on its stand at [at] (the stand's middle, on the table):
+  /// leaning back, [roll]ed about its face ([roll] a quarter turn: on its
+  /// side), turned [yaw] with its stand.
+  void _phoneOn(Phone3D p, vm.Vector3 at, {double yaw = 0, double roll = 0}) {
+    final half = lerp(_h, _w, (roll / (math.pi / 2)).abs().clamp(0.0, 1.0)) / 2;
+    final up = half * math.cos(_lean), back = half * math.sin(_lean);
+    final c = vm.Vector3(at.x + back * math.sin(yaw), at.y + 0.014 + up, at.z + back * math.cos(yaw));
+    p.place(place(trs(c, rotY: yaw, rotX: _lean, rotZ: roll)));
+  }
+
+  /// The first table: the phone turned on its side (from portrait).
+  void _lines(double? u) {
+    final turn = u == null ? 0.0 : eio(seg(u, _turn0, _turn1));
+    _line
+      ..screen = _tall
+      ..wideScreen = _wideLines
+      ..wide = turn >= 0.5;
+    _phoneOn(_line, _spot(0, 0), roll: math.pi / 2 * turn);
+  }
+
+  /// The second: the iPhone and the Pixel, native; a turn on their
+  /// turntables, and Flutter's.
+  void _same(double? u) {
+    final spin = u == null ? 0.0 : 2 * math.pi * eio(seg(u, _spin0, _spin1));
+    final flutter = u != null && u >= (_spin0 + _spin1) / 2;
+    _ios.screen = flutter ? _flutter : _iosNative;
+    _android.screen = flutter ? _flutter : _androidNative;
+    _phoneOn(_ios, _spot(1, -_apart), yaw: spin + 0.06);
+    _phoneOn(_android, _spot(1, _apart), yaw: spin - 0.06);
+  }
+
+  /// The third: Text() and KumihanText(); then the first on its side, the
+  /// marks' spacing.
+  void _japanese(double? u) {
+    final turn = u == null ? 0.0 : eio(seg(u, _from4 + 0.4, _from4 + 1.4));
+    _plain
       ..screen = _jaPlain
       ..wideScreen = _punct
-      ..wide = wide;
-    _b
-      ..screen = _jaGlued
-      ..wide = false;
-    _phoneAt(_b, _apart, _y + 0.06 * math.sin(t * 1.3 + 1.7), s: (1 - away) * out);
-    _phoneAt(_a, -_apart * (1 - mid), _y + bob, s: out, roll: math.pi / 2 * turn);
+      ..wide = turn >= 0.5;
+    _phoneOn(_plain, _spot(2, -_apart), yaw: 0.06, roll: math.pi / 2 * turn);
+    _phoneOn(_glued, _spot(2, _apart), yaw: -0.06);
+  }
+
+  /// The last: the two laptops; the canvas page's font arriving; find.
+  void _browsing(double? u) {
+    _html.page = u == null || u < _findAt ? _htmlPage : _htmlFound;
+    _canvas.page = u == null ? _canvasFont : (u < _fontAt ? _canvasTofu : (u < _findAt ? _canvasFont : _canvasFound));
+    for (final (i, l) in [_html, _canvas].indexed) {
+      final side = i == 0 ? -1.0 : 1.0;
+      final at = _spot(3, side * _bx)..z -= 0.12;
+      l.place(place(trs(at, rotY: -side * 0.1)));
+    }
   }
 
   // ── The camera ────────────────────────────────────────────────────────────
 
+  /// Each turn's table, when it starts; how far from its devices the camera
+  /// stops, and how much of the table it takes in.
+  static double _from(int k) => const [0.0, _from2, _from3, _from5][k];
+  static const _near = [0.46, 0.56, 0.56, 0.9];
+
+  /// From the street, in at the door, to the table: the store whole through
+  /// its glass, then down the aisle, close on the devices (on the first of
+  /// the Japanese phones for the marks).
   @override
   Shot shot(double u) {
-    if (u < 15) {
-      // A little closer as it turns.
-      final k = smooth(_turn0 - 0.5, _turn1 + 1.0, u);
-      return Shot(vm.Vector3(-1.1, lerp(7.5, 7.7, k), lerp(-6.4, -6.0, k)), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);
+    final k = u < 15 ? 0 : (u < 35 ? 1 : (u < 58 ? 2 : 3));
+    final f = eio(seg(u, _from(k) + 0.4, _from(k) + 4.6));
+    var at = _spot(k, 0)..y += k == 3 ? 0.15 : 0.1;
+    var near = _near[k];
+    if (k == 2) {
+      // (The marks: in on the first phone, on its side.)
+      final m = eio(seg(u, _from4 + 0.2, _from4 + 1.6));
+      at = at..x -= _apart * m;
+      near = lerp(near, 0.48, m);
     }
-    if (u < _from4) return Shot(vm.Vector3(-0.9, 7.6, -7.6), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);
-    // Back for the two browsers.
-    if (u >= 58) return Shot(vm.Vector3(-0.5, 8.1, -7.4), vm.Vector3(0, 8.45, 0), fov: 42, settle: 1.0, drift: 0.4);
-    // In for the phone on its side.
-    final k = smooth(_from4 + 0.2, _from4 + 1.6, u);
-    return Shot(vm.Vector3(lerp(-0.9, -1.1, k), lerp(7.6, 7.7, k), lerp(-7.6, -6.0, k)), vm.Vector3(0, 8.45, 0), fov: 40, settle: 1.0, drift: 0.4);
+    final end = vm.Vector3(at.x, at.y + 0.42 * near, at.z - near);
+    final pts = [vm.Vector3(0, 2.6, -11.5), vm.Vector3(0, 1.75, -0.7), end];
+    final eye = _path(pts, f);
+    final target = vm.Vector3(lerp(0, at.x, eio(seg(f, 0.25, 1))), lerp(2.0, at.y, eio(seg(f, 0.2, 1))), lerp(3.0, at.z, eio(seg(f, 0.2, 1))));
+    return Shot(eye, target, fov: lerp(44, 40, f), settle: 1.0, drift: lerp(0.4, 0.15, f));
+  }
+
+  /// [f] (0..1) of the way along [pts]: a smooth curve through them, as far
+  /// between each two as their distance.
+  static vm.Vector3 _path(List<vm.Vector3> pts, double f) {
+    final lens = [for (var i = 0; i + 1 < pts.length; i++) pts[i].distanceTo(pts[i + 1])];
+    final total = lens.fold<double>(0, (a, b) => a + b);
+    var d = f * total;
+    for (var i = 0; i < lens.length; i++) {
+      if (d <= lens[i] || i == lens.length - 1) {
+        final u = (d / lens[i]).clamp(0.0, 1.0);
+        final p0 = pts[math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[math.min(i + 2, pts.length - 1)];
+        // (Catmull-Rom.)
+        final u2 = u * u, u3 = u2 * u;
+        return (p1 * 2 + (p2 - p0) * u + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * u2 + (-p0 + p1 * 3 - p2 * 3 + p3) * u3) * 0.5;
+      }
+      d -= lens[i];
+    }
+    return pts.last.clone();
   }
 }

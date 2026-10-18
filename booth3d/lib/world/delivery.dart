@@ -7,6 +7,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 
 import 'city_plan.dart';
 import 'crew.dart';
+import 'figure.dart' show Figures;
 import 'crew_breaks.dart';
 import 'kit.dart';
 import 'life.dart' show StreetWork, TrafficLights;
@@ -617,6 +618,10 @@ class Delivery3D implements StreetWork {
     _at(t);
     final run = _pRun;
     _truck.visible = _partsNode.visible = _pShown;
+    // (Capture runs: nobody under it.)
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') {
+      Figures.of(scene).vehicles['delivery truck'] = [if (_pShown && run != null) (_pPos.x, _pPos.z, _half, 1.05, _pYaw)];
+    }
     if (!_pShown || run == null) return;
     _truck.place((m) => setTrs(m, _pPos.x, _pPos.y, _pPos.z, yaw: _pYaw));
     _body.place((m) => setTrs(m, 0, 0, 0, pitch: _pLean, roll: -_pPitch));
@@ -817,12 +822,78 @@ class Delivery3D implements StreetWork {
 
   @override
   (double, double)? gateBusy(double t) {
-    for (final r in _runs) {
-      if (t > r.arrive - 7.5 && t < r.arrive - 0.3) return (gateFrom - 0.5, gateTo + 0.6);
-      if (t > r.depart - 1.8 && t < r.depart + 6.2) return (gateFrom - 0.5, gateTo + 0.6);
+    // From when it'll be over the front pavement within the next few
+    // seconds (time for whoever's in its way to get clear) till it's off
+    // it: the whole stretch it crosses turning in, or backing out and
+    // turning off east, with room round it (people wait either side).
+    for (final (x, z, yaw, leaving) in _ahead(t)) {
+      if (footprintAcross(x, z, yaw, _half + 0.3, 1.05 + 0.3, Plan.aveZ1 - 0.3, Plan.plazaZ0 - 0.2) == null) continue;
+      final (lo, hi) = leaving ? _outSweep : _inSweep;
+      return (lo - 0.6, hi + 0.6);
     }
     return null;
   }
+
+  @override
+  bool crosswalkBusy(double x, double t) {
+    for (final (px, pz, yaw, _) in _ahead(t)) {
+      final over = footprintAcross(px, pz, yaw, _half + 0.3, 1.05 + 0.3, Plan.aveZ0 - 0.3, Plan.aveZ1 + 0.3);
+      if (over != null && over.$2 > x - Plan.crossHalf - 0.3 && over.$1 < x + Plan.crossHalf + 0.3) return true;
+    }
+    return false;
+  }
+
+  @override
+  void trucks(double t, List<(vm.Vector3, vm.Vector3)> out) {
+    _at(t);
+    if (!_pShown || _pRun == null) return;
+    final c = math.cos(_pYaw), s = -math.sin(_pYaw);
+    const l = _half + 0.05, w = 1.05 + 0.05;
+    out.add((vm.Vector3(_pPos.x, 1.2, _pPos.z), vm.Vector3((c * l).abs() + (s * w).abs(), 1.2, (s * l).abs() + (c * w).abs())));
+  }
+
+  /// Where across the front pavement it goes turning in, and backing out
+  /// and turning off east (its footprint, a little room added): x from..to.
+  late final (double, double) _inSweep = _sweep(_arriving, 25), _outSweep = _sweep(_leaving, 15);
+  (double, double) _sweep(void Function(double) pose, double until) {
+    final keep = _pt;
+    var lo = double.infinity, hi = -double.infinity;
+    for (var u = 0.0; u <= until; u += 0.05) {
+      pose(u);
+      final over = footprintAcross(_pPos.x, _pPos.z, _pYaw, _half + 0.3, 1.05 + 0.3, Plan.aveZ1 - 0.3, Plan.plazaZ0 - 0.2);
+      if (over == null) continue;
+      lo = math.min(lo, over.$1);
+      hi = math.max(hi, over.$2);
+    }
+    // (Posed back where it was.)
+    _pt = double.nan;
+    if (!keep.isNaN) _at(keep);
+    return (lo, hi);
+  }
+
+  /// Where it'll be over the next seven and a half seconds (time for anyone
+  /// in its way to get clear), every half second: its middle and heading,
+  /// and whether it's leaving. (Empty while it's nowhere near.)
+  List<(double, double, double, bool)> _ahead(double t) {
+    if (t == _aheadAt) return _aheadPoses;
+    _aheadAt = t;
+    _aheadPoses.clear();
+    if (!_runs.any((r) => t > r.arrive - _approachTime - 8 && t < r.depart + 25)) return _aheadPoses;
+    final keep = _pt;
+    for (var k = 0; k <= 15; k++) {
+      final u = t + k * 0.5;
+      _at(u);
+      final run = _pRun;
+      if (_pShown && run != null) _aheadPoses.add((_pPos.x, _pPos.z, _pYaw, u >= run.depart));
+    }
+    // (Posed back where it was.)
+    _pt = double.nan;
+    if (!keep.isNaN) _at(keep);
+    return _aheadPoses;
+  }
+
+  double _aheadAt = double.nan;
+  final _aheadPoses = <(double, double, double, bool)>[];
 
   @override
   (double, double)? laneBlock(bool eastbound, double t) {
@@ -890,4 +961,33 @@ class _Run {
 
   /// Whether the camera follows it in (not across a kerning close-up).
   bool filmed = true;
+}
+
+/// Where across (x from..to) a vehicle covers any of z0…z1: its middle
+/// (x, z), its heading [yaw] (its length along cos, −sin), half its length
+/// [l] and width [w]. Null: none of it.
+(double, double)? footprintAcross(double x, double z, double yaw, double l, double w, double z0, double z1) {
+  final c = math.cos(yaw), s = -math.sin(yaw);
+  var lo = double.infinity, hi = -double.infinity;
+  const corners = [(1.0, 1.0), (1.0, -1.0), (-1.0, -1.0), (-1.0, 1.0)];
+  for (var i = 0; i < 4; i++) {
+    final (a0, b0) = corners[i];
+    final (a1, b1) = corners[(i + 1) % 4];
+    final xa = x + c * a0 * l - s * b0 * w, za = z + s * a0 * l + c * b0 * w;
+    final xb = x + c * a1 * l - s * b1 * w, zb = z + s * a1 * l + c * b1 * w;
+    // (Its corners within the band, and where its sides cross the band's
+    // edges.)
+    if (za >= z0 && za <= z1) {
+      lo = math.min(lo, xa);
+      hi = math.max(hi, xa);
+    }
+    for (final edge in [z0, z1]) {
+      if ((za - edge) * (zb - edge) < 0) {
+        final cx = xa + (xb - xa) * (edge - za) / (zb - za);
+        lo = math.min(lo, cx);
+        hi = math.max(hi, cx);
+      }
+    }
+  }
+  return lo <= hi ? (lo, hi) : null;
 }

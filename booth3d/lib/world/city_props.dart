@@ -189,7 +189,8 @@ class CityProps {
     ).wait;
     final bins = InstancedMesh(geometry: MeshGeometry.fromMeshData(binParts['bin_metal_trash_can']!), material: binMat);
     for (final (x, z) in _benchAt) {
-      final bz = z + 1.35;
+      // (At the end away from the park's cross path, where the other's on it.)
+      final bz = (z + 1.35 - (Plan.parkZ0 + 15.5)).abs() < 1.6 ? z - 1.35 : z + 1.35;
       bins.addInstance(trs(vm.Vector3(x, 0, bz), rotY: rnd(x.round(), z.round(), 3) * 6.28));
       _solid('bins', x, 0.45, bz, 0.4, 0.45, 0.4);
     }
@@ -282,8 +283,11 @@ class CityProps {
       part(CylinderGeometry(bottomRadius: 0.3, topRadius: 0.24, height: 0.12, radialSegments: 18), vm.Matrix4.translation(vm.Vector3(0, 1.12, 0)), red),
       part(CuboidGeometry(vm.Vector3(0.3, 0.05, 0.04)), vm.Matrix4.translation(vm.Vector3(0, 0.85, -0.26)), v4(hex3(0x1B2233))),
     ]);
-    scene.add(Node(name: 'post box', mesh: Mesh(geo, pbr(rgb(1, 1, 1), roughness: 0.4)), localTransform: trs(vm.Vector3(-17.6, 0.02, Plan.walkFront))));
-    _solid('post box', -17.6, 0.6, Plan.walkFront, 0.27, 0.6, 0.27);
+    // (Tucked into the plaza's front corner, by the end of its fence: clear
+    // of the way round the corner and over the crossing.)
+    const x = -Plan.plazaX - 0.35, z = Plan.plazaZ0 - 0.35;
+    scene.add(Node(name: 'post box', mesh: Mesh(geo, pbr(rgb(1, 1, 1), roughness: 0.4)), localTransform: trs(vm.Vector3(x, 0.02, z))));
+    _solid('post box', x, 0.6, z, 0.27, 0.6, 0.27);
   }
 
   void update(double night, double t) {

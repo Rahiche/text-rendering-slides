@@ -313,16 +313,17 @@ class City3D {
     // crowd without ever blocking the view of the wall.
     final post = InstancedMesh(geometry: CylinderGeometry(bottomRadius: 0.11, topRadius: 0.11, height: 0.75, radialSegments: 10), material: poleMat);
     final cap = InstancedMesh(geometry: CylinderGeometry(bottomRadius: 0.12, topRadius: 0.12, height: 0.16, radialSegments: 10), material: _bulbMat);
-    // (None in the site gate's driveway: that one stands west of it.)
+    // (None by the site gate: its driveway, and room either side for
+    // people waiting while the truck goes through.)
     for (var x = -16.0; x <= 16.01; x += 4) {
-      final bx = (x - 12).abs() < 0.1 ? 10.4 : x;
-      post.addInstance(trs(vm.Vector3(bx, 0.395, Plan.bollardZ)));
-      (props.solids['bollards'] ??= []).add((vm.Vector3(bx, 0.4, Plan.bollardZ), vm.Vector3(0.11, 0.4, 0.11)));
-      cap.addInstance(trs(vm.Vector3(bx, 0.84, Plan.bollardZ)));
+      if ((x - 12).abs() < 0.1) continue;
+      post.addInstance(trs(vm.Vector3(x, 0.395, Plan.bollardZ)));
+      (props.solids['bollards'] ??= []).add((vm.Vector3(x, 0.4, Plan.bollardZ), vm.Vector3(0.11, 0.4, 0.11)));
+      cap.addInstance(trs(vm.Vector3(x, 0.84, Plan.bollardZ)));
     }
     scene.add(Node(name: 'bollards')..addComponent(InstancedMeshComponent(post)));
     scene.add(Node(name: 'bollard caps')..addComponent(InstancedMeshComponent(cap)));
-    for (final x in [-12.0, 10.4]) {
+    for (final x in [-12.0, 8.0]) {
       final l = PointLight(color: lin3(const Color(0xFFFFCB8A)), intensity: 0, range: 9, falloffExponent: 1.6, channelMask: local);
       _lampLights.add(l);
       _lightNodes.add(Node(name: 'bollard light', localTransform: vm.Matrix4.translation(vm.Vector3(x, 1.2, Plan.bollardZ + 0.2)))..addComponent(PointLightComponent(l)));

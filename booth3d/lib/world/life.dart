@@ -31,7 +31,9 @@ class Life3D {
   final Scene scene;
 
   final _people = _People();
+  late final _figures = Figures.of(scene);
   final _traffic = _Traffic();
+  final _inRoad = <(double, double)>[];
   late final _Signals _signals;
   late final _Birds _birds;
   late final _Blimp _blimp;
@@ -47,7 +49,9 @@ class Life3D {
   }
 
   /// How often people walked into each other (capture runs).
-  String overlapReport() => '${_people.overlapReport()}\nWALKER jumps: ${_people.jumpLog.length}${[for (final j in _people.jumpLog) '\n  $j'].join()}';
+  String overlapReport() =>
+      '${_people.overlapReport()}\nWALKER jumps: ${_people.jumpLog.length}${[for (final j in _people.jumpLog) '\n  $j'].join()}'
+      '\nWALKER in gates: ${_people.gateLog.length}${[for (final j in _people.gateLog) '\n  $j'].join()}';
 
   /// Steps the life by [dt] (sub-stepped when fast-forwarding) and poses it
   /// for [camera] (anything right at the camera steps out of its way).
@@ -59,12 +63,16 @@ class Life3D {
     while (left > 1e-6) {
       final h = math.min(left, 0.1);
       _t = m.t - left + h;
-      _traffic.step(_t, h, m.job?.phase, work);
+      _people.inRoad(_inRoad, others);
+      _traffic.step(_t, h, m.job?.phase, work, _inRoad);
+      _traffic.near(40, _people.cars);
       _people.step(_t, h, m, wallWidth, work, others);
       left -= h;
     }
     _t = m.t;
     _traffic.pose(camera, night);
+    // (Capture runs: nobody under a car.)
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') _figures.vehicles['cars'] = _traffic.footprints();
     _people.pose(_t, camera, m, night, work);
     _signals.pose(_t, night);
     _birds.pose(_t, night, camera);
@@ -84,6 +92,14 @@ abstract interface class StreetWork {
   /// is about to go or is going through it (people wait either side), or
   /// null.
   (double, double)? gateBusy(double t);
+
+  /// Whether the avenue's crosswalk at x = [x] is in the truck's way at
+  /// [t], or soon will be (people wait at the kerb).
+  bool crosswalkBusy(double x, double t);
+
+  /// The trucks about at [t], into [out]: round each one's footprint (centre,
+  /// half extents), for people to keep out of.
+  void trucks(double t, List<(vm.Vector3, vm.Vector3)> out);
 }
 
 // ── Signals ─────────────────────────────────────────────────────────────────
@@ -192,6 +208,14 @@ class _Lane {
   _Lane(this.x0, this.z0, this.dx, this.dz, this.length, this.stops, {required this.avenue});
   final double x0, z0, dx, dz, length;
 
+  /// Where along it a car must never be left standing (crosswalks, the
+  /// junctions it crosses): from, to, nearest first. A car that couldn't
+  /// get clear of one (the queue ahead) waits before it.
+  final keepClear = <(double, double)>[];
+
+  /// Distance along the lane of the point (x, z).
+  double along(double x, double z) => (x - x0) * dx + (z - z0) * dz;
+
   /// Stop lines (distance along the lane) and whether they belong to an
   /// avenue signal (or the side streets').
   final List<double> stops;
@@ -275,6 +299,18 @@ class _Traffic {
       _lanes.add(_Lane(xc - 1.75, -far, 0, 1, 2 * far, [far + Plan.aveZ0 - 3.8], avenue: false));
       _lanes.add(_Lane(xc + 1.75, far, 0, -1, 2 * far, [far - Plan.aveZ1 - 3.6], avenue: false));
     }
+    // Where they mustn't be left standing: the crosswalks at the plaza's
+    // corners and the junctions on the avenue; the far sidewalk's crossing
+    // and the avenue's junction on the side streets.
+    for (final lane in _lanes) {
+      final zones = lane.avenue
+          ? [
+              for (final x in Plan.crossX) (x, Plan.crossHalf + 0.6),
+              for (final s in [-1.0, 1.0]) (s * sx, sh + 0.4),
+            ].map((z) => (lane.along(z.$1, lane.z0), z.$2))
+          : [((Plan.peopleFar[0] + Plan.peopleFar[1]) / 2, 1.3), ((Plan.aveZ0 + Plan.aveZ1) / 2, (Plan.aveZ1 - Plan.aveZ0) / 2 + 0.4)].map((z) => (lane.along(lane.x0, z.$1), z.$2));
+      lane.keepClear.addAll([for (final (c, h) in zones) (c - h, c + h)]..sort((a, b) => a.$1.compareTo(b.$1)));
+    }
     var seed = 0;
     for (final lane in _lanes) {
       final n = lane.avenue ? 22 : 11;
@@ -307,8 +343,8 @@ class _Traffic {
   /// Cars follow the one ahead and stop at red (or amber, when they can).
   /// During the site's cleanup the side streets are held so the truck can
   /// cross them; the delivery truck's stretch of an avenue lane ([work]) is
-  /// kept clear.
-  void step(double t, double dt, Phase? phase, StreetWork? work) {
+  /// kept clear. Anyone out in the road ([people]: x, z) is stopped for.
+  void step(double t, double dt, Phase? phase, StreetWork? work, List<(double, double)> people) {
     final holdSides = phase == Phase.cleanup;
     for (final lane in _lanes) {
       final cars = lane.cars;
@@ -340,6 +376,22 @@ class _Traffic {
             break;
           }
         }
+        // Someone in the road ahead (still on a crossing, say): it stops
+        // short of them, and never moves off into anyone beside it.
+        final front = c.s + c.length / 2, wide = (c.kind == _Kind.bus ? 1.25 : 0.85) + 0.5;
+        for (final (x, z) in people) {
+          final a = lane.along(x, z), across = (z - lane.z0) * lane.dx - (x - lane.x0) * lane.dz;
+          if (across.abs() > wide || a < c.s - c.length / 2 - 0.4 || a > front + 30) continue;
+          limit = math.min(limit, a > front ? a - 1.8 - c.length / 2 : c.s);
+        }
+        // Not left standing on a crosswalk or in a junction: if where it'd
+        // have to stop leaves it on one it hasn't reached, it waits before
+        // it (the farthest first, so a wait before one isn't in the next).
+        for (var k = lane.keepClear.length - 1; k >= 0; k--) {
+          final (a, b) = lane.keepClear[k];
+          if (front > a - 0.3) continue;
+          if (limit + c.length / 2 > a && limit - c.length / 2 < b) limit = math.min(limit, a - 0.4 - c.length / 2);
+        }
         final room = math.max(0.0, limit - c.s);
         final cap = math.min(_vmax * (c.kind == _Kind.bus ? 0.8 : 1), math.sqrt(2 * _brake * room));
         c.v = c.v < cap ? math.min(cap, c.v + _accel * dt) : cap;
@@ -350,6 +402,25 @@ class _Traffic {
       }
     }
   }
+
+  /// The cars within [reach] of the plaza (x), into [out]: round each one's
+  /// footprint (centre, half extents), for people to keep out of.
+  void near(double reach, List<(vm.Vector3, vm.Vector3)> out) {
+    out.clear();
+    for (final c in _cars) {
+      final x = c.lane.x0 + c.lane.dx * c.s, z = c.lane.z0 + c.lane.dz * c.s;
+      if (x.abs() > reach || z.abs() > reach) continue;
+      final l = c.length / 2 + 0.05, w = (c.kind == _Kind.bus ? 1.25 : 0.85) + 0.05;
+      out.add((vm.Vector3(x, 0.8, z), vm.Vector3(c.lane.dx.abs() * l + c.lane.dz.abs() * w, 0.8, c.lane.dz.abs() * l + c.lane.dx.abs() * w)));
+    }
+  }
+
+  /// Each car shown, where it is: its middle, half its length and width,
+  /// its heading (see [Figures.vehicles]).
+  List<(double, double, double, double, double)> footprints() => [
+    for (final c in _cars)
+      if (c.shown) (c.lane.x0 + c.lane.dx * c.s, c.lane.z0 + c.lane.dz * c.s, c.length / 2, c.kind == _Kind.bus ? 1.25 : 0.85, c.lane.heading),
+  ];
 
   void pose(vm.Vector3 camera, double night) {
     final k = 1.0 + 7.0 * night;
@@ -423,8 +494,12 @@ class _Route {
       final a = pts[i], b = pts[(i + 1) % pts.length];
       acc += math.sqrt((b.$1 - a.$1) * (b.$1 - a.$1) + (b.$2 - a.$2) * (b.$2 - a.$2));
       cum.add(acc);
+      if (a.$2 == Plan.peopleFront && b.$2 == Plan.peopleFront) front = i;
     }
   }
+
+  /// The segment along the front sidewalk, past the site's gates (−1: none).
+  int front = -1;
 
   /// A closed loop of (x, z).
   final List<(double, double)> pts;
@@ -488,6 +563,12 @@ class _Person {
   bool placed = false;
   bool guiding = false; // the corner's worker, guiding the delivery truck
   bool onWay = false; // a walker placed on their way (after that, they walk back onto it)
+  double lag = 0; // how far behind (or off) their way they are (m)
+  double wx = 0, wz = 0; // where their way had them, last step
+  bool pressing = false; // out in the road, or in a truck's way: on out of it
+  int gate = 0; // a truck coming through the gate: 1 waiting for it, 2 getting out of its way
+  bool atKerb = false; // waiting at a crossing for the lights
+  double offLogged = -9, gateLogged = -9; // (capture runs: when they were last logged off their way, in a gate)
   int job = 0; // workers: 0 by the wall, 1 at the corner, 2 behind the wall
   int index = 0;
   int slot = 0; // among the figures (figure.dart)
@@ -502,10 +583,6 @@ class _Person {
 class _People {
   final _all = <_Person>[];
   late final Figures _figures;
-
-  /// The walk past the plaza's front (its first leg runs along the front
-  /// sidewalk, past the site gate).
-  late final _Route _front;
 
   /// The flagman's light baton (誘導灯), lit while he guides the truck.
   final _baton = Node(name: 'light baton');
@@ -527,17 +604,21 @@ class _People {
     const ex = Plan.streetX + Plan.streetHalf + 0.4, ix = Plan.streetX - Plan.streetHalf - 0.4;
     final routes = [
       // Round the plaza block and through the park.
-      // (Its watch points between the front's bollards.)
-      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [5, 24, 41, 50, 117, 125]),
+      // (Its watch points between the front's bollards, away from the
+      // gates and the spectators.)
+      _Route([(-fx, fz), (fx, fz), (fx, Plan.parkZ0 + 15.5), (-fx, Plan.parkZ0 + 15.5)], watch: [8.6, 19.4, 41, 50, 117, 125]),
       // Over the avenue at the plaza's corners and back along the far side
       // (a plain loop: no doubling back, where keeping left would swap
-      // sides).
+      // sides). (Over the east crosswalk on its outer half: the queue at its
+      // kerb kept clear of the site gate's driveway beside it. Its watch
+      // points between the front's bollards, away from the gates and the
+      // spectators.)
       _Route([
-        (Plan.crossX[1], far1),
-        (Plan.crossX[1], fz),
+        (Plan.crossX[1] + 0.8, far1),
+        (Plan.crossX[1] + 0.8, fz),
         (Plan.crossX[0], fz),
         (Plan.crossX[0], far1),
-      ], crossing: {0: true, 2: true}, watch: [11.9, 39.9]),
+      ], crossing: {0: true, 2: true}, watch: [24.4, 32.8]),
       // The far side beyond the side streets (crossing them on their green).
       for (final s in [-1.0, 1.0])
         _Route([
@@ -566,18 +647,28 @@ class _People {
         alley: true,
       ),
     ];
-    _front = routes[0];
     const counts = [24, 14, 5, 5, 8, 8, 8];
     var seed = 0;
     for (var r = 0; r < routes.length; r++) {
+      final route = routes[r];
+      // (Nobody starts out in the road: whoever would be on a crossing has
+      // just got over it, a step apart.)
+      final over = <(int, double), int>{};
       for (var i = 0; i < counts[r]; i++) {
         seed++;
         final kid = rnd(seed, 9) < 0.1;
+        final dir = rnd(seed, 2) < 0.5 ? 1.0 : -1.0;
+        var d = route.length * (i + 0.5 * rnd(seed, 1)) / counts[r];
+        final seg = route.segmentAt(d);
+        if (route.crossing.containsKey(seg)) {
+          final k = over[(seg, dir)] = (over[(seg, dir)] ?? -1) + 1;
+          d = ((dir > 0 ? route.cum[seg + 1] : route.cum[seg]) + dir * (0.5 + 0.9 * k)) % route.length;
+        }
         final p = _Person(
           _Role.walker,
-          routes[r],
-          routes[r].length * (i + 0.5 * rnd(seed, 1)) / counts[r],
-          rnd(seed, 2) < 0.5 ? 1 : -1,
+          route,
+          d,
+          dir,
           (1.05 + 0.4 * rnd(seed, 3)) * (kid ? 0.85 : 1),
           0.1 + 0.25 * rnd(seed, 4),
           kid ? 0.66 : 0.92 + 0.14 * rnd(seed, 5),
@@ -596,16 +687,17 @@ class _People {
       // Leaning on the front fence, or at the plaza's edge on its flanks
       // (out of the walkers' way).
       if (front) {
-        // (Not in front of the site gate, right of the 安全第一 banner, nor
-        // the bay gate on the left.)
-        // (Nor at the top of the crosswalks, by the plaza's corners.)
-        p.homeX = s > 0 ? const [6.6, 8.5, 9.2, 9.9][k] + jitter : -(11.4 + 1.4 * k) + jitter;
+        // (Not in front of the site gate, nor the bay gate on the left; nor
+        // by the top of the crosswalks, where people queue for the lights;
+        // nor where a bollard stands out from the kerb: room for people to
+        // pass both ways between them.)
+        p.homeX = (s > 0 ? const [6.0, 6.6, 9.4, 10.1] : const [-9.75, -10.35, -10.95, -13.0])[k] + jitter;
         p.homeZ = Plan.plazaZ0 - 0.62 + 0.12 * rnd(seed, 2);
       } else {
-        // (Not in front of the vending machines on the right, nor the bench
-        // on the left.)
+        // (Not in front of the vending machines on the right, nor beside a
+        // bench, its bin or a lamp the far side of the pavement.)
         p.homeX = s * (Plan.plazaX - 0.02 + 0.08 * rnd(seed, 3));
-        p.homeZ = (s > 0 ? -4.0 : -7.2) + 2.4 * k + jitter;
+        p.homeZ = (s > 0 ? -4.0 + 1.2 * k : -7.2 + 2.4 * k) + jitter;
       }
       _add(p, seed);
     }
@@ -753,6 +845,15 @@ class _People {
   /// go (x, z, m/s).
   List<(vm.Vector3, double, double)> _others = const [];
 
+  /// The site's trucks, for the gates and the crossings they use, and where
+  /// they are (nobody walks into one).
+  StreetWork? _street;
+  final _trucks = <(vm.Vector3, vm.Vector3)>[];
+
+  /// The cars near the plaza this step (set by [Life3D]): nobody walks into
+  /// one, nor onto a crossing one's standing on.
+  final cars = <(vm.Vector3, vm.Vector3)>[];
+
   /// Walking round people (BOOTH3D_AVOID=0: not, to compare).
   static const _avoidOn = String.fromEnvironment('BOOTH3D_AVOID', defaultValue: '1') != '0';
 
@@ -762,11 +863,18 @@ class _People {
   double _deepest = 0;
 
   final _kinds = <String, int>{};
+  final _where = <String, int>{};
+  final _when = <int, int>{};
+  double _t = 0, _deepLogged = -9;
+  final deepLog = <String>[];
   final _worst = <String, (double, double, double)>{};
 
   String overlapReport() =>
       'PEOPLE overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm '
-      '(${[for (final e in _kinds.entries.toList()..sort((a, b) => b.value.compareTo(a.value))) '${e.key} ${(e.value / math.max(_frames, 1)).toStringAsFixed(2)} [worst ${(_worst[e.key]!.$1 * 100).round()} cm at ${_worst[e.key]!.$2.toStringAsFixed(1)},${_worst[e.key]!.$3.toStringAsFixed(1)}]'].join(', ')})';
+      '(${[for (final e in _kinds.entries.toList()..sort((a, b) => b.value.compareTo(a.value))) '${e.key} ${(e.value / math.max(_frames, 1)).toStringAsFixed(2)} [worst ${(_worst[e.key]!.$1 * 100).round()} cm at ${_worst[e.key]!.$2.toStringAsFixed(1)},${_worst[e.key]!.$3.toStringAsFixed(1)}]'].join(', ')})'
+      '\nPEOPLE overlap where: ${[for (final e in (_where.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).take(12)) '${e.key} ${(e.value / math.max(_frames, 1)).toStringAsFixed(2)}'].join(', ')}'
+      '\nPEOPLE overlap when: ${[for (final e in _when.entries.toList()..sort((a, b) => a.key.compareTo(b.key))) 't${e.key} ${e.value}'].join(', ')}'
+      '${[for (final l in deepLog) '\n  $l'].join()}';
 
   void _countOverlaps() {
     _frames++;
@@ -785,6 +893,15 @@ class _People {
           final key = ka.compareTo(kb) < 0 ? '$ka+$kb' : '$kb+$ka';
           _kinds[key] = (_kinds[key] ?? 0) + 1;
           if (minD - d > (_worst[key]?.$1 ?? 0)) _worst[key] = (minD - d, a.x, a.z);
+          final cell = '${a.x.round()},${a.z.round()} ${a.waiting || b.waiting ? 'waiting' : (a.vel < 0.1 && b.vel < 0.1 ? 'stopped' : 'moving')}';
+          _where[cell] = (_where[cell] ?? 0) + 1;
+          _when[(_t / 20).floor() * 20] = (_when[(_t / 20).floor() * 20] ?? 0) + 1;
+          if (minD - d > 0.15 && _t - _deepLogged > 2 && deepLog.length < 30) {
+            _deepLogged = _t;
+            String who(_Person q) =>
+                '#${q.index} ${q.role.name} at ${q.x.toStringAsFixed(2)},${q.z.toStringAsFixed(2)} d ${q.d.toStringAsFixed(1)} dir ${q.dir} vel ${q.vel.toStringAsFixed(2)} waiting ${q.waiting} kerb ${q.atKerb} gate ${q.gate} pressing ${q.pressing} lag ${q.lag.toStringAsFixed(2)} dodge ${q.dodge.toStringAsFixed(2)} pause ${q.pause.toStringAsFixed(1)}';
+            deepLog.add('t=${_t.toStringAsFixed(1)} ${((minD - d) * 100).round()} cm: ${who(a)} + ${who(b)}');
+          }
         }
       }
     }
@@ -792,6 +909,12 @@ class _People {
 
   void step(double t, double dt, BoothModel m, double wallWidth, StreetWork? work, [List<(vm.Vector3, double, double)> others = const []]) {
     _others = others;
+    _street = work;
+    _t = t;
+    _trucks
+      ..clear()
+      ..addAll(cars);
+    work?.trucks(t, _trucks);
     final gate = work?.gateBusy(t);
     for (final p in _all) {
       switch (p.role) {
@@ -844,10 +967,20 @@ class _People {
         }
         final along = move * (dx * p.fx + dz * p.fz), across = move * (dx * -p.fz + dz * p.fx);
         final dodge = (p.dodge + across).clamp(-0.3 - p.side, 0.8 - p.side);
-        final back = math.min(0.0, along);
+        if (p.pressing) {
+          // (Out in the road, or in a truck's way: aside, or on (their way
+          // with them), never back.)
+          final on = math.max(0.0, along);
+          p
+            ..dodge = dodge
+            ..d += on * p.dir
+            ..x += -p.fz * across + p.fx * on
+            ..z += p.fx * across + p.fz * on;
+          continue;
+        }
+        // (Their way waits for them while they're held back: see [_walk].)
         p
           ..dodge = dodge
-          ..d += back * p.dir
           ..x += dx * move
           ..z += dz * move;
       }
@@ -856,13 +989,20 @@ class _People {
 
   void _walk(_Person p, double t, double dt, BoothModel m, (double, double)? gate) {
     final r = p.route!;
+    final span = gate == null ? null : _gateSpan(r, gate);
+    if (_debugJumps && span != null && p.d > span.$1 && p.d < span.$2 && t - p.gateLogged > 1 && gateLog.length < 60) {
+      p.gateLogged = t;
+      gateLog.add('walker #${p.index} t=${t.toStringAsFixed(2)} in the gate at ${p.x.toStringAsFixed(1)},${p.z.toStringAsFixed(1)}: d ${p.d.toStringAsFixed(1)} span ${span.$1.toStringAsFixed(1)}..${span.$2.toStringAsFixed(1)} dir ${p.dir} waiting ${p.waiting} pause ${p.pause.toStringAsFixed(1)} lag ${p.lag.toStringAsFixed(2)} vel ${p.vel.toStringAsFixed(2)}');
+    }
+    // (Not stopping to watch where a truck's about to come through.)
+    if (p.pause > 0 && span != null && p.d > span.$1 - 0.3 && p.d < span.$2 + 0.3) p.pause = 0;
     if (p.pause > 0 && p.vel < 0.05) {
       // Stopped to watch for a while.
       p.vel = p.v = 0;
       p.pause -= dt;
       p.heading = _turn(p.heading, r.alley ? headingTo(p.x < 0 ? -1 : 1, 0) : headingTo(-p.x * 0.6, 2 - p.z), dt);
       // (Not leaning into a bollard after making way for someone.)
-      _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out);
+      _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out, extra: _trucks);
       p
         ..x = _out[0]
         ..z = _out[1];
@@ -870,25 +1010,55 @@ class _People {
     }
     final onCrossing = r.crossing.containsKey(r.segmentAt(p.d));
     // Round whoever's in the way: a step aside, or (no room) slowing to
-    // keep a step behind.
-    final cap = _avoidOn ? _avoid(p, dt) : 1.0;
+    // keep a step behind; but out in the road, or where a truck's about to
+    // come through, on out of its way regardless (whoever's in the way
+    // makes room).
+    // (A truck about to come through: they wait short of its way; caught
+    // just inside where it'll be kept clear, they stay put; further in, on
+    // out the far side. Once waiting, they wait till it's gone, however its way
+    // grows as more of it comes in sight.)
+    var pastWait = double.negativeInfinity;
+    if (span == null) {
+      p.gate = 0;
+    } else {
+      final wait = (p.dir > 0 ? span.$1 : span.$2) - p.dir * _gateRoom;
+      if (!r.crossing.containsKey(r.segmentAt(wait))) pastWait = (p.d - wait) * p.dir;
+      final inSpan = p.d > span.$1 && p.d < span.$2;
+      final inFrom = (p.d - (p.dir > 0 ? span.$1 : span.$2)) * p.dir;
+      if (p.gate == 0 && (inSpan || (pastWait >= -1e-6 && pastWait < _gateRoom))) p.gate = inSpan && inFrom >= 0.4 ? 2 : 1;
+      if (p.gate == 2 && !inSpan) p.gate = 0;
+    }
+    final hold = p.gate == 1, inWay = p.gate == 2;
+    p.pressing = onCrossing || inWay;
+    var cap = _avoidOn ? _avoid(p, dt) : 1.0;
+    // (Over a crossing, slowing behind someone but never stopping in the
+    // road; in a truck's way, on out of it whoever's there.)
+    if (onCrossing) cap = math.max(cap, 0.15);
+    if (inWay) cap = 1.0;
     // Their pace (quicker over a crossing), slowed by whoever's ahead;
     // slowing to a stop to watch, or at the kerb on red (or at the gate
     // while the truck goes through); speeding up and slowing down taking a
-    // moment (stopping short for someone in the way, less).
-    var want = p.pause > 0 ? 0.0 : p.speed * (onCrossing ? 1.35 : 1) * cap;
-    final stop = _stopAhead(p, r, t, gate);
+    // moment (stopping short for someone in the way, less). Held up (round
+    // something, by someone), their way waits for them: never running on
+    // ahead, to be caught up with in a beeline (over a road).
+    var want = p.pause > 0 ? 0.0 : p.speed * (onCrossing ? 1.35 : 1) * cap * c01(1.6 - p.lag);
+    final stop = _stopAhead(p, r, t, span);
     if (stop < 4) want = math.min(want, math.sqrt(2 * 2.0 * math.max(0.0, stop - 0.03)));
     p.vel = want > p.vel ? math.min(want, p.vel + 1.3 * dt) : math.max(want, p.vel - (cap < 0.7 ? 6.0 : 2.4) * dt);
     var next = p.d + p.dir * p.vel * dt;
-    // The crossings: wait at the kerb for the walk signal.
-    p.waiting = false;
+    // The crossings: wait at the kerb for the walk signal (and while a
+    // truck goes through the gate the far side, at its corner).
+    p
+      ..waiting = false
+      ..atKerb = false;
     for (final MapEntry(key: seg, value: avenue) in r.crossing.entries) {
-      final entry = p.dir > 0 ? r.cum[seg] : r.cum[seg + 1];
-      final crossesIn = p.dir > 0 ? (p.d < entry && next >= entry) : (p.d > entry && next <= entry);
-      if (crossesIn && !(avenue ? TrafficLights.walkAve(t) : TrafficLights.walkSide(t))) {
-        next = entry - p.dir * 0.02;
-        p.waiting = true;
+      // (How far ahead its kerb is, round the end of the loop too.)
+      final ahead = ((p.dir > 0 ? r.cum[seg] : r.cum[seg + 1]) - p.d) * p.dir % r.length;
+      if (ahead > 0 && ahead <= (next - p.d).abs() && !_mayCross(r, seg, p.dir, avenue, t, span)) {
+        next = p.d + p.dir * (ahead - 0.02);
+        p
+          ..waiting = true
+          ..atKerb = true;
       }
     }
     // Waiting at the kerb: a step behind (or beside) whoever got there first.
@@ -898,13 +1068,16 @@ class _People {
         next = p.d;
       }
     }
-    // The site gate: wait either side while the delivery truck goes through.
-    if (gate != null && identical(r, _front) && p.d <= r.cum[1]) {
-      final a = gate.$1 - r.pts[0].$1, b = gate.$2 - r.pts[0].$1;
-      if (p.dir > 0 ? (p.d < a && next >= a) : (p.d > b && next <= b)) {
-        next = p.dir > 0 ? a - 0.02 : b + 0.02;
-        p.waiting = true;
-      }
+    // The site gates: wait either side while a truck goes through, a step
+    // back from its way (room for whoever's coming out of it); where that's
+    // over a crossing's kerb, before the crossing (above).
+    if (hold) {
+      next = p.d;
+      p.waiting = true;
+    } else if (pastWait < 0 && pastWait + (next - p.d) * p.dir > 0) {
+      next = p.d - pastWait * p.dir;
+      p.waiting = true;
+      p.gate = 1;
     }
     if (p.waiting) p.vel = math.min(p.vel, (next - p.d).abs() / math.max(dt, 1e-6));
     // Watch points: now and then, stop and watch the build for a while.
@@ -916,7 +1089,7 @@ class _People {
         final busy = m.job?.phase;
         final keen = busy == Phase.celebrate || busy == Phase.reveal ? 0.75 : 0.32;
         // (Not right where someone's already standing.)
-        if (rnd(p.index, p.lap, k) < keen && !_taken(p, p.x, p.z, 0.62)) {
+        if (rnd(p.index, p.lap, k) < keen && !_taken(p, p.x, p.z, 0.62) && (span == null || w < span.$1 - 0.3 || w > span.$2 + 0.3)) {
           p.pause = 6 + 22 * rnd(p.index, p.lap, k + 50);
         }
       }
@@ -963,7 +1136,15 @@ class _People {
     // it (someone they made way for, stopping to watch), at no more than a
     // brisk step: never a jump.
     final wx = a.$1 + dx * f + nx * off * p.dir, wz = a.$2 + dz * f + nz * off * p.dir;
-    final ex = wx - p.x, ez = wz - p.z, e = math.sqrt(ex * ex + ez * ez), most = (p.vel + 1.2) * dt;
+    p
+      ..wx = wx
+      ..wz = wz;
+    // (Not pushing into whoever's ahead to get there.)
+    final ex = wx - p.x, ez = wz - p.z, e = math.sqrt(ex * ex + ez * ez), most = (p.vel + 1.2 * math.max(cap, 0.25)) * dt;
+    if (_debugJumps && e > 1.5 && t > 0.5 && (t - p.offLogged) > 2 && jumpLog.length < 60) {
+      p.offLogged = t;
+      jumpLog.add('walker #${p.index} t=${t.toStringAsFixed(2)}: ${e.toStringAsFixed(1)} m off its way at ${p.x.toStringAsFixed(1)},${p.z.toStringAsFixed(1)} (way ${wx.toStringAsFixed(1)},${wz.toStringAsFixed(1)} seg $i d ${p.d.toStringAsFixed(1)} dir ${p.dir} vel ${p.vel.toStringAsFixed(2)} waiting ${p.waiting} pause ${p.pause.toStringAsFixed(1)} placed ${p.placed})');
+    }
     if (p.onWay && e > most) {
       p
         ..x += ex / e * most
@@ -976,13 +1157,14 @@ class _People {
     p.onWay = true;
     // (Round anything solid by the way, a sign post, a pallet: out by its
     // nearer side, so they slide past it.)
-    _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out);
+    _figures.outOfSolids(p.x, 0, p.z, 0.24 * p.scale, _out, extra: _trucks);
     if (_debugJumps && t > 0.5 && ((_out[0] - p.x).abs() > 0.3 || (_out[1] - p.z).abs() > 0.3) && jumpLog.length < 60) {
       jumpLog.add('walker #${p.index} t=${t.toStringAsFixed(2)} pushed out of a solid: ${p.x.toStringAsFixed(2)},${p.z.toStringAsFixed(2)} → ${_out[0].toStringAsFixed(2)},${_out[1].toStringAsFixed(2)}: ${_figures.solidsAt(p.x, p.z)}');
     }
     p
       ..x = _out[0]
-      ..z = _out[1];
+      ..z = _out[1]
+      ..lag = math.sqrt((wx - _out[0]) * (wx - _out[0]) + (wz - _out[1]) * (wz - _out[1]));
     if (_debugJumps) {
       final jx = p.x - wasX, jz = p.z - wasZ;
       if (t > 0.5 && jx * jx + jz * jz > 0.25 && jumpLog.length < 60) {
@@ -995,19 +1177,54 @@ class _People {
   }
 
   /// How far along their way [p] has to stop: at a crossing on red, at the
-  /// site gate while the truck goes through (infinity: nowhere near).
-  double _stopAhead(_Person p, _Route r, double t, (double, double)? gate) {
+  /// site gate while a truck goes through ([span]: see [_gateSpan])
+  /// (infinity: nowhere near).
+  double _stopAhead(_Person p, _Route r, double t, (double, double)? span) {
     var best = double.infinity;
     for (final MapEntry(key: seg, value: avenue) in r.crossing.entries) {
-      if (avenue ? TrafficLights.walkAve(t) : TrafficLights.walkSide(t)) continue;
-      final ahead = ((p.dir > 0 ? r.cum[seg] : r.cum[seg + 1]) - p.d) * p.dir;
+      if (_mayCross(r, seg, p.dir, avenue, t, span)) continue;
+      final ahead = ((p.dir > 0 ? r.cum[seg] : r.cum[seg + 1]) - p.d) * p.dir % r.length;
       if (ahead > 0 && ahead < best) best = ahead;
     }
-    if (gate != null && identical(r, _front) && p.d <= r.cum[1]) {
-      final ahead = p.dir > 0 ? gate.$1 - r.pts[0].$1 - p.d : p.d - (gate.$2 - r.pts[0].$1);
-      if (ahead > 0 && ahead < best) best = ahead;
+    if (span != null) {
+      final edge = (p.dir > 0 ? span.$1 : span.$2) - p.dir * _gateRoom;
+      final ahead = (edge - p.d) * p.dir;
+      if (ahead > 0 && ahead < best && !r.crossing.containsKey(r.segmentAt(edge))) best = ahead;
     }
     return best;
+  }
+
+  /// How far short of a busy gate's stretch people wait.
+  static const _gateRoom = 0.6;
+
+  /// Whether someone going [dir] along [r] may step onto the crossing [seg]
+  /// at [t]: on the walk signal, and not while a car stands on it, nor while
+  /// the truck's about to cross it, or going through the gate where it
+  /// comes out ([span]).
+  bool _mayCross(_Route r, int seg, double dir, bool avenue, double t, (double, double)? span) {
+    if (!(avenue ? TrafficLights.walkAve(t) : TrafficLights.walkSide(t))) return false;
+    // (Nor while a car stands on it, caught there by the queue ahead.)
+    final a = r.pts[seg], b = r.pts[(seg + 1) % r.pts.length];
+    final x0 = math.min(a.$1, b.$1) - 1.9, x1 = math.max(a.$1, b.$1) + 1.9, z0 = math.min(a.$2, b.$2), z1 = math.max(a.$2, b.$2);
+    for (final (c, h) in cars) {
+      if (c.x + h.x > x0 && c.x - h.x < x1 && c.z + h.z > z0 && c.z - h.z < z1) return false;
+    }
+    if (avenue && (_street?.crosswalkBusy(Plan.crossX[r.pts[seg].$1 > 0 ? 1 : 0], t) ?? false)) return false;
+    final exit = dir > 0 ? r.cum[seg + 1] : r.cum[seg];
+    return span == null || exit <= span.$1 || exit >= span.$2;
+  }
+
+  /// Where along [r] the stretch of the front sidewalk [gate] (x from..to)
+  /// is, kept clear while a truck goes through a site gate there: from..to
+  /// along the route (past the ends of the front, round the corner), or
+  /// null if [r] doesn't go along the front.
+  static (double, double)? _gateSpan(_Route r, (double, double) gate) {
+    final i = r.front;
+    if (i < 0) return null;
+    final a = r.pts[i], b = r.pts[(i + 1) % r.pts.length];
+    final s = b.$1 > a.$1 ? 1.0 : -1.0;
+    final u = r.cum[i] + (gate.$1 - a.$1) * s, v = r.cum[i] + (gate.$2 - a.$1) * s;
+    return (math.min(u, v), math.max(u, v));
   }
 
   /// Walking round the people ahead of [p]: anyone within a step or two in
@@ -1021,9 +1238,71 @@ class _People {
     double? want;
     var lineBlocked = false;
     final lx = -p.fz, lz = p.fx, off = p.side + p.dodge;
-    bool fits(double shift) => off + shift <= 0.8 && off + shift >= -0.3;
-    void obstacle(double x, double z, double vx, double vz, double r) {
-      final rx = x - p.x, rz = z - p.z;
+    // (Measured across from where their way has them, not where something
+    // may be holding them back: else the step aside would grow and grow.)
+    final across = p.onWay ? (p.wx - p.x) * lx + (p.wz - p.z) * lz : 0.0;
+    final px = p.x + lx * across, pz = p.z + lz * across;
+    // Things standing in the way (a bollard, a lamp post, a bin, a bench's
+    // end): round them too, a step aside in good time (round all of them,
+    // where a few stand together), and kept aside while the next one along
+    // is near (no weaving down a row of bollards). No waiting behind them:
+    // they never move off. Each is in the way across from here
+    // lat ± clear, for the next few steps.
+    const look = 4.5;
+    final ax = px + p.fx * look, az = pz + p.fz * look;
+    _figures.solidsIn(math.min(px, ax) - 1.6, math.min(pz, az) - 1.6, math.max(px, ax) + 1.6, math.max(pz, az) + 1.6, _near);
+    _blocked.clear();
+    var close = double.infinity;
+    final line0 = math.min(0.0, -p.dodge), line1 = math.max(0.0, -p.dodge);
+    for (final (c, h) in _near) {
+      if (c.y + h.y < 0.05 || c.y - h.y > 1.6) continue; // (flat on the ground, or overhead)
+      final rx = c.x - px, rz = c.z - pz;
+      final along = rx * p.fx + rz * p.fz, lat = rx * lx + rz * lz;
+      // (How far it reaches along the way, and across it.)
+      final deep = (p.fx * h.x).abs() + (p.fz * h.z).abs(), wide = (lx * h.x).abs() + (lz * h.z).abs();
+      final clear = 0.25 * p.scale + wide + 0.06;
+      if (along + deep < -0.35 || along - deep > look) continue;
+      // (Between here and their line: not back into line past it yet.)
+      if (lat - clear < line1 && lat + clear > line0) lineBlocked = true;
+      final gap = math.max(0.0, along - deep);
+      if (gap > 2.4) continue;
+      _blocked.add((lat - clear, lat + clear));
+      if (lat.abs() < clear) close = math.min(close, gap);
+    }
+    bool free(double s) {
+      for (final (lo, hi) in _blocked) {
+        if (s > lo + 1e-6 && s < hi - 1e-6) return false;
+      }
+      return true;
+    }
+
+    // (On the pavement, never stepping off the kerb for it; over a
+    // crossing, or getting onto one, anywhere on it. Never into anything.)
+    final r = p.route!;
+    final crossing = r.crossing.containsKey(r.segmentAt(p.d));
+    final kerbFree = crossing || _offKerb(px, pz);
+    bool onPavement(double shift) => (kerbFree || !_offKerb(px + lx * shift, pz + lz * shift)) && free(shift);
+    bool fits(double shift) => off + shift <= 0.8 && off + shift >= -0.3 && onPavement(shift);
+
+    // The nearest place across to [s] clear of everything standing there: in
+    // their half of the pavement if there's one, else anywhere on it.
+    double clearOf(double s) {
+      double? best, fallback;
+      void consider(double c) {
+        if (fits(c) && (best == null || (c - s).abs() < (best! - s).abs())) best = c;
+        if (onPavement(c) && (fallback == null || (c - s).abs() < (fallback! - s).abs())) fallback = c;
+      }
+
+      consider(s);
+      for (final (lo, hi) in _blocked) {
+        consider(lo);
+        consider(hi);
+      }
+      return best ?? fallback ?? s;
+    }
+
+    void obstacle(double x, double z, double vx, double vz, double r, int who) {
+      final rx = x - px, rz = z - pz;
       if (rx.abs() > 2.4 || rz.abs() > 2.4) return;
       final along = rx * p.fx + rz * p.fz;
       if (along <= -0.8 || along > 2.0) return;
@@ -1051,9 +1330,16 @@ class _People {
       if (canLeft || canRight) {
         want = p.dodge + (!canRight || (canLeft && left.abs() < right.abs()) ? left : right);
       } else {
-        // No room either side: keep a step behind.
-        want = p.dodge;
-        cap = math.min(cap, c01((along - 0.6) / 0.7));
+        // No room in their half: over a crossing, aside anyway (it's wide);
+        // meeting someone head on in a narrow place, one of the two waits,
+        // the other squeezes by; else keep a step behind.
+        final okLeft = onPavement(left), okRight = onPavement(right);
+        if ((okLeft || okRight) && (crossing || (away < -0.2 && who >= 0 && p.index > who))) {
+          want = p.dodge + (!okRight || (okLeft && left.abs() < right.abs()) ? left : right);
+        } else {
+          want = p.dodge;
+          cap = math.min(cap, c01((along - 0.6) / 0.7));
+        }
       }
       // Too close to step round in time: slow down meanwhile.
       if (along < 0.9) cap = math.min(cap, c01((along - 0.45) / 0.45) + 0.25);
@@ -1061,23 +1347,65 @@ class _People {
 
     for (final q in _all) {
       if (identical(q, p)) continue;
-      obstacle(q.x, q.z, q.fx * q.v, q.fz * q.v, 0.27 * q.scale);
+      obstacle(q.x, q.z, q.fx * q.v, q.fz * q.v, 0.27 * q.scale, q.index);
     }
     for (final (o, vx, vz) in _others) {
-      obstacle(o.x, o.z, vx, vz, 0.3);
+      obstacle(o.x, o.z, vx, vz, 0.3, -1);
       // Coming across (the site's people walk briskly, and not along the
       // pavement): where they'll be when nearest, within a second.
       final rx = o.x - p.x, rz = o.z - p.z, wx = vx - p.fx * p.v, wz = vz - p.fz * p.v, w2 = wx * wx + wz * wz;
       if (w2 > 0.25) {
         final tc = (-(rx * wx + rz * wz) / w2).clamp(0.0, 1.0);
-        if (tc > 0.05) obstacle(p.x + rx + wx * tc, p.z + rz + wz * tc, vx, vz, 0.3);
+        if (tc > 0.05) obstacle(p.x + rx + wx * tc, p.z + rz + wz * tc, vx, vz, 0.3, -1);
       }
     }
-    // Back into line once past (and only then).
-    final target = want ?? (lineBlocked ? p.dodge : 0.0);
+    final w = want;
+    if (w != null) {
+      // (Stepping round someone, not into something.)
+      if (!free(w - p.dodge)) want = p.dodge + clearOf(w - p.dodge);
+    } else if (close.isFinite) {
+      want = p.dodge + clearOf(0);
+    }
+    // Too close to step round something in time: slow down meanwhile.
+    if (close < 0.6) cap = math.min(cap, 0.3 + close);
+    // Back into line once past (and only then). Waiting at the kerb for the
+    // lights: as far to their side as there's room (the way off the
+    // crossing clear for those coming over).
+    var aside = 0.0;
+    if (p.atKerb) {
+      // (Only into room nobody's standing in.)
+      for (var s = 0.8 - off; s > 0.05; s -= 0.05) {
+        if (fits(s) && !_taken(p, px + lx * s, pz + lz * s, 0.56 * p.scale)) {
+          aside = p.dodge + s;
+          break;
+        }
+      }
+    }
+    final target = want ?? (p.atKerb && aside != 0 ? aside : (lineBlocked ? p.dodge : 0.0));
     final step = 0.9 * dt;
-    p.dodge += (target - p.dodge).clamp(-step, step);
+    p.dodge = (p.dodge + (target - p.dodge).clamp(-step, step)).clamp(-0.9 - p.side, 1.4 - p.side);
     return cap;
+  }
+
+  final _near = <(vm.Vector3, vm.Vector3)>[];
+  final _blocked = <(double, double)>[];
+
+  /// Whether (x, z) is in the road, or so near its kerb that someone there
+  /// would stand over it.
+  static bool _offKerb(double x, double z) =>
+      (z > Plan.aveZ0 - 0.28 && z < Plan.aveZ1 + 0.28) || (x.abs() - Plan.streetX).abs() < Plan.streetHalf + 0.28;
+
+  /// Who's out in the road (a late crosser, someone off the pavement), for
+  /// the traffic to stop for: where they are.
+  void inRoad(List<(double, double)> out, List<(vm.Vector3, double, double)> others) {
+    out.clear();
+    bool road(double x, double z) => (z > Plan.aveZ0 - 0.3 && z < Plan.aveZ1 + 0.3) || (x.abs() - Plan.streetX).abs() < Plan.streetHalf + 0.3;
+    for (final p in _all) {
+      if (road(p.x, p.z)) out.add((p.x, p.z));
+    }
+    for (final (o, _, _) in others) {
+      if (road(o.x, o.z)) out.add((o.x, o.z));
+    }
   }
 
   /// Whether someone (but [p]) stands within [r] of (x, z).
@@ -1139,6 +1467,13 @@ class _People {
       ax = 7;
       az = 4.9;
     }
+    // (Never in the delivery truck's way: where it turns in at the gate and
+    // parks by the yard, a long name's wall end or not: both their spots
+    // this side of it, so they don't pace across it either.)
+    if ((hz < -2.2 || az < -2.2) && math.max(hx, ax) > 11.0 && math.min(hx, ax) < 15.6) {
+      hx = math.min(hx, 10.9);
+      ax = math.min(ax, 10.9);
+    }
     var nx = lerp(hx, ax, w), nz = lerp(hz, az, w);
     // Walk (never jump) to wherever the spot moved to: round anything solid
     // in the way (along it; head-on, to its side).
@@ -1148,19 +1483,23 @@ class _People {
     if (gap > step && p.placed) {
       nx = p.x + gx / gap * step;
       nz = p.z + gz / gap * step;
-      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z);
+      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z, extra: _trucks);
       if ((_out[0] - p.x) * gx + (_out[1] - p.z) * gz < 0.3 * step * gap) {
         // Blocked: a step to the side instead.
-        _figures.outOfSolids(p.x - gz / gap * step, 0, p.z + gx / gap * step, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z);
+        _figures.outOfSolids(p.x - gz / gap * step, 0, p.z + gx / gap * step, 0.25 * p.scale, _out, fromX: p.x, fromZ: p.z, extra: _trucks);
       }
       nx = _out[0];
       nz = _out[1];
     } else if (p.placed) {
-      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out);
+      _figures.outOfSolids(nx, 0, nz, 0.25 * p.scale, _out, extra: _trucks);
       nx = _out[0];
       nz = _out[1];
     }
     p.placed = true;
+    if (_debugJumps && nx > 11.9 && nx < 14.9 && nz > -9.0 && nz < -2.6 && _t - p.gateLogged > 2 && gateLog.length < 100) {
+      p.gateLogged = _t;
+      gateLog.add('worker ${p.crewNo} job ${p.job} t=${_t.toStringAsFixed(1)} at ${nx.toStringAsFixed(1)},${nz.toStringAsFixed(1)} phase $phase home ${hx.toStringAsFixed(1)},${hz.toStringAsFixed(1)} away ${ax.toStringAsFixed(1)},${az.toStringAsFixed(1)} wall ${wallWidth.toStringAsFixed(1)}');
+    }
     final moved = math.sqrt((nx - p.x) * (nx - p.x) + (nz - p.z) * (nz - p.z));
     p.moving = moved > 1e-4;
     if (p.moving) {
@@ -1180,6 +1519,7 @@ class _People {
   /// Capture runs: walkers that jumped between two steps, and why.
   static const _debugJumps = String.fromEnvironment('BOOTH3D_TIMES') != '';
   final jumpLog = <String>[];
+  final gateLog = <String>[];
 
   static double _turn(double from, double to, double dt) {
     var d = (to - from) % (2 * math.pi);

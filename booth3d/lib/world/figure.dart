@@ -938,6 +938,7 @@ class Figures {
       'FIGURES skates: ${_skates.length}${[for (final e in _skates.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  #${e.key}: ${e.value.$1} frames, from t=${e.value.$2.toStringAsFixed(1)} at ${e.value.$3}'].join()}\n'
       'FIGURES aloft: $_aloftEvents times, $_aloftFrames frames${[for (final j in _aloft.take(80)) '\n  $j'].join()}\n'
       'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}\n'
+      'FIGURES under vehicles: ${[for (final e in _underVehicles.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}${[for (final l in _vehicleLog) '\n    $l'].join()}\n'
       'FIGURES hands in: ${[for (final e in _hands.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}'
       '${[for (final l in _selfLog) '\n    $l'].join()}';
 
@@ -945,6 +946,12 @@ class Figures {
   /// kind: each a box (centre, half extents). Whoever has them sets them
   /// (and clears them when they're gone).
   final solids = <String, List<(vm.Vector3, vm.Vector3)>>{};
+
+  /// Vehicles this frame, by kind (capture runs check nobody's in one):
+  /// each its middle (x, z), half its length and width, its heading
+  /// ([headingTo]: its length along cos, −sin). Set by whoever drives them.
+  final vehicles = <String, List<(double, double, double, double, double)>>{};
+  final _underVehicles = <String, (int, double, double, String)>{};
 
   /// The ones that never move (the street furniture: hundreds of them), by
   /// kind, and by grid cell for looking up only those nearby.
@@ -974,6 +981,27 @@ class Figures {
   static const _none = <(vm.Vector3, vm.Vector3)>[];
   List<(vm.Vector3, vm.Vector3)> _fixedNear(double x, double z) => _cells[_cellOf((x / _cellSize).floor(), (z / _cellSize).floor())] ?? _none;
 
+  /// The solids standing in the area x0…x1, z0…z1, into [out] (cleared
+  /// first): each at least once.
+  void solidsIn(double x0, double z0, double x1, double z1, List<(vm.Vector3, vm.Vector3)> out) {
+    out.clear();
+    void add(List<(vm.Vector3, vm.Vector3)> boxes) {
+      for (final box in boxes) {
+        final (c, h) = box;
+        if (c.x + h.x > x0 && c.x - h.x < x1 && c.z + h.z > z0 && c.z - h.z < z1) out.add(box);
+      }
+    }
+
+    for (final boxes in solids.values) {
+      add(boxes);
+    }
+    for (var i = (x0 / _cellSize).floor(); i <= (x1 / _cellSize).floor(); i++) {
+      for (var k = (z0 / _cellSize).floor(); k <= (z1 / _cellSize).floor(); k++) {
+        add(_cells[_cellOf(i, k)] ?? _none);
+      }
+    }
+  }
+
   /// Whether a capture run is counting.
   static bool get checking => _counting;
 
@@ -981,7 +1009,9 @@ class Figures {
   /// at height [y] there, by as little as it takes (into [out]: x, z): out
   /// the side they came from ([fromX], [fromZ]: where they were before
   /// being moved there, if they weren't in it), else the nearer side.
-  void outOfSolids(double x, double y, double z, double r, List<double> out, {double? fromX, double? fromZ}) {
+  /// [extra]: more to keep out of, for them only (the trucks, for the
+  /// city's people).
+  void outOfSolids(double x, double y, double z, double r, List<double> out, {double? fromX, double? fromZ, List<(vm.Vector3, vm.Vector3)> extra = _none}) {
     void outOf(List<(vm.Vector3, vm.Vector3)> boxes) {
       for (final (c, h) in boxes) {
         if (y > c.y + h.y - 0.05 || y + 1.6 < c.y - h.y) continue;
@@ -1008,6 +1038,7 @@ class Figures {
         outOf(boxes);
       }
       outOf(_fixedNear(x, z));
+      outOf(extra);
     }
     out
       ..[0] = x
@@ -1033,6 +1064,8 @@ class Figures {
   /// People found inside [solids], by kind: frames, the worst (depth,
   /// when, who).
   final _inside = <String, (int, double, double, String)>{};
+  final _vehicleLog = <String>[];
+  final _vehicleLogAt = <String, double>{};
 
   static const _counting = String.fromEnvironment('BOOTH3D_TIMES') != '';
 
@@ -1254,6 +1287,32 @@ class Figures {
         final was = _inside[kind];
         final who = '#${a.n}${a.walking ? ' walking' : ''}${a.steer ? '' : ' (crowd)'} at ${x.toStringAsFixed(1)},${z.toStringAsFixed(1)}';
         _inside[kind] = was == null || worst > was.$2 ? ((was?.$1 ?? 0) + 1, worst, now, who) : (was.$1 + 1, was.$2, was.$3, was.$4);
+      }
+    }
+    // Under a vehicle: a circle round the feet against its footprint.
+    for (final i in _seen) {
+      final a = _bodies[i];
+      if (a.seated || a.y > 0.5) continue;
+      final x = a.x + a.nx, z = a.z + a.nz;
+      for (final MapEntry(key: kind, value: list) in vehicles.entries) {
+        var worst = 0.0;
+        for (final (cx, cz, hl, hw, yaw) in list) {
+          final dx = x - cx, dz = z - cz;
+          if (dx.abs() > hl + hw + 1 || dz.abs() > hl + hw + 1) continue;
+          final c = math.cos(yaw), s = -math.sin(yaw);
+          final along = dx * c + dz * s, across = -dx * s + dz * c;
+          final ex = along.abs() - hl, ez = across.abs() - hw;
+          final depth = ex <= 0 && ez <= 0 ? a.r - math.max(ex, ez) : a.r - math.sqrt(math.pow(math.max(ex, 0.0), 2) + math.pow(math.max(ez, 0.0), 2));
+          worst = math.max(worst, depth);
+        }
+        if (worst <= 0.05) continue;
+        final was = _underVehicles[kind];
+        final who = '#${a.n}${a.walking ? ' walking' : ''}${a.steer ? '' : ' (crowd)'} at ${x.toStringAsFixed(1)},${z.toStringAsFixed(1)}';
+        _underVehicles[kind] = was == null || worst > was.$2 ? ((was?.$1 ?? 0) + 1, worst, now, who) : (was.$1 + 1, was.$2, was.$3, was.$4);
+        if (_vehicleLog.length < 40 && (now - (_vehicleLogAt[kind] ?? -9)) > 1.5) {
+          _vehicleLogAt[kind] = now;
+          _vehicleLog.add('$kind t=${now.toStringAsFixed(1)} ${(worst * 100).round()} cm: $who');
+        }
       }
     }
     for (var p = 0; p < _seen.length; p++) {

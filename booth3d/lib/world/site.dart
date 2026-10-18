@@ -14,6 +14,7 @@ import 'package:text_slides/booth/raster.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
+import 'city_plan.dart';
 import 'crew.dart';
 import 'figure.dart' show Figures;
 import 'crew_breaks.dart';
@@ -676,6 +677,12 @@ class Site3D {
 
     _truck.visible = false;
     _banner.visible = false;
+    // (Capture runs: the trucks' footprints, set again by whichever drives.)
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') {
+      Figures.of(scene).vehicles
+        ..remove('recycling truck')
+        ..remove('delivery truck');
+    }
     crane.slings(null);
     crane
       ..ballHanging = false
@@ -1267,6 +1274,8 @@ class Site3D {
     _truck
       ..visible = tp.x > -120
       ..place((m) => setTrs(m, tp.x, 0, tp.z, yaw: yaw));
+    // (Capture runs: nobody under it.)
+    if (const String.fromEnvironment('BOOTH3D_TIMES') != '') Figures.of(scene).vehicles['recycling truck'] = [(tp.x, tp.z, 3.0, 1.15, yaw)];
     // Its body dips forward as it brakes and rocks back as it stops; the
     // wheels roll, the front pair steers.
     _truckBody.place((m) => setTrs(m, 0, 0, 0, roll: -tp.pitch));
@@ -1608,6 +1617,22 @@ class _SiteWork implements StreetWork {
   _SiteWork(this.site);
   final Site3D site;
 
+  /// Where across the front pavement the cleanup's truck goes, backing into
+  /// the bay and pulling out (its footprint, a little room added): x
+  /// from..to. (Its way in is the same whatever the job.)
+  (double, double)? _sweep;
+  (double, double) _sweepOf() {
+    var lo = double.infinity, hi = -double.infinity;
+    for (var f = 0.0; f <= 1.0; f += 0.002) {
+      final p = site._truckPose(f, 60, SiteLayout.bayX, SiteLayout.bayZ);
+      final over = footprintAcross(p.x, p.z, p.yaw, 3.0 + 0.3, 1.15 + 0.3, Plan.aveZ1 - 0.3, Plan.plazaZ0 - 0.2);
+      if (over == null) continue;
+      lo = math.min(lo, over.$1);
+      hi = math.max(hi, over.$2);
+    }
+    return (lo, hi);
+  }
+
   @override
   (double, double)? laneBlock(bool eastbound, double t) {
     final d = site.delivery.laneBlock(eastbound, t);
@@ -1624,15 +1649,33 @@ class _SiteWork implements StreetWork {
   }
 
   @override
+  bool crosswalkBusy(double x, double t) => site.delivery.crosswalkBusy(x, t);
+
+  @override
+  void trucks(double t, List<(vm.Vector3, vm.Vector3)> out) {
+    site.delivery.trucks(t, out);
+    final p = site._truckNow(t);
+    if (p == null) return;
+    final c = math.cos(p.yaw), s = -math.sin(p.yaw);
+    const l = 3.0 + 0.05, w = 1.15 + 0.05;
+    out.add((vm.Vector3(p.x, 1.4, p.z), vm.Vector3((c * l).abs() + (s * w).abs(), 1.4, (s * l).abs() + (c * w).abs())));
+  }
+
+  @override
   (double, double)? gateBusy(double t) {
     final d = site.delivery.gateBusy(t);
     if (d != null) return d;
-    final p = site._truckNow(t);
-    if (p == null || p.z < -14 || p.z > -6.5) return null;
-    const park = SiteLayout.bayX;
-    // (Only while it's turning in or out across the pavement.)
-    if ((p.x - park).abs() > 6) return null;
-    return (math.min(p.x, park) - 3.2, math.max(p.x, park) + 3.2);
+    // From when it'll be over the front pavement within the next seven and
+    // a half seconds (time for whoever's in its way to get clear) till it's
+    // off it: the whole stretch it crosses backing in round the turn and
+    // pulling out, with room round it.
+    for (var k = 0; k <= 15; k++) {
+      final p = site._truckNow(t + k * 0.5);
+      if (p == null || footprintAcross(p.x, p.z, p.yaw, 3.0 + 0.3, 1.15 + 0.3, Plan.aveZ1 - 0.3, Plan.plazaZ0 - 0.2) == null) continue;
+      final (lo, hi) = _sweep ??= _sweepOf();
+      return (lo - 0.6, hi + 0.6);
+    }
+    return null;
   }
 }
 

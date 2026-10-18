@@ -113,6 +113,21 @@ class Walk {
     return h;
   }
 
+  /// The way they face at [t] as they walk: the leg's way, turning
+  /// through the corners (before the start, the first leg's; after the
+  /// end, the last leg's).
+  double headingAt(double t) {
+    final along = t <= start ? 0.0 : (t >= end ? lengthOf(pts) : _along(t));
+    var d = along, acc = 0.0;
+    for (var i = 0; i + 1 < pts.length; i++) {
+      final l = pts[i].distanceTo(pts[i + 1]);
+      if (d <= l || i + 2 == pts.length) return _yawAt(i, along, acc, l);
+      d -= l;
+      acc += l;
+    }
+    return face;
+  }
+
   /// Where the walk has them at [t] (into [out]).
   vm.Vector3 posAt(double t, vm.Vector3 out) {
     var d = _along(t);

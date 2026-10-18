@@ -73,16 +73,25 @@ class TofuShop extends Vignette {
 
   // ── The timeline (seconds into a turn) ────────────────────────────────────
 
-  /// Each ask: when the courier gets to kiosk k (and how long it takes).
-  static const _ask = 1.7, _hop = 1.25;
+  /// Each ask: when the courier gets to kiosk k; how long the ask takes,
+  /// and the walk on to the next (an easy pace, picked up and slowed to a
+  /// stop).
+  static const _ask = 2.0, _hop = 1.8;
   static double _at(int k) => 0.2 + k * (_ask + _hop);
 
-  /// The tofu: when the courier gets to the shop, when the tofu's in the
-  /// crate, when they set off round the back.
-  static final _toShop = _at(3) + _ask, _atShop = _toShop + 1.5, _tofuIn = _atShop + 2.2, _show = _tofuIn + 0.3, _leave = _tofuIn + 2.4;
+  /// The tofu: when the courier sets off for the shop and gets there, when
+  /// the tofu's in the crate, when they turn round with it, when they set
+  /// off round the back.
+  static final _toShop = _at(3) + _ask, _atShop = _toShop + 1.9, _tofuIn = _atShop + 2.2, _show = _tofuIn + 0.3, _leave = _tofuIn + 2.4;
 
-  /// Round the back to the start, then ب: kiosk 0 (✕), kiosk 1 (✓), back
-  /// to the start.
+  /// Where the courier stops at kiosk [x] (or elsewhere on the path).
+  static vm.Vector3 _stop(double x, [double z = _stopZ]) => vm.Vector3(x, 0, z);
+
+  /// A walk along [pts] from [a] to [b], ending facing the counters.
+  static Walk _walk(List<vm.Vector3> pts, double a, double b) => Walk(pts, a, Walk.lengthOf(pts) / (b - a), face: math.pi);
+
+  /// Round the back of the row to the start and in to the first kiosk
+  /// again; behind the row ([_swap]) the crate's label becomes ب's.
   static final _back = Walk(
     [
       vm.Vector3(_shopX - 0.3, 0, _shopZ),
@@ -90,14 +99,29 @@ class TofuShop extends Vignette {
       vm.Vector3(_shopX + 1.6, 0, 2.1),
       vm.Vector3(-6.2, 0, 2.1),
       vm.Vector3(-6.2, 0, _stopZ),
+      _stop(_kx[0]),
     ],
     _leave,
     1.5,
+    face: math.pi,
   );
-  static final _again = _back.end + 0.6;
-  static double _at2(int k) => _again + 1.4 + k * (_ask + _hop);
+  static final _swap = (_back.at(2) + _back.at(3)) / 2;
+
+  /// Then ب: kiosk 0 (✕), kiosk 1 (✓); back to the first kiosk, where the
+  /// next turn starts.
+  static double _at2(int k) => _back.end + 0.2 + k * (_ask + _hop);
   static final _found = _at2(1) + _ask, _home = _found + 1.2;
   static final _loop = _home + 3.4;
+
+  /// The courier's walks in turn; before walk i they stand (stand i) at a
+  /// kiosk or the shop.
+  static final _walks = [
+    for (var k = 0; k < 3; k++) _walk([_stop(_kx[k]), _stop(_kx[k + 1])], _at(k) + _ask, _at(k + 1)),
+    _walk([_stop(_kx[3]), _stop(_shopX - 0.3, _shopZ)], _toShop, _atShop),
+    _back,
+    _walk([_stop(_kx[0]), _stop(_kx[1])], _at2(0) + _ask, _at2(1)),
+    _walk([_stop(_kx[1]), _stop(_kx[0])], _home, _loop - 0.5),
+  ];
 
   // ── Building ──────────────────────────────────────────────────────────────
 
@@ -155,17 +179,20 @@ class TofuShop extends Vignette {
 
     await Future.wait([_signs(), _letters()]);
 
-    // The courier, the four keepers in their fonts' colours, the tofu maker.
-    _people.add(person(_look(top: 0x2E5E4E, legs: 0x1E2B40, cap: 0x1F3D33)));
+    // The courier in their company's green, the four keepers in their
+    // fonts' colours, the tofu maker in white.
+    _people.add(person(_look(top: 0x2E5E4E, legs: 0x1E2B40, cap: 0x1F3D33, wear: 'casual_m4')));
     for (var k = 0; k < 4; k++) {
-      _people.add(person(_look(top: 0xF2F0EA, legs: 0x2B3442, layer: _fonts[k].$3, slim: k.isOdd)));
+      _people.add(person(_look(top: _fonts[k].$3, legs: 0x2B3442, slim: k.isOdd, wear: k.isOdd ? 'casual_f4' : 'casual_m4')));
     }
-    _people.add(person(_look(top: 0xF4F2EC, legs: 0x3A4252, skirt: 0xF4F2EC, cap: 0xFFFFFF)));
+    _people.add(person(_look(top: 0xF4F2EC, legs: 0x3A4252, cap: 0xFFFFFF, wear: 'casual_m4')));
     _ready = true;
   }
 
-  static FigureLook _look({required int top, required int legs, int? cap, int? layer, int? skirt, bool slim = false}) {
+  static FigureLook _look({required int top, required int legs, required String wear, int? cap, bool slim = false}) {
     final l = FigureLook()
+      ..wear = wear
+      ..atWork = true
       ..top = rgbHex(top)
       ..legs = rgbHex(legs)
       ..shoes = rgbHex(0x1B1C20)
@@ -174,12 +201,6 @@ class TofuShop extends Vignette {
       ..hair = slim ? Hair.bob : Hair.short
       ..slim = slim;
     if (cap != null) l.cap = rgbHex(cap);
-    if (layer != null) l.layer = rgbHex(layer);
-    if (skirt != null) {
-      l
-        ..skirt = rgbHex(skirt)
-        ..skirtLength = 1.1;
-    }
     return l;
   }
 
@@ -285,55 +306,8 @@ class TofuShop extends Vignette {
     if (!_ready) return;
     pool.begin();
     final courier = _poses[0]..rest();
-    // Where the courier is, and the ask going on (kiosk, its start, which
-    // code point).
-    var ask = -1, askAt = 0.0, second = false;
-    if (u < _toShop) {
-      final k = ((u - 0.2) / (_ask + _hop)).floor().clamp(0, 3);
-      final a = _at(k);
-      if (u < a + _ask) {
-        ask = k;
-        askAt = a;
-        courier.pos.setValues(_kx[k], 0, _stopZ);
-        Idle.stand(courier, t, Manner.of(101), look: 0.3);
-        courier.yaw = math.pi;
-      } else {
-        _walkBetween(courier, _kx[k], k < 3 ? _kx[k + 1] : _shopX - 0.3, a + _ask, k < 3 ? _at(k + 1) : _atShop, u, z1: k < 3 ? _stopZ : _shopZ);
-      }
-    } else if (u < _atShop) {
-      _walkBetween(courier, _kx[3], _shopX - 0.3, _toShop, _atShop, u, z1: _shopZ);
-    } else if (u < _leave) {
-      // The tofu in the crate: turning round to show it (□, 0378).
-      courier.pos.setValues(_shopX - 0.3, 0, _shopZ);
-      Idle.stand(courier, t, Manner.of(101), look: 0.2);
-      courier.yaw = math.pi * (1 - smooth(_show, _show + 0.6, u) * (1 - smooth(_leave - 0.5, _leave, u)));
-    } else if (u < _again) {
-      _back.pose(courier, u, 101);
-    } else if (u < _found) {
-      second = true;
-      final first = u < _at2(1);
-      final a = first ? _at2(0) : _at2(1);
-      if (u < _at2(0)) {
-        _walkBetween(courier, -6.2, _kx[0], _again, _at2(0), u);
-      } else if (u < a + _ask) {
-        ask = first ? 0 : 1;
-        askAt = a;
-        courier.pos.setValues(_kx[ask], 0, _stopZ);
-        Idle.stand(courier, t, Manner.of(101), look: 0.3);
-        courier.yaw = math.pi;
-      } else {
-        _walkBetween(courier, _kx[0], _kx[1], _at2(0) + _ask, _at2(1), u);
-      }
-    } else if (u < _home) {
-      second = true;
-      courier.pos.setValues(_kx[1], 0, _stopZ);
-      Idle.stand(courier, t, Manner.of(101), look: 0.2);
-      courier.yaw = math.pi;
-    } else {
-      second = true;
-      // (Back to the first kiosk: where the next turn starts.)
-      _walkBetween(courier, _kx[1], _kx[0], _home, _loop - 0.2, u);
-    }
+    _courier(courier, u, t);
+    final second = u >= _swap;
     // The crate, held in front.
     final fwdX = -math.sin(courier.yaw), fwdZ = -math.cos(courier.yaw);
     // (Held out over the shop's counter for the tofu.)
@@ -345,16 +319,17 @@ class TofuShop extends Vignette {
     (second ? _label0378 : _label0628).visible = false;
     label.visible = true;
     _faceCamera(label, _crate.x, _crate.y - 0.1, _crate.z - 0.153);
-    // The keepers: minding their kiosks; asked, a turn to the shelf, a hand
-    // along it, back; a shake of the head, or the glyph handed over.
+    // The keepers: minding their kiosks; the courier coming, an eye on
+    // them; asked, round to the shelf, a hand along it, back; a shake of
+    // the head, or the glyph handed over.
     for (var k = 0; k < 4; k++) {
       final p = _poses[1 + k]..rest();
       p.pos.setValues(_kx[k], 0, _keeperZ);
-      final asked = ask == k ? u - askAt : -1.0;
+      final asked = _askedAt(k, u), a = asked ?? -9.0;
       final has = second && k == 1;
-      _keeper(p, k, asked, has, t);
+      _keeper(p, k, a, has, t);
       // The lamp on the counter: red for no, green for yes.
-      final lit = asked < 0 ? 0.0 : smooth(1.05, 1.2, asked) * (1 - smooth(_ask - 0.1, _ask + 0.4, asked));
+      final lit = smooth(1.3, 1.45, a) * (1 - smooth(_ask - 0.1, _ask + 0.4, a));
       final col = has ? vm.Vector4(0.25, 2.6, 0.9, 1) : vm.Vector4(2.8, 0.25, 0.2, 1);
       pglow(
         _kx[k] + 0.7,
@@ -366,26 +341,25 @@ class TofuShop extends Vignette {
         lit > 0 ? vm.Vector4(col.x * lit + 0.08, col.y * lit + 0.08, col.z * lit + 0.08, 1) : vm.Vector4(0.08, 0.08, 0.09, 1),
       );
       if (lit > 0.02) _mark(_kx[k], 1.78, _counterZ - 0.25, has, lit);
-      // The shelf being searched: a light running along its rows.
-      if (asked > 0.55 && asked < 1.15) {
-        final f = seg(asked, 0.55, has ? 0.95 : 1.15);
-        final cell = has ? 1 + (f * 1).floor() : (f * 24).floor().clamp(0, 23);
-        final cx = _kx[k] - 0.64 + 0.256 * (cell % 6), cy2 = 2.07 - 0.345 * (cell ~/ 6);
-        pglow(cx, cy2, _shelfZ + 0.04, 0.24, 0.33, 0.01, has && f >= 1 ? vm.Vector4(0.3, 2.2, 0.8, 1) : vm.Vector4(1.6, 1.4, 0.6, 1));
+      // The shelf being searched: a light running along its rows, where
+      // the hand is.
+      if (a > 0.6 && a < (has ? 0.95 : 1.05)) {
+        final (col6, row) = _search(seg(a, 0.6, has ? 0.85 : 1.0), has);
+        final cx = _kx[k] - 0.64 + 0.256 * col6.round(), cy2 = 2.07 - 0.345 * row.round();
+        pglow(cx, cy2, _shelfZ + 0.04, 0.24, 0.33, 0.01, has && a >= 0.85 ? vm.Vector4(0.3, 2.2, 0.8, 1) : vm.Vector4(1.6, 1.4, 0.6, 1));
       }
       // ب off the shelf, over the counter, into the crate.
-      if (has && asked >= 0) {
-        final f = seg(asked, 1.0, 1.6);
-        if (asked < 1.0) {
+      if (has && asked != null && a >= 0) {
+        if (a < 0.95) {
           put(_beh[0], 0, 0, 0, s: 0);
         } else {
-          final sx = _kx[1] - 0.64 + 0.256 * 1, sy = 2.07, sz = _shelfZ - 0.05;
-          final e = eio(f);
+          final sx = _kx[1] - 0.64 + 0.256, sy = 2.07, sz = _shelfZ - 0.05;
+          final e = eio(seg(a, 0.95, 1.5));
           put(_beh[0], lerp(sx, _crate.x, e), lerp(sy, _crate.y + 0.12, e) + 0.35 * math.sin(math.pi * e), lerp(sz, _crate.z, e));
         }
       }
     }
-    if (!(second && (u >= _at2(1) + 1.0))) {
+    if (!(second && u >= _at2(1) + 0.95)) {
       put(_beh[0], 0, 0, 0, s: 0);
     } else if (u >= _found) {
       // In the crate, standing up in it.
@@ -404,13 +378,15 @@ class TofuShop extends Vignette {
       tofuX = lerp(tank.x, _crate.x, over);
       tofuY = lerp(1.17, _crate.y + 0.07, over) + 0.25 * lift * (1 - over) + 0.1 * math.sin(math.pi * over);
       tofuZ = lerp(tank.z, _crate.z, over);
-      if (ts < 2.2) {
-        m.lean += 0.32 * math.sin(math.pi * c01(ts / 2.2));
+      // (Hands to it and off it again, not at once.)
+      final hands = smooth(0, 0.35, ts) * (1 - smooth(1.9, 2.3, ts));
+      if (hands > 0) {
+        m.lean += 0.32 * math.sin(math.pi * c01(ts / 2.3));
         _a.setValues(tofuX - 0.13, tofuY, tofuZ);
         _b.setValues(tofuX + 0.13, tofuY, tofuZ);
         worldPose(m);
-        kit.crew.aim(m, 0, world(_a.x, _a.y, _a.z));
-        kit.crew.aim(m, 1, world(_b.x, _b.y, _b.z));
+        kit.crew.aimBy(m, 0, world(_a.x, _a.y, _a.z), hands);
+        kit.crew.aimBy(m, 1, world(_b.x, _b.y, _b.z), hands);
         kit.figures.draw(_people[5], m);
       } else {
         draw(_people[5], m);
@@ -424,7 +400,7 @@ class TofuShop extends Vignette {
       tofuY = _crate.y + 0.07;
       tofuZ = _crate.z;
     }
-    final showTofu = !second && u >= _atShop + 0.3 && u < _again;
+    final showTofu = !second && u >= _atShop + 0.3;
     if (showTofu) {
       pbox(tofuX, tofuY, tofuZ, 0.2, 0.14, 0.2, Vignette.c(0xFFFFFF));
       _tofuFace.visible = true;
@@ -445,55 +421,90 @@ class TofuShop extends Vignette {
     pool.end();
   }
 
-  /// Walks [p] along the stops' line from x [x0] to [x1] over [a]–[b] (to
-  /// [z1] off it, at the end).
-  void _walkBetween(FigurePose p, double x0, double x1, double a, double b, double u, {double z1 = _stopZ}) {
-    final f = seg(u, a, b), dz = z1 - _stopZ, d = math.sqrt((x1 - x0) * (x1 - x0) + dz * dz);
-    p.pos.setValues(lerp(x0, x1, eio(f)), 0, lerp(_stopZ, z1, eio(f)));
-    if (f <= 0 || f >= 1) {
-      Idle.stand(p, u, Manner.of(101));
-      p.yaw = math.pi;
-      return;
-    }
-    final m = Manner.of(101), speed = d / math.max(b - a, 0.1);
-    Gait.walk(p, Gait.phaseOver(d * eio(f), d, speed, 1, m), speed, m);
-    p.yaw = math.atan2(-(x1 - x0), -dz);
+  /// Which way the courier faces standing before walk [i] (at [u]): the
+  /// counter; at the shop, round to show the tofu once it's in the crate.
+  static double _standFace(int i, double u) => i == 4 ? math.pi * (1 - smooth(_show, _show + 0.6, u)) : math.pi;
+
+  /// [a] turned [k] of the way to [b], the short way round.
+  static double _towards(double a, double b, double k) {
+    var d = (b - a) % (2 * math.pi);
+    if (d > math.pi) d -= 2 * math.pi;
+    return a + d * k;
   }
 
-  /// Keeper [k] ([asked] seconds into an ask, or < 0; [has]: the font has
-  /// it).
-  void _keeper(FigurePose p, int k, double asked, bool has, double t) {
-    final m = Manner.of(110 + k);
-    Idle.stand(p, t, m, look: asked < 0 ? 0.8 : 0.1, fidget: asked < 0 ? 0.4 : 0);
-    if (asked < 0) {
-      p.yaw = Idle.facing(t, m, 0.35);
-      draw(_people[1 + k], p);
+  /// Poses the courier at [u]: walking (turning into a walk as they set
+  /// off and out of it as they stop, never round on the spot in a frame)
+  /// or standing.
+  void _courier(FigurePose p, double u, double t) {
+    var i = 0;
+    while (i < _walks.length && u >= _walks[i].end) {
+      i++;
+    }
+    final next = i < _walks.length ? _walks[i] : null, last = i > 0 ? _walks[i - 1] : _walks.last;
+    if (next != null && u >= next.start) {
+      next.pose(p, u, 101);
+      final yaw = _towards(_standFace(i, next.start), next.headingAt(u), smooth(next.start - 0.25, next.start + 0.45, u));
+      p.yaw = _towards(yaw, _standFace(i + 1, next.end), smooth(next.end - 0.45, next.end + 0.25, u));
       return;
     }
-    // Round to the shelf and back.
-    final away = smooth(0.15, 0.5, asked) * (1 - smooth(1.05, 1.35, asked));
-    p.yaw = math.pi * away;
-    if (away > 0.6) {
-      // A hand along the shelf.
-      final f = seg(asked, 0.55, has ? 0.95 : 1.15);
-      final cell = has ? 1 : (f * 6).floor().clamp(0, 5);
+    final at = last.last;
+    p.pos.setValues(at.x, 0, at.z);
+    Idle.stand(p, t, Manner.of(101), look: 0.3);
+    var yaw = _standFace(i, u);
+    if (i > 0) yaw = _towards(last.headingAt(last.end), yaw, smooth(last.end - 0.45, last.end + 0.25, u));
+    if (next != null) yaw = _towards(yaw, next.headingAt(next.start), smooth(next.start - 0.25, next.start + 0.45, u));
+    p.yaw = yaw;
+  }
+
+  /// How far into an ask at keeper [k]'s kiosk the turn is at [u], from a
+  /// little before the courier comes up to a little after they've gone
+  /// (null: none near).
+  static double? _askedAt(int k, double u) {
+    for (final a in [_at(k), if (k < 2) _at2(k), if (k == 0) _loop + _at(0)]) {
+      if (u > a - 1.2 && u < a + _ask + 1.4) return u - a;
+    }
+    return null;
+  }
+
+  /// Where the search is on the shelf [f] (0..1) of the way: along its
+  /// rows in turn, back and forth, top to bottom (column, row; fractional
+  /// in between); straight to ب's place when the font has it.
+  static (double, double) _search(double f, bool has) {
+    if (has) return (1, 0);
+    final r = f * 4, row = math.min(r.floor(), 3), along = r - row;
+    final x = math.min(along / 0.85, 1.0) * 5;
+    return (row.isEven ? x : 5 - x, row + (row < 3 ? smooth(0.85, 1.0, along) : 0));
+  }
+
+  /// Keeper [k], [a] seconds from the start of an ask (negative: the
+  /// courier on the way; far below: none near); [has]: the font has it.
+  void _keeper(FigurePose p, int k, double a, bool has, double t) {
+    final m = Manner.of(110 + k);
+    // An eye on the courier from as they come up until they've gone.
+    final on = smooth(-0.8, -0.1, a) * (1 - smooth(_ask + 0.3, _ask + 1.1, a));
+    Idle.stand(p, t, m, look: lerp(0.8, 0.15, on), fidget: 0.4 * (1 - on));
+    // Round to the shelf and back (as quick as a person turns).
+    final away = smooth(0.1, 0.6, a) * (1 - smooth(1.0, 1.45, a));
+    p.yaw = Idle.facing(t, m, 0.35) * (1 - on) + math.pi * away;
+    if (away > 0.02) {
+      // A hand along the shelf, where the light is.
+      final (col6, row) = _search(seg(a, 0.6, has ? 0.85 : 1.0), has);
       worldPose(p);
-      kit.crew.aim(p, 1, world(_kx[k] - 0.64 + 0.256 * (cell % 6), 2.07 - 0.345 * (f * 4).floor().clamp(0, 3) * (has ? 0 : 1), _shelfZ - 0.05));
+      kit.crew.aimBy(p, 1, world(_kx[k] - 0.64 + 0.256 * col6, 2.07 - 0.345 * row, _shelfZ - 0.05), smooth(0.3, 0.75, away));
       kit.figures.draw(_people[1 + k], p);
       return;
     }
-    if (asked > 1.25) {
-      if (has) {
-        // Here it is: both hands to the crate.
-        p.armPitch[0] = p.armPitch[1] = lerp(0.1, 1.2, smooth(1.25, 1.5, asked));
-        p.armRoll[0] = p.armRoll[1] = -0.2;
-      } else {
-        // No: a shake of the head, palms up.
-        final no = smooth(1.25, 1.4, asked) * (1 - smooth(_ask - 0.15, _ask + 0.2, asked));
-        p.headYaw += 0.38 * math.sin((asked - 1.25) * 17) * no;
-        p.armPitch[0] = p.armPitch[1] = lerp(0.1, 0.75, no);
-        p.armRoll[0] = p.armRoll[1] = lerp(0.12, 0.55, no);
-      }
+    // Here it is, both hands to the crate; or no: a shake of the head,
+    // palms up.
+    final give = has ? smooth(1.35, 1.6, a) * (1 - smooth(_ask + 0.2, _ask + 0.7, a)) : 0.0;
+    final no = has ? 0.0 : smooth(1.35, 1.55, a) * (1 - smooth(_ask - 0.1, _ask + 0.3, a));
+    if (give > 0) {
+      p.armPitch[0] = p.armPitch[1] = lerp(p.armPitch[0], 1.2, give);
+      p.armRoll[0] = p.armRoll[1] = lerp(p.armRoll[0], -0.2, give);
+    } else if (no > 0) {
+      p.headYaw += 0.34 * math.sin((a - 1.35) * 15) * no;
+      p.armPitch[0] = p.armPitch[1] = lerp(p.armPitch[0], 0.75, no);
+      p.armRoll[0] = p.armRoll[1] = lerp(p.armRoll[0], 0.55, no);
     }
     draw(_people[1 + k], p);
   }

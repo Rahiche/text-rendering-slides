@@ -83,6 +83,13 @@ class FigureLook {
   /// (the crew), first to be one and from further away.
   bool rigged = true, lead = false;
 
+  /// What they wear as a rigged person (rigged.dart's outfits, e.g.
+  /// 'casual_m4'; null: picked to suit the look), and whether they're at
+  /// work (behind a counter, at a bench: they stand about at ease, never
+  /// on the phone or with their arms folded).
+  String? wear;
+  bool atWork = false;
+
   static final _white = vm.Vector4(1, 1, 1, 1);
 }
 
@@ -370,7 +377,9 @@ class Figures {
     double r(int k) => rnd(b.n, 31, k);
     String pick(List<String> from, int k) => from[(r(k) * from.length).floor() % from.length];
     final coat = look.skirt != null && look.skirt == look.top, jacket = look.layer != null && look.sleeves == look.layer;
-    if (jacket && !look.stripes) {
+    if (look.wear case final w?) {
+      b.outfit = w;
+    } else if (jacket && !look.stripes) {
       b.outfit = look.slim ? pick(const ['office_f1', 'office_f2', 'office_f3'], 0) : pick(const ['office_m1', 'office_m2', 'office_m3'], 0);
     } else if (look.hardHat != null || look.stripes) {
       // (Hi-vis: work clothes, with or without the hard hat.)
@@ -395,7 +404,7 @@ class Figures {
     // How they stand about: easy, arms folded, on the phone (hands that
     // hold something, easy).
     final k = r(1), holding = look.bag != null || look.parasol != null || look.clipboard;
-    b.stand = holding || k < 0.6
+    b.stand = holding || look.atWork || k < 0.6
         ? 'idle'
         : k < 0.82 || look.hardHat != null
         ? 'arms_folded'

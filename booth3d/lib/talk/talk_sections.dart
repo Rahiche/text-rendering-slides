@@ -117,7 +117,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('U+0378', '.notdef → □ tofu', accent: true),
           ],
         ),
-        [CityBeat.scene('tofu', hold: 16.0, fly: 2.8, pull: 1.3, shift: 0.36)],
+        [CityBeat.scene('tofu', hold: 19.4, fly: 2.8, pull: 1.3, shift: 0.36)],
       ),
       CityStop(
         'shaping',

@@ -89,6 +89,12 @@ class Director {
   Shot? talkShot;
   String talkLabel = '';
 
+  /// Cut to the director's own shot next frame (the talk's questions,
+  /// hidden in a dip); for a moment after, what comes up next (once the
+  /// build's planned) is cut to at once too.
+  bool cutNext = false;
+  double _freeUntil = -1e9;
+
   void update(BoothModel m, double dt, Site3D site) {
     final j = m.job;
     final t = m.t;
@@ -102,7 +108,9 @@ class Director {
       _job = j;
       _jobs++;
     }
-    var cut = newJob && _jobs > 1 && j != null;
+    var cut = (newJob && _jobs > 1 && j != null) || cutNext;
+    if (cutNext) _freeUntil = t + 0.5;
+    cutNext = false;
     var shot = _keepInFront(_shot(j, t, site));
     var label = 'director $_kind';
     // Something worth following (kerning close up, a break, the driver):
@@ -126,7 +134,7 @@ class Director {
     }
     if (label != _label || cut) {
       final own = label.startsWith('director') && _label.startsWith('director') && phase == _sincePhase;
-      if (!cut && t - _since < (own ? ownHold : minHold) && _held != null && !label.startsWith('look')) {
+      if (!cut && t - _since < (own ? ownHold : minHold) && _held != null && !label.startsWith('look') && t >= _freeUntil) {
         // Too soon after the last cut: hold that shot a moment longer.
         shot = _held!;
       } else {

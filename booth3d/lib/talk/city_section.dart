@@ -21,7 +21,8 @@ class CityBeat {
       hold = null,
       lead = null,
       view = null,
-      viewFrom = null;
+      viewFrom = null,
+      questions = null;
 
   CityBeat.scene(
     String this.scene, {
@@ -37,6 +38,7 @@ class CityBeat {
     this.lead,
     this.view,
     this.viewFrom,
+    this.questions,
   }) : shot = null,
        stall = null;
 
@@ -57,7 +59,8 @@ class CityBeat {
       chapter = false,
       lead = null,
       view = null,
-      viewFrom = null;
+      viewFrom = null,
+      questions = null;
 
   final Shot? shot;
   final String? scene;
@@ -85,6 +88,9 @@ class CityBeat {
   /// its own (an overview once it's played out).
   final Shot? view;
   final double? viewFrom;
+
+  /// The questions after the talk (see [TalkBeat.questions]).
+  final double? questions;
 
   /// A stall head on, close: its display board (risen behind the letters
   /// while the talk's there) filling the frame beside the card.
@@ -128,6 +134,7 @@ class CitySection extends TalkSection {
             live: b.scene == null ? null : () => _live(b),
             cardAt: b.cardAt,
             chapter: b.chapter,
+            questions: b.questions,
           ),
         );
       }
@@ -200,6 +207,9 @@ class CitySection extends TalkSection {
       _letGo(scene: true, stall: true);
     }
   }
+
+  @override
+  void questions() => _letGo(scene: true, stall: true);
 
   void _letGo({bool scene = false, bool stall = false}) {
     if (scene && _scene != null) {

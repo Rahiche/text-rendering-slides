@@ -309,25 +309,27 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         children: [
           view,
           PictureFx(model: model),
-          // The booth's own on screen, unless the talk is on.
+          // The booth's own on screen, unless the talk is on (its captions
+          // over the questions, as its demo plays behind them).
           ListenableBuilder(
             listenable: world.talk,
-            builder: (context, _) => world.talk.on
+            builder: (context, _) => world.talk.on && !world.talk.questions
                 ? const SizedBox.shrink()
                 : Stack(
                     fit: StackFit.expand,
                     children: [
-                      BoothOverlay(model: model),
+                      if (!world.talk.on) BoothOverlay(model: model),
                       KernChip(model: model, caption: world.site.kern.caption),
                       PhotoChip(model: model, cue: world.site.photo.cue),
                       SceneChip(model: model, caption: world.site.caption),
                     ],
                   ),
           ),
-          // (In the talk, only while its journey has the works.)
+          // (In the talk, only while its journey has the works, and over
+          // the questions.)
           ListenableBuilder(
             listenable: world.talk,
-            builder: (context, _) => world.talk.on && world.talk.section is! JourneySection
+            builder: (context, _) => world.talk.on && !world.talk.questions && world.talk.section is! JourneySection
                 ? const SizedBox.shrink()
                 : WorksChip(model: model, caption: world.site.works.caption),
           ),

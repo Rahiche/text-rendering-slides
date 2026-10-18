@@ -39,6 +39,17 @@ class TalkOverlay extends StatelessWidget {
         final stop = talk.stop, section = talk.section;
         return Stack(
           children: [
+            // The questions: the city dips through the deck's navy and
+            // comes back as the booth's demo (the change hidden in it).
+            Positioned.fill(
+              child: ValueListenableBuilder<int>(
+                valueListenable: talk.frame,
+                builder: (context, _, _) {
+                  final d = talk.dip;
+                  return d <= 0 ? const SizedBox.shrink() : ColoredBox(color: BP.bg.withValues(alpha: d));
+                },
+              ),
+            ),
             // The city's bright by day: a shade behind the card.
             if (talk.cardShown)
               Positioned(
@@ -56,7 +67,7 @@ class TalkOverlay extends StatelessWidget {
               ),
             ),
             // How far through the whole talk: a section a stretch, along the top.
-            Positioned(left: 0, right: 0, top: 0, height: 4, child: CustomPaint(painter: _ProgressPainter(talk))),
+            if (!talk.questions) Positioned(left: 0, right: 0, top: 0, height: 4, child: CustomPaint(painter: _ProgressPainter(talk))),
             Positioned.fill(child: CustomPaint(painter: _PinPainter(talk))),
             // A chapter's opening, large in the middle until its card's up.
             Positioned.fill(
@@ -119,6 +130,15 @@ class TalkOverlay extends StatelessWidget {
             ),
             if (section.stops.length > 2)
               Positioned(left: BP.margin, right: BP.margin, bottom: 26, height: 52, child: _Route(stops: section.stops, stop: stop)),
+            // The questions' lower third, the booth's demo behind it.
+            Positioned.fill(
+              child: AnimatedSwitcher(
+                duration: animate ? const Duration(milliseconds: 700) : Duration.zero,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: talk.questions ? _Questions(card: talk.card, animate: animate) : const SizedBox.shrink(),
+              ),
+            ),
             // Blanked: the deck's navy over everything, the room's eyes on
             // the speaker.
             Positioned.fill(
@@ -492,6 +512,62 @@ class _Chapter extends StatelessWidget {
         ],
       ),
     ),
+  );
+}
+
+/// The thanks, small in the bottom left while the booth's demo plays
+/// behind the questions (its captions on the right):
+///
+///   ありがとうございました
+///   Thank you
+///   ──  questions?
+class _Questions extends StatelessWidget {
+  const _Questions({required this.card, required this.animate});
+
+  final TalkCard card;
+  final bool animate;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Positioned(
+        left: 0,
+        bottom: 0,
+        width: 980,
+        height: 420,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.bottomLeft,
+              radius: 1.0,
+              colors: [BP.bg.withValues(alpha: 0.6), BP.bg.withValues(alpha: 0.3), BP.bg.withValues(alpha: 0)],
+              stops: const [0, 0.5, 1],
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        left: BP.margin,
+        bottom: 58,
+        child: _Stagger(
+          animate: animate,
+          children: [
+            if (card.kicker.isNotEmpty) Text(card.kicker, style: UT.label(22, color: BP.inkDim, weight: 500).copyWith(shadows: _Chapter._glow)),
+            Text(card.title, style: UT.name(68, color: BP.ink, weight: 600, height: 1.1).copyWith(shadows: _Chapter._glow)),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 56, height: 2, margin: const EdgeInsets.only(right: 16), color: BP.amber),
+                  Text(card.lede, style: UT.label(26, color: BP.amber, weight: 500).copyWith(shadows: _Chapter._glow)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
   );
 }
 

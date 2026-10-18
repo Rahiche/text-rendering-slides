@@ -161,6 +161,12 @@ class Delivery3D implements StreetWork {
   /// When the camera follows the deliveries (the breaks keep clear).
   final camWindows = <(double, double)>[];
 
+  /// How soon after a name starts its first load can park at the
+  /// earliest; when it does, for a name started at [start] (the lights
+  /// allowing).
+  static const _lead = 11.0;
+  static double firstArrival(double start) => _next(start + _lead, 21.0, 4.3);
+
   /// Plans this build's deliveries (once, when its plan is ready).
   void planFor(BuildPlan plan) {
     _plan = plan;
@@ -180,7 +186,7 @@ class Delivery3D implements StreetWork {
         if (st != null && st.filmed) (st.a - 2.0, st.e + 2.0),
     ];
     bool clashes(double a) => kerns.any((r) => a + 3 > r.$1 && a - 12 < r.$2);
-    var earliest = j.startedAt + 11;
+    var earliest = j.startedAt + _lead;
     var k = 0;
     while (k < n && cap > 0) {
       // It parks 16.7–25.3 s into the lights' cycle: it passes the lights

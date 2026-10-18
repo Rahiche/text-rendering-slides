@@ -732,13 +732,17 @@ class Site3D {
     finish.focus(focus);
     photo.focus(focus, t, w: wallWidth, h: wallHeight);
     verdict.focus(focus, t);
-    delivery.focus(focus, t);
-    works.focus(focus, t);
-    if (j.phase == Phase.build) {
-      alley.focus(focus, t);
-      vignettes.focus(focus, t);
+    // (Planned with the build: none from the last one's plan while this
+    // one's is being made, when it was cut short.)
+    if (plan != null) {
+      delivery.focus(focus, t);
+      works.focus(focus, t);
+      if (j.phase == Phase.build) {
+        alley.focus(focus, t);
+        vignettes.focus(focus, t);
+      }
+      breaks.focus(focus, t);
     }
-    breaks.focus(focus, t);
     _pin();
   }
 

@@ -14,6 +14,7 @@ import '../talk/talk_sections.dart';
 import '../tuning.dart';
 import 'city.dart';
 import 'city_signs.dart' show CitySigns;
+import 'delivery.dart' show Delivery3D;
 import 'devices.dart' show deviceRoots;
 import 'director.dart';
 import 'figure.dart' show Figures;
@@ -40,7 +41,10 @@ class World3D {
 
   /// The talk, told here (talk/talk.dart): its sections, in the deck's
   /// order.
-  late final talk = Talk(director, talkSections(site));
+  late final talk = Talk(director, talkSections(site))
+    // (The questions' demo starts as its first delivery sets off: the
+    // truck coming in, then the build.)
+    ..askReady = (start) => Delivery3D.firstArrival(start) <= start + 11.001 && Delivery3D.firstArrival(start + 0.2) <= start + 11.201;
   bool ready = false;
   bool _skipped = false;
 
@@ -145,6 +149,9 @@ class World3D {
     FigureMotion.clock = m.t;
     // (A talk sets the works' clock and the camera before the site goes.)
     talk.update(m.t, dt);
+    // The questions: the thanks built on the plaza, over and over (from its
+    // start, as the city dips).
+    m.setShowcase(talk.questions ? Talk.thanks : null, now: true);
     // The talk's look comes in with it (and goes with it).
     sky.talk = dt <= 0 ? (talk.on ? 1.0 : 0.0) : approach(sky.talk, talk.on ? 1.0 : 0.0, dt, 0.5);
     sky.update(m.t, dt);

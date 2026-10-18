@@ -84,7 +84,18 @@ class TalkPin {
 /// of the middle what it looks at sits (of the half width: the card's on the
 /// left).
 class TalkBeat {
-  const TalkBeat(this.stop, this.shot, {this.fly = 2.2, this.shift = 0.3, this.pull = 1, this.pins = const [], this.live, this.cardAt = 0, this.chapter = false});
+  const TalkBeat(
+    this.stop,
+    this.shot, {
+    this.fly = 2.2,
+    this.shift = 0.3,
+    this.pull = 1,
+    this.pins = const [],
+    this.live,
+    this.cardAt = 0,
+    this.chapter = false,
+    this.questions,
+  });
 
   final int stop;
   final Shot shot;
@@ -107,6 +118,11 @@ class TalkBeat {
   /// Opens a chapter: the section's number, title and glyphs large in the
   /// middle until the card comes up.
   final bool chapter;
+
+  /// The questions after the talk: this many seconds into the beat (or at
+  /// the next press), the booth's own demo takes over behind the thanks
+  /// (Talk.thanks built on the plaza, the director's camera); null: none.
+  final double? questions;
 }
 
 /// One section of the talk, told in the city: its number and title (as the
@@ -138,8 +154,13 @@ abstract class TalkSection {
   /// [beat], which the camera takes [TalkBeat.fly] to get to.
   void update(int beat, double age, double t, double dt) {}
 
-  /// Every frame while on, after the site's update (captions).
+  /// Every frame while on, after the site's update (captions); not once
+  /// the questions have begun.
   void caption(int beat, double age) {}
+
+  /// The questions have begun (see [TalkBeat.questions]): let what the
+  /// beat plays go, the booth's own demo taking over.
+  void questions() {}
 
   /// Got ready (the capture waits for it).
   Future<void>? get pending => null;

@@ -622,7 +622,9 @@ List<TalkSection> talkSections(Site3D site) {
       CityStop(
         'thanks',
         const TalkCard('Thank you', 'questions?', [], true, 'ありがとうございました'),
-        [CityBeat.scene('scripts', from: 100, hold: 110, fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true)],
+        // (Then, for the questions, the booth's demo: ありがとう built from
+        // its start on the plaza.)
+        [CityBeat.scene('scripts', from: 100, hold: 110, fly: 4.0, shift: 0, fireworks: true, cardAt: 1e9, chapter: true, questions: 8.0)],
       ),
     ]),
   ];

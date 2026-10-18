@@ -251,7 +251,7 @@ class BoothModel extends ChangeNotifier {
 
   /// The name built after the current one: the first in the queue, or the
   /// next sample when nobody is waiting. (What the next blueprint shows.)
-  String get upcoming => queue.isNotEmpty ? queue.first.name : sampleNames[_sample % sampleNames.length];
+  String get upcoming => queue.isNotEmpty ? queue.first.name : _showcase ?? sampleNames[_sample % sampleNames.length];
 
   /// A queue speeds the crew up: build times are divided by this.
   static double _rush(int waiting) => 1 + 0.22 * math.min(waiting, 6);
@@ -276,6 +276,24 @@ class BoothModel extends ChangeNotifier {
     }
     notifyListeners();
     return check;
+  }
+
+  /// While set, built over and over in place of the samples (the talk's
+  /// questions: its thanks, on the plaza); still a sample, not counted
+  /// among the names built, and making way the moment a visitor types one.
+  String? get showcase => _showcase;
+  String? _showcase;
+
+  /// Sets [showcase]; [now]: a sample being built goes at once, the
+  /// showcase starting from its beginning (for when the plaza's hidden).
+  void setShowcase(String? name, {bool now = false}) {
+    if (name == _showcase) return;
+    _showcase = name;
+    if (name != null && now && (job?.sample ?? true)) {
+      job = null;
+      _startNext();
+    }
+    notifyListeners();
   }
 
   /// Operator: drop the current name and go straight to demolition.
@@ -307,7 +325,7 @@ class BoothModel extends ChangeNotifier {
     var next = queue.isNotEmpty
         ? queue.removeAt(0)
         : Job(
-            sampleNames[_sample++ % sampleNames.length],
+            _showcase ?? sampleNames[_sample++ % sampleNames.length],
             serial: ++_serial,
             submittedAt: t,
             sample: true,

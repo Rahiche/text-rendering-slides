@@ -67,9 +67,44 @@ class Talk extends ChangeNotifier {
   /// camera's on its way down).
   bool get cardShown => _on && (_from == null || _back || _age >= _now.cardAt);
 
-  /// Whether the chapter's title is up (a chapter's beat, its card not yet).
-  bool get chapter => _on && _now.chapter && !cardShown;
+  /// Whether the chapter's title is up (a chapter's beat, its card not yet;
+  /// not over the questions).
+  bool get chapter => _on && _now.chapter && !cardShown && !questions;
   bool _cardWas = false;
+
+  /// The word the booth builds behind the questions: the thanks, in
+  /// Japanese.
+  static const thanks = 'ありがとう';
+
+  /// The questions (the beat's [TalkBeat.questions] seconds in, or at a
+  /// press): the city dips through the deck's navy and comes back as the
+  /// booth's own demo, [thanks] built from its start by the director's
+  /// camera, behind the thanks. When they may begin (the beat's age; null:
+  /// not on this beat), whether they were pressed on to, and when the dip
+  /// began (null: not yet).
+  double? _askAt, _dipAt;
+  bool _askPressed = false;
+
+  /// Whether the demo would start well at [start] (scene time): its first
+  /// delivery on its way at once. The dip waits for it up to [_askWait]
+  /// seconds (a press doesn't).
+  bool Function(double start)? askReady;
+  static const _askWait = 30.0;
+
+  /// Over to the booth (from the dip at its darkest: the change is hidden
+  /// in it).
+  bool get questions => _on && _dipAt != null && _age >= _dipAt! + _dipDown;
+
+  /// How dark the dip is (0..1): down, held while the booth starts the
+  /// word, then up on its demo.
+  double get dip {
+    final a = _dipAt;
+    if (!_on || a == null || _age < a) return 0;
+    final u = _age - a;
+    return u < _dipDown ? smooth(0, _dipDown, u) : 1 - smooth(_dipDown + _dipHold, _dipDown + _dipHold + _dipUp, u);
+  }
+
+  static const _dipDown = 0.7, _dipHold = 0.9, _dipUp = 1.3;
 
   /// The stop on screen (of [section]'s), its card, and the beat within it
   /// (of how many).
@@ -130,10 +165,14 @@ class Talk extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The next beat, flown to (from a section's last, the next section).
+  /// The next beat, flown to (from a section's last, the next section);
+  /// on the thanks, the questions now.
   void next() {
     if (!_on) return;
-    if (_beat < section.beats.length - 1) {
+    if (_askAt case final a? when _dipAt == null) {
+      _askAt = math.min(a, _age);
+      _askPressed = true;
+    } else if (_beat < section.beats.length - 1) {
       _go(_section, _beat + 1);
     } else if (_section < sections.length - 1) {
       _go(_section + 1, 0);
@@ -165,6 +204,11 @@ class Talk extends ChangeNotifier {
   }
 
   void _go(int s, int b, {bool back = false}) {
+    // (Back from the questions: from where the booth's camera is.)
+    if (questions) {
+      final c = director.camera;
+      _cam = Shot(c.position.clone(), c.target.clone(), fov: c.fovRadiansY * 180 / math.pi);
+    }
     if (s != _section) {
       section.leave();
       _section = s;
@@ -172,6 +216,9 @@ class Talk extends ChangeNotifier {
     }
     _beat = b;
     _age = 0;
+    _askAt = _now.questions;
+    _dipAt = null;
+    _askPressed = false;
     _to = null;
     _lift = null;
     _liveEye = _liveTarget = null;
@@ -193,6 +240,22 @@ class Talk extends ChangeNotifier {
       notifyListeners();
     }
     section.update(_beat, _age, t, dt);
+    final ask = _askAt;
+    if (_dipAt == null && ask != null && _age >= ask && (_askPressed || _age >= ask + _askWait || (askReady?.call(t + _dipDown) ?? true))) {
+      _dipAt = _age;
+      section.questions();
+    }
+    if (questions) {
+      // Over to the booth: its director has the camera (cutting, in the
+      // dip, to where its demo starts).
+      if (director.talkShot != null) {
+        director
+          ..talkShot = null
+          ..cutNext = true;
+        notifyListeners();
+      }
+      return;
+    }
     final b = _now;
     var to = b.live == null ? _to ??= _framed(b.shot, b.shift, b.pull) : _live(_framed(b.live!(), b.shift, b.pull), dt);
     final from = _from;
@@ -254,7 +317,7 @@ class Talk extends ChangeNotifier {
 
   /// After the site's update (the captions it clears).
   void caption() {
-    if (_on) section.caption(_beat, _age);
+    if (_on && _dipAt == null) section.caption(_beat, _age);
   }
 
   /// After the director's update (the camera this frame is known).

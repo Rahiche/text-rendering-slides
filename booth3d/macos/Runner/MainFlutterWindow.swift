@@ -1,8 +1,12 @@
+import AVFoundation
 import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   static var awake: NSObjectProtocol?
+
+  /// The presentation's voice: the clip playing (lib/talk/presentation.dart).
+  static var narration: AVAudioPlayer?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -58,6 +62,37 @@ class MainFlutterWindow: NSWindow {
         // Not while running as a small test/export window (SLIDES_EXPORT).
         let testing = ProcessInfo.processInfo.environment["SLIDES_EXPORT"] != nil
         if let w = self, !testing, !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // The talk's presentation mode (lib/talk/narration_audio_io.dart): its
+    // narration, a clip (mp3 bytes) at a time.
+    let narration = FlutterMethodChannel(
+      name: "narration", binaryMessenger: flutterViewController.engine.binaryMessenger)
+    narration.setMethodCallHandler { call, result in
+      switch call.method {
+      case "play":
+        MainFlutterWindow.narration?.stop()
+        MainFlutterWindow.narration = nil
+        if let mp3 = call.arguments as? FlutterStandardTypedData,
+          let player = try? AVAudioPlayer(data: mp3.data)
+        {
+          MainFlutterWindow.narration = player
+          player.play()
+        }
+        result(nil)
+      case "pause":
+        MainFlutterWindow.narration?.pause()
+        result(nil)
+      case "resume":
+        MainFlutterWindow.narration?.play()
+        result(nil)
+      case "stop":
+        MainFlutterWindow.narration?.stop()
+        MainFlutterWindow.narration = nil
         result(nil)
       default:
         result(FlutterMethodNotImplemented)

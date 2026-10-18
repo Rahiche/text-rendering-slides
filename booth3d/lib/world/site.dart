@@ -470,7 +470,7 @@ class Site3D {
     });
   }
 
-  void _setupRaster(Job j, NameRaster r, double t) {
+  void _setupRaster(Job j, NameRaster r, double t, {required bool tour}) {
     _r = r;
     b = SiteLayout.brick(r);
     wallWidth = r.cols * b;
@@ -480,8 +480,7 @@ class Site3D {
     _plinthsAt = t;
     delivery.planFor(plan);
     // Every other sample word (no one waiting), a tour of the mini world
-    // instead of a letter's journey through the works.
-    final tour = j.sample && j.serial.isOdd;
+    // instead of a letter's journey through the works ([tour]).
     if (tour) {
       vignettes.planFor(plan, busyCam: delivery.camWindows, sample: true);
       works.planFor(plan, busyCam: [...delivery.camWindows, ...vignettes.camWindows], journey: false);
@@ -671,7 +670,8 @@ class Site3D {
     }
     if (!identical(j, _job)) _startJob(j);
     final r = j.raster;
-    if (r != null && _r == null && j.buildStart != null) _setupRaster(j, r, t);
+    // (The talk's questions' word stays in view: no tour of the mini world.)
+    if (r != null && _r == null && j.buildStart != null) _setupRaster(j, r, t, tour: j.sample && j.serial.isOdd && j.name != m.showcase);
     if (_r != null && _glyphs != null && !_lettersReady) _makeNextLetter();
 
     _truck.visible = false;

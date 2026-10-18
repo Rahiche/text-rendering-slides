@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_scene/scene.dart' as scene3d show RenderView, kRenderLay
 import 'package:text_slides/booth/model.dart';
 import 'package:text_slides/booth/platform.dart';
 import 'package:text_slides/booth/ui/booth_ui.dart';
+import 'package:text_slides/booth/ui/ink.dart' show UT;
 import 'package:text_slides/deck/theme.dart';
 
 import 'capture_stub.dart' if (dart.library.io) 'capture_io.dart';
@@ -22,6 +24,7 @@ import 'picture_fx.dart';
 import 'quality.dart';
 import 'scene_chip.dart';
 import 'talk/journey_section.dart';
+import 'talk/presentation.dart';
 import 'talk/talk_overlay.dart';
 import 'world/figure.dart' show Figures;
 import 'tuning.dart';
@@ -46,6 +49,12 @@ import 'world/world.dart';
 /// open straight into it: on the Mac,
 ///   open -a "Name City" --env NAME_CITY_TALK=1      (or =05: at section 05)
 /// and on the web, the page with ?talk (or ?talk=05).
+///
+/// F6 (or Ctrl+Shift+P) plays it as a presentation instead: the talk told
+/// by itself in the presenter's recorded voice, 25 minutes from the title
+/// to the thanks (talk/presentation.dart). Space pauses it, → and ← skip a
+/// beat, Esc stops it. To open straight into it,
+///   open -a "Name City" --env NAME_CITY_PRESENT=1   (the web: ?present)
 void main() => runApp(const NameCityApp());
 
 const _times = String.fromEnvironment('BOOTH3D_TIMES');
@@ -57,6 +66,16 @@ String? get _talkAtLaunch {
   final q = Uri.base.queryParameters['talk'], env = launchEnv('NAME_CITY_TALK');
   return q ?? (env == null || env.isEmpty || env == '0' ? null : env);
 }
+
+/// Whether to open into the presentation (see above).
+bool get _presentAtLaunch {
+  final env = launchEnv('NAME_CITY_PRESENT');
+  return Uri.base.queryParameters.containsKey('present') || (env != null && env.isNotEmpty && env != '0');
+}
+
+/// Capture aid: --dart-define=BOOTH3D_PRESENT=3 starts the presentation at
+/// scene time 3 (silent; its clock on the capture's).
+const _presentAt = String.fromEnvironment('BOOTH3D_PRESENT');
 
 class NameCityApp extends StatefulWidget {
   const NameCityApp({super.key});
@@ -76,6 +95,12 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   final _quality = RenderQuality(log: PerfLog.enabled ? PerfLog.line : null);
   final _watch = Stopwatch();
   bool get _capturing => _times.isNotEmpty;
+
+  late final presentation = Presentation(world.talk, silent: _capturing);
+
+  /// On the web, a presentation opened into waits for a click (a browser
+  /// plays sound only once the page has had one).
+  bool _gate = false;
 
   @override
   void initState() {
@@ -100,7 +125,15 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
           ..attach()
           ..addListener(() => setState(() {}));
         _ticker = createTicker(_tick)..start();
-        if (_talkAtLaunch case final at?) _toggleTalk(at: at);
+        if (_presentAtLaunch) {
+          if (kIsWeb) {
+            setState(() => _gate = true);
+          } else {
+            _togglePresentation();
+          }
+        } else if (_talkAtLaunch case final at?) {
+          _toggleTalk(at: at);
+        }
       }
     });
   }
@@ -108,6 +141,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   void _tick(Duration elapsed) {
     var dt = (elapsed - _last).inMicroseconds / 1e6;
     _last = elapsed;
+    // (The presentation keeps time with its voice: the frame's real time.)
+    presentation.update(math.min(dt, 0.5));
     dt = math.min(dt, 0.1) * _speed;
     final total = dt;
     while (dt > 0) {
@@ -128,6 +163,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    presentation.stop();
     HardwareKeyboard.instance.removeHandler(_onKey);
     _ticker?.dispose();
     _quality.dispose();
@@ -138,6 +174,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   /// Operator keys, as in the 2D booth (Ctrl+Shift+…); the talk's keys.
   bool _onKey(KeyEvent e) {
     final k = HardwareKeyboard.instance;
+    if (_presentKey(e)) return true;
     if (_talkKey(e)) return true;
     if (!k.isControlPressed || !k.isShiftPressed || k.isAltPressed || k.isMetaPressed) return false;
     final ui = BoothUi.of(model);
@@ -161,11 +198,50 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       action = BoothPlatform.quit;
     } else if (key == LogicalKeyboardKey.keyT) {
       action = _toggleTalk;
+    } else if (key == LogicalKeyboardKey.keyP) {
+      action = _togglePresentation;
     } else {
       return false;
     }
     if (e is KeyDownEvent) action();
     return e is! KeyUpEvent;
+  }
+
+  /// F6 starts (or stops) the presentation; while it's on, Space pauses
+  /// it, → and ← skip a beat, Esc stops it (the talk's other keys as ever).
+  bool _presentKey(KeyEvent e) {
+    final key = e.logicalKey;
+    if (key == LogicalKeyboardKey.f6) {
+      if (e is KeyDownEvent) _togglePresentation();
+      return true;
+    }
+    if (_gate && e is KeyDownEvent) {
+      _togglePresentation();
+      return true;
+    }
+    if (!presentation.on || HardwareKeyboard.instance.isMetaPressed) return false;
+    final void Function()? action = switch (key) {
+      LogicalKeyboardKey.space => presentation.togglePause,
+      LogicalKeyboardKey.arrowRight || LogicalKeyboardKey.arrowDown || LogicalKeyboardKey.pageDown || LogicalKeyboardKey.enter => presentation.next,
+      LogicalKeyboardKey.arrowLeft || LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.pageUp || LogicalKeyboardKey.backspace => presentation.back,
+      LogicalKeyboardKey.escape => presentation.stop,
+      _ => null,
+    };
+    if (action == null) return false;
+    if (e is KeyDownEvent) action();
+    return true;
+  }
+
+  /// Starts the presentation from the title, or stops it.
+  void _togglePresentation() {
+    if (!world.ready) return;
+    if (_gate) setState(() => _gate = false);
+    if (presentation.on) {
+      presentation.stop();
+    } else {
+      _speed = 1;
+      presentation.start(world.director.camera);
+    }
   }
 
   /// F5 starts (or ends) the talk; while it's on, the clicker's keys move
@@ -178,6 +254,7 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       return true;
     }
     if (!talk.on || HardwareKeyboard.instance.isMetaPressed) return false;
+    // (The presentation's own keys: see above.)
     // A clicker's blank key (B, or .): the screen to navy and back. While
     // it's blank, the other keys only bring the talk back (Esc still ends
     // it).
@@ -224,7 +301,9 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
   void _toggleTalk({String? at}) {
     if (!world.ready) return;
     final talk = world.talk;
-    if (talk.on) {
+    if (presentation.on) {
+      presentation.stop();
+    } else if (talk.on) {
       talk.end();
     } else {
       // (At the booth's own pace.)
@@ -246,12 +325,23 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
     // The shot list: every cut (or new shot glided to), as it happens.
     final d = world.director;
     var shot = '', cuts = 0;
+    var presented = false;
     for (final (i, target) in targets.indexed) {
       Site3D.lookIndex = i;
       while (model.t < target) {
         final step = math.min(1 / 30, target - model.t + 1e-9);
+        if (_presentAt.isNotEmpty && !presented && model.t >= double.parse(_presentAt)) {
+          presented = true;
+          await presentation.start(world.director.camera);
+          out.log('PRESENT ${model.t.toStringAsFixed(2)} start: ${presentation.length.toStringAsFixed(1)} s');
+        }
+        final beat = world.talk.on ? world.talk.beatNumber : -1;
+        presentation.update(step);
         model.update(step);
         world.update(model, step);
+        if (presentation.on && world.talk.beatNumber != beat) {
+          out.log('PRESENT ${model.t.toStringAsFixed(2)} beat ${world.talk.beatNumber} · ${world.talk.section.number} ${world.talk.section.stops[world.talk.stop]} (at ${presentation.elapsed.toStringAsFixed(1)} s)');
+        }
         if (d.shotLabel != shot || d.cuts != cuts) {
           out.log('SHOT ${model.t.toStringAsFixed(2)} ${d.cuts != cuts ? 'cut  ' : 'glide'} ${model.job?.phase.name ?? '-'} · ${d.shotLabel}');
           shot = d.shotLabel;
@@ -334,6 +424,12 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
                 : WorksChip(model: model, caption: world.site.works.caption),
           ),
           TalkOverlay(talk: world.talk, animate: !_capturing),
+          // The presentation paused; on the web, waiting for its click.
+          ListenableBuilder(
+            listenable: presentation,
+            builder: (context, _) => presentation.on && presentation.paused ? const _Paused() : const SizedBox.shrink(),
+          ),
+          if (_gate) _PresentGate(onStart: _togglePresentation),
           if (!_capturing) LoadingCurtain(stage: world.stage, ready: world.ready),
           ListenableBuilder(
             listenable: world.talk,
@@ -364,4 +460,61 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
       ),
     );
   }
+}
+
+/// The presentation paused: a quiet note at the bottom.
+class _Paused extends StatelessWidget {
+  const _Paused();
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: const Alignment(0, 0.9),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: BP.panel.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: BP.line.withValues(alpha: 0.25)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+        child: Text('❚❚  paused · space to carry on', style: UT.mono(15, color: BP.ink, weight: 500, ls: 1.2)),
+      ),
+    ),
+  );
+}
+
+/// The web's presentation, opened into: a click (or a key) starts it, so
+/// the browser lets it speak.
+class _PresentGate extends StatelessWidget {
+  const _PresentGate({required this.onStart});
+
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onStart,
+    child: ColoredBox(
+      color: BP.bg.withValues(alpha: 0.55),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: BP.panel.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: BP.amber.withValues(alpha: 0.6)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('▶  Play the talk', style: UT.name(44, color: BP.ink, weight: 600)),
+                const SizedBox(height: 10),
+                Text('narrated · 25 minutes · click to start', style: UT.mono(15, color: BP.inkDim, weight: 500, ls: 1.2)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }

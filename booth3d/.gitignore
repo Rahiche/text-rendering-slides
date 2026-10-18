@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# The presentation's narration clips (tool/narration): the presenter's own
+# voice, kept to the Mac app (not in git, not on the public site).
+/assets/narration/*.mp3

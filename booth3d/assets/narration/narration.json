@@ -1,0 +1,341 @@
+{
+ "total": 1500.0,
+ "clips": [
+  {
+   "beat": "title",
+   "file": "00.mp3",
+   "start": 0.6,
+   "seconds": 40.15,
+   "dwell": 41.866
+  },
+  {
+   "beat": "01 pipeline",
+   "file": "01.mp3",
+   "start": 0.6,
+   "seconds": 43.468,
+   "dwell": 45.183
+  },
+  {
+   "beat": "01 string1",
+   "file": "02.mp3",
+   "start": 0.6,
+   "seconds": 32.418,
+   "dwell": 34.134
+  },
+  {
+   "beat": "01 string2",
+   "file": "03.mp3",
+   "start": 0.6,
+   "seconds": 31.608,
+   "dwell": 33.324
+  },
+  {
+   "beat": "01 itemize",
+   "file": "04.mp3",
+   "start": 0.6,
+   "seconds": 36.206,
+   "dwell": 37.921
+  },
+  {
+   "beat": "01 fallback",
+   "file": "05.mp3",
+   "start": 0.6,
+   "seconds": 46.393,
+   "dwell": 48.109
+  },
+  {
+   "beat": "01 shaping",
+   "file": "06.mp3",
+   "start": 0.6,
+   "seconds": 40.255,
+   "dwell": 41.97
+  },
+  {
+   "beat": "01 lines1",
+   "file": "07.mp3",
+   "start": 0.6,
+   "seconds": 36.493,
+   "dwell": 38.209
+  },
+  {
+   "beat": "01 lines2",
+   "file": "08.mp3",
+   "start": 0.6,
+   "seconds": 22.335,
+   "dwell": 24.05
+  },
+  {
+   "beat": "01 bidi",
+   "file": "09.mp3",
+   "start": 0.6,
+   "seconds": 35.109,
+   "dwell": 36.824
+  },
+  {
+   "beat": "01 raster",
+   "file": "10.mp3",
+   "start": 0.6,
+   "seconds": 42.945,
+   "dwell": 44.661
+  },
+  {
+   "beat": "02 intro",
+   "file": "11.mp3",
+   "start": 0.6,
+   "seconds": 24.32,
+   "dwell": 26.036
+  },
+  {
+   "beat": "02 unicode",
+   "file": "12.mp3",
+   "start": 0.6,
+   "seconds": 35.971,
+   "dwell": 37.686
+  },
+  {
+   "beat": "02 alley",
+   "file": "13.mp3",
+   "start": 0.6,
+   "seconds": 30.955,
+   "dwell": 32.671
+  },
+  {
+   "beat": "02 rtl",
+   "file": "14.mp3",
+   "start": 0.6,
+   "seconds": 26.697,
+   "dwell": 28.413
+  },
+  {
+   "beat": "02 joining",
+   "file": "15.mp3",
+   "start": 0.6,
+   "seconds": 29.806,
+   "dwell": 31.521
+  },
+  {
+   "beat": "02 reorder",
+   "file": "16.mp3",
+   "start": 0.6,
+   "seconds": 24.424,
+   "dwell": 26.14
+  },
+  {
+   "beat": "02 stacking",
+   "file": "17.mp3",
+   "start": 0.6,
+   "seconds": 28.264,
+   "dwell": 29.98
+  },
+  {
+   "beat": "02 blocks",
+   "file": "18.mp3",
+   "start": 0.6,
+   "seconds": 26.227,
+   "dwell": 27.943
+  },
+  {
+   "beat": "02 vertical",
+   "file": "19.mp3",
+   "start": 0.6,
+   "seconds": 22.596,
+   "dwell": 24.312
+  },
+  {
+   "beat": "02 locale",
+   "file": "20.mp3",
+   "start": 0.6,
+   "seconds": 34.168,
+   "dwell": 35.884
+  },
+  {
+   "beat": "02 mixing",
+   "file": "21.mp3",
+   "start": 0.6,
+   "seconds": 28.735,
+   "dwell": 30.45
+  },
+  {
+   "beat": "03 engines",
+   "file": "22.mp3",
+   "start": 0.6,
+   "seconds": 36.31,
+   "dwell": 38.026
+  },
+  {
+   "beat": "03 chrome",
+   "file": "23.mp3",
+   "start": 0.6,
+   "seconds": 33.463,
+   "dwell": 35.179
+  },
+  {
+   "beat": "03 figma",
+   "file": "24.mp3",
+   "start": 0.6,
+   "seconds": 30.407,
+   "dwell": 32.122
+  },
+  {
+   "beat": "03 macos",
+   "file": "25.mp3",
+   "start": 0.6,
+   "seconds": 29.492,
+   "dwell": 31.208
+  },
+  {
+   "beat": "03 android",
+   "file": "26.mp3",
+   "start": 0.6,
+   "seconds": 30.119,
+   "dwell": 31.835
+  },
+  {
+   "beat": "04 intro",
+   "file": "27.mp3",
+   "start": 0.6,
+   "seconds": 19.879,
+   "dwell": 21.595
+  },
+  {
+   "beat": "04 missing1",
+   "file": "28.mp3",
+   "start": 0.6,
+   "seconds": 30.589,
+   "dwell": 32.305
+  },
+  {
+   "beat": "04 missing2",
+   "file": "29.mp3",
+   "start": 0.6,
+   "seconds": 20.323,
+   "dwell": 22.039
+  },
+  {
+   "beat": "04 missing3",
+   "file": "30.mp3",
+   "start": 0.6,
+   "seconds": 28.369,
+   "dwell": 30.085
+  },
+  {
+   "beat": "04 only1",
+   "file": "31.mp3",
+   "start": 0.6,
+   "seconds": 29.518,
+   "dwell": 31.234
+  },
+  {
+   "beat": "04 only2",
+   "file": "32.mp3",
+   "start": 0.6,
+   "seconds": 21.264,
+   "dwell": 22.979
+  },
+  {
+   "beat": "04 only3",
+   "file": "33.mp3",
+   "start": 0.6,
+   "seconds": 18.573,
+   "dwell": 20.289
+  },
+  {
+   "beat": "04 web",
+   "file": "34.mp3",
+   "start": 0.6,
+   "seconds": 34.508,
+   "dwell": 36.223
+  },
+  {
+   "beat": "05 map",
+   "file": "35.mp3",
+   "start": 0.6,
+   "seconds": 29.492,
+   "dwell": 31.208
+  },
+  {
+   "beat": "05 widget",
+   "file": "36.mp3",
+   "start": 0.6,
+   "seconds": 29.571,
+   "dwell": 31.286
+  },
+  {
+   "beat": "05 engine",
+   "file": "37.mp3",
+   "start": 0.6,
+   "seconds": 27.951,
+   "dwell": 29.667
+  },
+  {
+   "beat": "05 fonts",
+   "file": "38.mp3",
+   "start": 0.6,
+   "seconds": 29.205,
+   "dwell": 30.921
+  },
+  {
+   "beat": "05 shape",
+   "file": "39.mp3",
+   "start": 0.6,
+   "seconds": 27.82,
+   "dwell": 29.536
+  },
+  {
+   "beat": "05 raster",
+   "file": "40.mp3",
+   "start": 0.6,
+   "seconds": 28.839,
+   "dwell": 30.555
+  },
+  {
+   "beat": "05 draw",
+   "file": "41.mp3",
+   "start": 0.6,
+   "seconds": 18.704,
+   "dwell": 20.419
+  },
+  {
+   "beat": "06 intro",
+   "file": "42.mp3",
+   "start": 0.6,
+   "seconds": 14.707,
+   "dwell": 16.423
+  },
+  {
+   "beat": "06 phrases",
+   "file": "43.mp3",
+   "start": 0.6,
+   "seconds": 30.041,
+   "dwell": 31.757
+  },
+  {
+   "beat": "06 punctuation",
+   "file": "44.mp3",
+   "start": 0.6,
+   "seconds": 28.317,
+   "dwell": 30.032
+  },
+  {
+   "beat": "06 slug",
+   "file": "45.mp3",
+   "start": 0.6,
+   "seconds": 30.171,
+   "dwell": 31.887
+  },
+  {
+   "beat": "end tradeoff",
+   "file": "46.mp3",
+   "start": 0.6,
+   "seconds": 35.291,
+   "dwell": 37.007
+  },
+  {
+   "beat": "end thanks",
+   "file": "47.mp3",
+   "start": 0.6,
+   "seconds": 6.296,
+   "dwell": 6.896
+  }
+ ]
+}

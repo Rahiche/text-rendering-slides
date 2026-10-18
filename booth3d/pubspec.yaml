@@ -68,6 +68,9 @@ flutter:
     - assets/sky/
     # MakeHuman (CC0) people and CC0 motion clips: assets/people/CREDITS.md.
     - assets/people/
+    # The presentation's narration (tool/narration): its timing; its clips,
+    # the presenter's voice, only where they've been made (not in git).
+    - assets/narration/
   # The booth UI (board, input, tally) from the slides package draws with
   # these families.
   fonts:

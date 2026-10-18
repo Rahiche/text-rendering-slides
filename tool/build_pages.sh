@@ -25,6 +25,9 @@ cp tool/pages/index.html build/pages/index.html
 (cd booth3d && flutter build web --wasm --release --base-href "${BASE}city/" --dart-define=FLUTTER_SCENE_RAPIER_WASM_URL=rapier.wasm | grep -E "✓|rror" || true)
 rm -rf build/pages/city
 cp -R booth3d/build/web build/pages/city
+# (Not the presentation's voice: the presenter's own, it stays in the Mac
+# app; the web's presentation plays silent.)
+rm -f build/pages/city/assets/assets/narration/*.mp3
 # The conference-stall loop (main.dart routes /booth/ and /workshop/ to it).
 for b in booth workshop; do
   cp -R build/web "build/pages/$b"

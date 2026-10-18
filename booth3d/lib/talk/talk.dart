@@ -61,6 +61,16 @@ class Talk extends ChangeNotifier {
 
   /// The beat on screen, of the section's (for the talk's progress).
   int get beatIndex => _beat;
+
+  /// The beat on screen, counted through the whole talk (the
+  /// presentation's narration has a clip a beat).
+  int get beatNumber {
+    var n = _beat;
+    for (var i = 0; i < _section; i++) {
+      n += sections[i].beats.length;
+    }
+    return n;
+  }
   TalkBeat get _now => section.beats[_beat];
 
   /// Whether the beat's card is up yet (a beat may hold it back until the

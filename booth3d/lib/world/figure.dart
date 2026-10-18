@@ -84,9 +84,10 @@ class FigureLook {
   bool rigged = true, lead = false;
 
   /// What they wear as a rigged person (rigged.dart's outfits, e.g.
-  /// 'casual_m4'; null: picked to suit the look), and whether they're at
-  /// work (behind a counter, at a bench: they stand about at ease, never
-  /// on the phone or with their arms folded).
+  /// 'casual_m4'; null: picked to suit the look), and whether they're busy
+  /// with something (behind a counter, at a bench, out with their family:
+  /// they stand about at ease, never on the phone or with their arms
+  /// folded).
   String? wear;
   bool atWork = false;
 
@@ -107,6 +108,13 @@ class _Body {
 
   /// Sitting (on a bench, a seat): on whatever they sit on, not out of it.
   bool seated = false;
+
+  /// (Capture runs: the way it faced as last drawn, eased.)
+  double shownYaw = double.nan;
+
+  /// Little steps for being moved without one (see [Figures._shuffle]):
+  /// their phase, and how much (0..1).
+  double shuffle = 0, shuffling = 0;
 
   /// (Capture runs: this frame's chest, inverted, and palms; its arms, for
   /// the log.)
@@ -672,6 +680,38 @@ class Figures {
 
   final _m = vm.Matrix4.identity(), _t = vm.Matrix4.identity();
 
+  /// Someone moved along the ground with no step taken for it (eased along
+  /// by a scene, shifting with their work, nudged): little steps, one foot
+  /// then the other, the lifted one reaching the way they go, not a glide.
+  /// ([since]: seconds since they were last drawn.)
+  static void _shuffle(_Body b, FigurePose p, double since) {
+    if (!(since > 1e-4 && since < 0.25)) {
+      b.shuffling = 0;
+      return;
+    }
+    final mx = p.pos.x - b.x, mz = p.pos.z - b.z, moved = math.sqrt(mx * mx + mz * mz);
+    final stepping = p.stride.isFinite || p.footLift[0] > 0.005 || p.footLift[1] > 0.005;
+    final grounded = p.pos.y < 0.3 && math.min(p.legPitch[0], p.legPitch[1]) <= 0.9;
+    if (!stepping && grounded && moved < 0.8 && moved / since > 0.08) {
+      b
+        ..shuffle += moved / 0.3 * math.pi
+        ..shuffling = math.min(1.0, b.shuffling + since * 6);
+    } else {
+      b.shuffling = math.max(0.0, b.shuffling - since * 4);
+    }
+    if (b.shuffling <= 0 || stepping || !grounded) return;
+    // The way they go, in their own frame (forward −z, x to the side).
+    final c = math.cos(p.yaw), s = math.sin(p.yaw), len = math.max(moved, 1e-6);
+    final ahead = moved > 1e-4 ? (-mx * s - mz * c) / len : 0.0, aside = moved > 1e-4 ? (mx * c - mz * s) / len : 0.0;
+    final k = b.shuffling, w = math.sin(b.shuffle);
+    for (var side = 0; side < 2; side++) {
+      final up = math.max(0.0, side == 0 ? w : -w);
+      p.footLift[side] = 0.045 * k * up;
+      p.footAhead[side] += 0.07 * k * up * ahead;
+      p.footOut[side] += 0.05 * k * up * aside * (side == 0 ? -1 : 1);
+    }
+  }
+
   /// Poses person [n] as [p] and draws them ([p.visible] false hides them).
   void draw(int n, FigurePose p) {
     final b = _bodies[n], look = b.look;
@@ -698,7 +738,15 @@ class Figures {
       if (jump > 0.8 && _jumps.length < 40) {
         _jumps.add('#$n at t=${now.toStringAsFixed(2)}: ${jump.toStringAsFixed(1)} m from ${b.x.toStringAsFixed(1)},${b.z.toStringAsFixed(1)} to ${p.pos.x.toStringAsFixed(1)},${p.pos.z.toStringAsFixed(1)}');
       }
+      // (Along the ground without a step: skating.)
+      final stepping = p.stride.isFinite || p.footLift[0] > 0.005 || p.footLift[1] > 0.005;
+      if (jump <= 0.8 && jump / since > 0.5 && !stepping && p.pos.y < 0.3 && math.min(p.legPitch[0], p.legPitch[1]) <= 0.9) {
+        final k = _skates[n];
+        _skates[n] = (k == null ? 1 : k.$1 + 1, k?.$2 ?? now, k?.$3 ?? '${p.pos.x.toStringAsFixed(1)},${p.pos.z.toStringAsFixed(1)}');
+      }
     }
+    // (Before where they were last is forgotten.)
+    _shuffle(b, p, since);
     if (since > 1e-4 && since < 0.25) {
       b
         ..vx = (p.pos.x - b.x) / since
@@ -717,7 +765,24 @@ class Figures {
       ..seated = math.min(p.legPitch[0], p.legPitch[1]) > 0.9
       ..seen = now;
     p.motion = b.motion;
+    final shownWas = b.shownYaw;
     r.solve(p, size: size, width: look.slim ? 0.92 : 1, motion: b.motion);
+    b.shownYaw = r.joints[FigureRig.jYaw];
+    // (Capture runs: round on the spot as drawn, faster than anyone turns.)
+    if (_counting && since > 1e-4 && since < 0.07 && now > 0.5 && shownWas.isFinite) {
+      var turn = (b.shownYaw - shownWas) % (2 * math.pi);
+      if (turn > math.pi) turn -= 2 * math.pi;
+      if (turn.abs() > 10.5 * since) {
+        _snapCount++;
+        final k = _snaps[n], deg = (turn.abs() * 180 / math.pi).round();
+        _snaps[n] = (
+          k == null ? 1 : k.$1 + 1,
+          math.max(k?.$2 ?? 0, deg),
+          k?.$3 ?? now,
+          k?.$4 ?? '${p.pos.x.toStringAsFixed(1)},${p.pos.z.toStringAsFixed(1)}${p.stride.isFinite ? ' walking' : ''}',
+        );
+      }
+    }
     if (_counting) {
       b.chestInv
         ..setFrom(r.chest)
@@ -869,6 +934,8 @@ class Figures {
       'FIGURES overlap: ${_frames == 0 ? 0 : (_bumps / _frames).toStringAsFixed(2)} pairs a frame over $_frames frames, deepest ${(_deepest * 100).round()} cm at t=${_deepestAt.toStringAsFixed(1)} ($_deepestWho)\n'
       '${[for (final (d, t, w) in (_worst..sort((a, b) => b.$1.compareTo(a.$1))).take(12)) '  ${(d * 100).round()} cm at t=${t.toStringAsFixed(1)}: $w'].join('\n')}\n'
       'FIGURES jumps: ${_jumps.length}${[for (final j in _jumps) '\n  $j'].join()}\n'
+      'FIGURES snaps: $_snapCount${[for (final e in (_snaps.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))).take(40)) '\n  #${e.key}: ${e.value.$1} frames, up to ${e.value.$2}°, from t=${e.value.$3.toStringAsFixed(1)} at ${e.value.$4}'].join()}\n'
+      'FIGURES skates: ${_skates.length}${[for (final e in _skates.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  #${e.key}: ${e.value.$1} frames, from t=${e.value.$2.toStringAsFixed(1)} at ${e.value.$3}'].join()}\n'
       'FIGURES aloft: $_aloftEvents times, $_aloftFrames frames${[for (final j in _aloft.take(80)) '\n  $j'].join()}\n'
       'FIGURES in solids: ${[for (final e in _inside.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}\n'
       'FIGURES hands in: ${[for (final e in _hands.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1))) '\n  ${e.key}: ${e.value.$1} frames, worst ${(e.value.$2 * 100).round()} cm at t=${e.value.$3.toStringAsFixed(1)} (${e.value.$4})'].join()}'
@@ -958,6 +1025,9 @@ class Figures {
 
   /// People who jumped somewhere between two frames (capture runs).
   final _jumps = <String>[], _aloft = <String>[];
+  final _snaps = <int, (int, int, double, String)>{};
+  int _snapCount = 0;
+  final _skates = <int, (int, double, String)>{};
   var _events = 0, _aloftEvents = 0, _aloftFrames = 0;
 
   /// People found inside [solids], by kind: frames, the worst (depth,

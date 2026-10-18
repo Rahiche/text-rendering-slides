@@ -14,6 +14,12 @@ class FigurePose {
   final pos = vm.Vector3.zero();
   double yaw = 0;
 
+  /// The turn a scene's frame added to [yaw] as it placed the pose in the
+  /// world (Vignette.worldPose): [rest] takes it off again, so a scene
+  /// that doesn't face its person anew each frame keeps the facing it
+  /// gave them, not its frame's turn once more every frame.
+  double turned = 0;
+
   /// Eased aside from whoever's in the way (metres along x and z, on top of
   /// [pos]): [Figures] works it out from the frame before; kept from frame
   /// to frame ([rest] leaves it).
@@ -164,6 +170,8 @@ class FigurePose {
   }
 
   void rest() {
+    yaw -= turned;
+    turned = 0;
     hatUp = 0;
     hatSpin = 0;
     for (var s = 0; s < 2; s++) {
@@ -230,6 +238,7 @@ class FigurePose {
       }
     }
     if (near) {
+      turned = q.turned;
       stride = q.stride;
       clipboard = q.clipboard;
       steer = q.steer;
@@ -900,8 +909,9 @@ class FigureMotion {
   static double clock = 0;
 
   /// How fast a jump dies away (seconds; about 95 % gone after 4.7 of
-  /// these).
-  static const settle = 0.07;
+  /// these); a turn of the whole body slower, as a person turns round
+  /// (about face in half a second, not whipped round).
+  static const settle = 0.07, turnSettle = 0.12;
 
   static const _n = FigureRig.channels;
   final _last = Float64List(_n), _rate = Float64List(_n), _off = Float64List(_n), _offRate = Float64List(_n);
@@ -918,7 +928,7 @@ class FigureMotion {
 
   /// How far off where it was going a joint must be to count as a jump.
   static final _jump = Float64List.fromList([
-    0.3, 0.05, 0.15, 0.15, 0.12, 0.15, 0.2, 0.03, 0.06, 0.06, 0.06, 2, 0.04, // the trunk
+    0.12, 0.05, 0.15, 0.15, 0.12, 0.15, 0.2, 0.03, 0.06, 0.06, 0.06, 2, 0.04, // the trunk
     0.25, 0.35, 0.35, 0.08, 0.25, 0.35, 0.35, 0.08, // the legs
     0.05, 0.05, 0.05, 0.35, 0.35, 0.35, 0.05, 0.05, 0.05, 0.35, 0.35, 0.35, // the arms
   ]);
@@ -926,7 +936,7 @@ class FigureMotion {
   /// The fastest a joint moves (a second): faster than this is a jump, and
   /// a jump carries on no faster.
   static final _speed = Float64List.fromList([
-    7, 1.6, 3, 4, 3, 4, 6, 0.6, 1.5, 1.5, 1.5, 40, 0.6, // the trunk
+    4.5, 1.6, 3, 4, 3, 4, 6, 0.6, 1.5, 1.5, 1.5, 40, 0.6, // the trunk
     10, 18, 14, 4, 10, 18, 14, 4, // the legs
     4, 4, 4, 10, 10, 10, 4, 4, 4, 10, 10, 10, // the arms
   ]);
@@ -962,7 +972,7 @@ class FigureMotion {
       return;
     }
     final n = arms ? _n : FigureRig.jArm;
-    final e = math.exp(-dt / settle);
+    final e0 = math.exp(-dt / settle), eTurn = math.exp(-dt / turnSettle);
     // A jump in the body (or setting off, or stopping) is a new pose for
     // it: every joint of it carries on from where it was; the arms the
     // same, on their own (a hand going somewhere new mustn't throw the
@@ -992,9 +1002,10 @@ class FigureMotion {
       if (i == FigureRig.jYaw) step = _wrap(step);
       final miss = step - _rate[i] * dt;
       // What's left of earlier jumps dies away…
-      final o0 = _off[i], v0 = _offRate[i], c = v0 + o0 / settle;
+      final k = i == FigureRig.jYaw ? turnSettle : settle, e = i == FigureRig.jYaw ? eTurn : e0;
+      final o0 = _off[i], v0 = _offRate[i], c = v0 + o0 / k;
       var o = (o0 + c * dt) * e;
-      final ov = (v0 - c * dt / settle) * e;
+      final ov = (v0 - c * dt / k) * e;
       double rate;
       if (jumped) {
         // …and a new one is shown carrying on from where it was.

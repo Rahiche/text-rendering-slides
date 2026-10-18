@@ -593,8 +593,9 @@ class TalkPhones extends Vignette {
     for (final (i, (x, z, yaw)) in [(0.2, 8.7, 0.0), (6.1, 4.8, math.pi / 2), (-5.6, 1.95, math.pi)].indexed) {
       final p = _poses[i]..rest();
       p.pos.setValues(x, 0.08, z);
-      Idle.stand(p, t, Manner.of(140 + i), look: 0.6);
-      p.yaw += yaw;
+      final m = Manner.of(140 + i);
+      Idle.stand(p, t, m, look: 0.6);
+      p.yaw = yaw + Idle.facing(t, m, 0.3);
       draw(_people[i], p);
     }
   }

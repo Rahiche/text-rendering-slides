@@ -288,7 +288,10 @@ abstract class Vignette {
   /// it.
   void worldPose(FigurePose p) {
     frame.transform3(p.pos);
-    p.yaw += kit.yawOf(frame);
+    final turn = kit.yawOf(frame);
+    p
+      ..yaw += turn
+      ..turned += turn;
   }
 
   /// Draws person [slot] as [p] posed in the frame.

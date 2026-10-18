@@ -467,6 +467,11 @@ class _Person {
   /// The walk's phase (radians, π a step: see [Gait]).
   double stride = 0;
 
+  /// Where they were last drawn, and when; how fast they've lately been
+  /// moved other than by walking (pushed aside, creeping up at the kerb):
+  /// their feet step for it.
+  double lastX = double.nan, lastZ = 0, posedAt = 0, shuffle = 0;
+
   /// How fast they're going now (m/s, along the way: speeding up and
   /// slowing down take a moment), and their way of moving.
   double vel = 0;
@@ -1198,7 +1203,25 @@ class _People {
         _figures.hide(p.slot);
         continue;
       }
-      final speed = p.role == _Role.walker ? p.vel : (p.moving ? 1.5 : 0.0);
+      var speed = p.role == _Role.walker ? p.vel : (p.moving ? 1.5 : 0.0);
+      // (Moved further than their walk took them: a step or two for it,
+      // not a slide; eased off over a moment after.)
+      final since = t - p.posedAt;
+      if (p.lastX.isFinite && since > 1e-4 && since < 0.25) {
+        final mx = p.x - p.lastX, mz = p.z - p.lastZ, moved = math.sqrt(mx * mx + mz * mz);
+        final extra = moved - speed * since;
+        if (extra > 0.005) {
+          p
+            ..stride += extra / Gait.stepLength(0.6, p.scale, p.manner) * math.pi
+            ..shuffle = math.max(p.shuffle, 0.6);
+        }
+      }
+      if (since > 0) p.shuffle = math.max(0.0, p.shuffle - since * 1.8);
+      p
+        ..lastX = p.x
+        ..lastZ = p.z
+        ..posedAt = t;
+      speed = math.max(speed, p.shuffle);
       final amount = smooth(0.0, 0.45, speed);
       final watcher = p.role == _Role.spectator || p.role == _Role.keeper || (p.role == _Role.walker && p.pause > 0);
       // A third of those watching the celebration hold their phones up to

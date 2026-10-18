@@ -99,7 +99,9 @@ class ZwjFamily extends Vignette {
             ..hair = hair
             ..slim = slim
             ..girth = i >= 2 ? 0.95 : 1.0
-            ..backpack = i == 3 ? rgbHex(0xB0222D) : null,
+            ..backpack = i == 3 ? rgbHex(0xB0222D) : null
+            // (Out together, hand in hand: never on the phone.)
+            ..atWork = true,
         ),
       );
     }
@@ -164,12 +166,34 @@ class ZwjFamily extends Vignette {
 
   final _hands = List.generate(3, (_) => vm.Vector3.zero());
 
+  /// Where person [i] of the row is at [u] (the row at [z]): in the row; or
+  /// apart, a parent a step back, a child running round.
+  (double, double) _placeOf(int i, double u, double z) {
+    final apart = smooth(_stop + 0.1, _apart + 0.4, u) * (1 - smooth(_join - 0.2, _go - 0.1, u));
+    if (apart <= 0) return (_x[i], z);
+    if (i < 2) return (_x[i], z + apart * 0.25);
+    final a = (u - _apart) * _spin[i - 2] + i;
+    final (rx, rz, cx, cz) = _runs[i - 2];
+    return (_x[i] + apart * (rx * math.sin(a) + cx), z + apart * (cz - rz * math.cos(a)));
+  }
+
+  /// A step back of [d] metres ([d] < 0: forward), [f] (0..1) through it,
+  /// facing −z: one foot, then the other after it, the body between.
+  static void _step(FigurePose p, double d, double f) {
+    if (f <= 0 || f >= 1) return;
+    final body = d * eio(f), a = seg(f, 0, 0.6), b = seg(f, 0.4, 1);
+    p.footAhead[1] = -(d * eio(a) - body);
+    p.footAhead[0] = -(d * eio(b) - body);
+    p.footLift[1] = 0.05 * math.sin(math.pi * a);
+    p.footLift[0] = 0.05 * math.sin(math.pi * b);
+  }
+
   @override
   void pose(double u, double t, double night) {
     if (!_ready) return;
     pool.begin();
     final (z, walking, away) = _row(u);
-    final apart = smooth(_stop + 0.2, _apart, u) * (1 - smooth(_join - 0.2, _go - 0.1, u));
+    final apart = smooth(_stop + 0.1, _apart + 0.4, u) * (1 - smooth(_join - 0.2, _go - 0.1, u));
     final held = 1 - apart;
     final face = away ? math.pi : 0.0;
     // Facing them round at the turns.
@@ -178,41 +202,37 @@ class ZwjFamily extends Vignette {
     for (var i = 0; i < 4; i++) {
       final p = _poses[i]..rest();
       final m = Manner.of(150 + i);
-      var x = _x[i], zz = z;
       // Apart: the parents step back a little; the children run about (the
       // girl in front of her parents, the boy off to the side).
-      if (apart > 0) {
-        if (i >= 2) {
-          final a = (u - _apart) * _spin[i - 2] + i;
-          final (rx, rz, cx, cz) = _runs[i - 2];
-          x += apart * (rx * math.sin(a) + cx);
-          zz += apart * (cz - rz * math.cos(a));
-        } else {
-          zz += apart * 0.25;
-        }
-      }
+      final (x, zz) = _placeOf(i, u, z);
       p.pos.setValues(x, 0, zz);
       final size = _sizes[i];
       if (walking && apart < 0.01) {
         final d = (u < _stop ? u : (u < _turn ? u - _go : u - _back)) * _speed;
         Gait.walk(p, Gait.phaseAt(d, _speed, size, m) + (i.isEven ? 0.4 : 1.9), _speed, m, size: size);
         p.yaw = face;
-      } else if (i >= 2 && apart > 0.5) {
-        // Running round (the girl one way, the boy the other), facing the
-        // way they go.
-        final w = _spin[i - 2], a = (u - _apart) * w + i;
+      } else if (i >= 2 && apart > 0.02) {
+        // Running off and round (the girl one way, the boy the other),
+        // facing the way they go: their feet from their first step.
+        final (x1, z1) = _placeOf(i, u + 0.03, z);
+        final (x0, z0) = _placeOf(i, u - 0.03, z);
+        final vx = (x1 - x0) / 0.06, vz = (z1 - z0) / 0.06, v = math.sqrt(vx * vx + vz * vz);
+        final w = _spin[i - 2].abs();
         final (rx, rz, _, _) = _runs[i - 2];
-        final vx = rx * w * math.cos(a), vz = rz * w * math.sin(a);
-        final v = math.sqrt(vx * vx + vz * vz);
-        Gait.walk(p, Gait.phaseAt((u - _apart) * v, v, size, m), v, m, size: size, amount: apart);
-        p.yaw = math.atan2(-vx, -vz);
+        Gait.walk(p, Gait.phaseAt((u - _apart) * w * (rx + rz) / 2, math.max(v, 0.4), size, m), math.max(v, 0.4), m, size: size, amount: smooth(0.02, 0.25, apart));
+        p.yaw = v > 0.05 ? math.atan2(-vx, -vz) : yaw;
       } else {
         Idle.stand(p, t, m, size: size, look: 0.6);
         p.yaw = yaw;
-        if (i < 2 && apart > 0.3) {
-          // Watching the children.
-          p.headYaw += 0.4 * apart;
-          p.headPitch += 0.2 * apart;
+        if (i < 2) {
+          // The parents' step back (and in again), foot by foot; watching
+          // the children.
+          _step(p, 0.25, seg(u, _stop + 0.1, _apart + 0.4));
+          _step(p, -0.25, seg(u, _join - 0.2, _go - 0.1));
+          if (apart > 0.3) {
+            p.headYaw += 0.4 * apart;
+            p.headPitch += 0.2 * apart;
+          }
         }
       }
     }

@@ -370,6 +370,7 @@ class TofuShop extends Vignette {
     final m = _poses[5]..rest();
     m.pos.setValues(_shopX + 0.3, 0, _keeperZ + 0.06);
     Idle.stand(m, t, Manner.of(106), look: 0.6);
+    m.yaw = Idle.facing(t, Manner.of(106), 0.25);
     final ts = u - _atShop;
     final tank = _tank..setValues(_shopX + 0.5, 1.2, _counterZ + 0.32);
     double tofuX = tank.x, tofuY = 1.17, tofuZ = tank.z;

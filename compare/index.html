@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Japanese text: Chrome vs Flutter vs kumihan</title>
+  <link rel="stylesheet" href="compare.css">
+</head>
+<body>
+  <header>
+    <h1>Japanese line breaking &amp; punctuation</h1>
+    <p class="sub">
+      Same font file (Noto Sans JP, wght 400), size, width and line height (1.5) on every side,
+      so differences are pure typesetting.
+    </p>
+    <div class="legend">
+      <span><b>Chrome · default</b> plain HTML</span>
+      <span><b>Chrome · Japanese CSS</b> <code>word-break: auto-phrase; line-break: strict; text-wrap: balance*</code></span>
+      <span><b>Flutter · Text</b> default</span>
+      <span><b>Flutter · kumihan</b> <code>KumihanText(balance*, yakumono)</code></span>
+      <span class="small">* balance only on headlines · line breaks under each box are measured, not typed</span>
+    </div>
+    <p class="env" id="env"></p>
+  </header>
+  <section id="summary"></section>
+  <main id="cases"></main>
+  <section id="zoom"></section>
+  <script src="compare.js"></script>
+</body>
+</html>

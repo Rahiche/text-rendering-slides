@@ -36,7 +36,9 @@ its code ships. The assets come from MakeHuman's CC0 asset packs
   - `cortu_cargo_pants` by cortu (the CC0 "Pants 01" pack).
 
 The crew's hi-vis vests and their reflective tape are cut from each
-worker's own shirt by `humans.py`. The garments' photographed cloth is
+worker's own shirt by `humans.py`. The Glyph Works' makers' lab coats are
+`toigo_female_suit` (its jacket and skirt, white: a coat to the knee) over
+`toigo_wool_pants`, cut off under its hem by `humans.py`. The garments' photographed cloth is
 packed into one texture, `atlas.jpg` and `atlas_normal.jpg`, by
 `tool/blender/people_atlas.py`. The plain garments are made grey there so
 each person's colour can be applied in the app.

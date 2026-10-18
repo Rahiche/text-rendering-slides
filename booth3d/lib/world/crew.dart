@@ -24,7 +24,7 @@ export 'figure_rig.dart' show FigurePose;
 /// (verdict.dart). They're drawn with everyone else in the city (see
 /// figure.dart), each in their work clothes: the builders in hi-vis vests
 /// over work shirts, gloves and hard hats, the foreman in white with his
-/// clipboard, the makers in lab coats and caps, the manager in a suit.
+/// clipboard, the makers in lab coats, the manager in a suit.
 /// Also the climbing platform the builders work on: two lattice masts and a
 /// deck that rises with the wall.
 ///
@@ -141,7 +141,7 @@ class Crew3D {
   /// What figure [i] wears: the builders a hi-vis vest in their zone's
   /// colour over a work shirt, gloves and a yellow hard hat; the foreman a
   /// white jacket and hat; the crane operator orange; the driver navy; the
-  /// makers lab coats and teal caps; the manager a navy suit and a white
+  /// makers white lab coats and light gloves; the manager a navy suit and a white
   /// hat, his planners light blue shirts.
   static FigureLook _lookOf(int i) {
     const skins = [0xEAC9AE, 0xC59A7C, 0xE0BB9E, 0x9A6C52, 0xF0D2BC, 0xD6AE90, 0xB88B6E, 0xE8C6AC, 0xDDB89C, 0xF2D4C0, 0xC09073, 0xE6C2A6, 0xD9B194, 0xEFCDB4, 0xA97A5E];
@@ -198,15 +198,17 @@ class Crew3D {
           ..slim = i == planners + 1
           ..hair = i == planners + 1 ? Hair.bob : l.hair;
       default:
-        // The makers (their lab coats: the city's figures' own).
-        final coat = lin(const Color(0xFFD7E3EC));
+        // The makers: white lab coats to the knee over dark trousers, light
+        // blue gloves, at work at the bench.
+        final coat = lin(const Color(0xFFF2F4F5));
         l
-          ..rigged = false
+          ..wear = i == makers + 1 ? 'lab_f' : 'lab_m'
+          ..atWork = true
           ..top = coat
           ..skirt = coat
-          ..skirtLength = 1.05
+          ..skirtLength = 1.0
           ..legs = rgbHex(0x2B3442)
-          ..cap = lin(const Color(0xFF2BB3A3))
+          ..gloves = lin(const Color(0xFF8EC5E8))
           ..slim = i == makers + 1
           ..hair = i == makers + 1 ? Hair.bob : l.hair;
     }

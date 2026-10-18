@@ -75,6 +75,11 @@ PEOPLE = {
     "casual_f2": (_b(0.0, 0.55, 0.4, 0.5, 0.5, asian=0.2, caucasian=0.3, african=0.5), "female1605", ["toigo_shift_dress", "toigo_ankle_boots_female"], False),
     "casual_f3": (_b(0.0, 0.5, 0.5, 0.4, 0.55), "female1605", ["female_casualsuit01", "shoes05"], False),
     "casual_f4": (_b(0.0, 0.6, 0.45, 0.55, 0.5, asian=0.5, caucasian=0.45, african=0.05), "female1605", ["toigo_fisherman_sweater", "toigo_wool_pants", "shoes05"], False),
+    # The Glyph Works' makers: a lab coat (the skirt suit, jacket and skirt,
+    # white in the app: a coat to the knee) over trousers cut off under its
+    # hem, and gloves.
+    "lab_m": (_b(1.0, 0.5, 0.45, 0.5, 0.55, asian=0.6, caucasian=0.3, african=0.1), "male1591", ["toigo_female_suit", "toigo_wool_pants", "shoes05"], "lab"),
+    "lab_f": (_b(0.0, 0.5, 0.45, 0.45, 0.5), "female1605", ["toigo_female_suit", "toigo_wool_pants", "toigo_mj_cloth_shoes"], "lab"),
 }
 
 # The crew's gloves (shown only on those who wear them: the hands under them
@@ -206,6 +211,22 @@ def vest_from(top, rig, name):
     return vest, tape
 
 
+def cut_under(trousers, coat, overlap=0.06):
+    """[trousers] cut off a little above [coat]'s hem: only what shows
+    under it stays (none of it through the coat as the legs move)."""
+    import bmesh
+    from mathutils import Vector
+
+    hem = min((coat.matrix_world @ v.co).z for v in coat.data.vertices)
+    inv = trousers.matrix_world.inverted()
+    bm = bmesh.new()
+    bm.from_mesh(trousers.data)
+    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=inv @ Vector((0, 0, hem + overlap)), plane_no=(inv.to_3x3() @ Vector((0, 0, 1))).normalized(), clear_outer=True)
+    bm.to_mesh(trousers.data)
+    bm.free()
+    return hem
+
+
 def build(name, body, proxy, wear, crew):
     clear()
     macro = TargetService.get_default_macro_info_dict()
@@ -225,7 +246,10 @@ def build(name, body, proxy, wear, crew):
         for m in [m for m in body_mesh.modifiers if m.type == "MASK" and GLOVES in m.name]:
             body_mesh.modifiers.remove(m)
         gloves.name = gloves.data.name = GLOVES
-        extra = [gloves, *vest_from(clothes[0], rig, name)]
+        # The crew's hi-vis vest; a lab coat's trousers, only under it.
+        extra = [gloves] if crew == "lab" else [gloves, *vest_from(clothes[0], rig, name)]
+        if crew == "lab":
+            print(f"HUMAN {name}: trousers cut above the coat's hem at {cut_under(clothes[1], clothes[0]):.3f}")
     cut = behead(body_mesh, rig)
     body_mesh.name = body_mesh.data.name = f"{name}_body"
     report = [f"body {finish(body_mesh, BODY_TRIS)}->{tris(body_mesh)}"]

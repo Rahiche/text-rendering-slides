@@ -2013,7 +2013,7 @@ class GlyphWorks {
     Rect.fromLTWH(8, 350, 330, 84),
   ];
   static const _cases = [Rect.fromLTWH(346, 350, 220, 196), Rect.fromLTWH(574, 350, 220, 196), Rect.fromLTWH(802, 350, 220, 196)];
-  static const _poster = Rect.fromLTWH(8, 556, 420, 300), _decoderPanel = Rect.fromLTWH(436, 556, 300, 42), _screen = Rect.fromLTWH(436, 648, 160, 100);
+  static const _decoderPanel = Rect.fromLTWH(436, 556, 300, 42), _screen = Rect.fromLTWH(436, 648, 160, 100);
   static const _ruler = Rect.fromLTWH(8, 868, 1008, 48), _plateGrid = Rect.fromLTWH(744, 556, 272, 272);
   static const _white = Rect.fromLTWH(968, 968, 48, 48), _glowPatch = Rect.fromLTWH(908, 968, 48, 48), _lampPatch = Rect.fromLTWH(848, 968, 48, 48);
 
@@ -2204,22 +2204,7 @@ class GlyphWorks {
         ..add(_box(gx + s, (gy - 0.035) / 2, gz - 0.02, 0.04, gy - 0.035, 0.04, steel))
         ..add(_box(gx + s, gy * 0.75, gz + 0.22, 0.035, gy * 1.4, 0.035, steel, pitch: -0.35));
     }
-    // The back wall: a poster for the talk; shelves of font cases and wire
-    // spools on the side walls; a fire extinguisher.
-    parts.add(_board(-11.05, 1.72, z1 - 0.13, 0.84, 0.6, _poster, edge: 0xF4F1EA, thick: 0.01));
-    for (final (x, dir) in [(x0 + 0.24, 1.0), (x1 - 0.24, -1.0)]) {
-      for (final y in [1.0, 1.55]) {
-        parts.add(_box(x, y, zc + 0.5, 0.3, 0.03, 1.5, 0x9C6B3C));
-        for (var k = 0; k < 4; k++) {
-          final c = const [0xE9B949, 0x5FB8FF, 0xE8505F, 0xF4F1EA, 0x6CE5B1][(k + (y > 1.2 ? 2 : 0)) % 5];
-          if (dir > 0) {
-            parts.add(_box(x, y + 0.07, zc - 0.05 + k * 0.36, 0.22, 0.11, 0.28, k.isEven ? 0x9C6B3C : 0x7A5230));
-          } else {
-            parts.add(_cyl(x, y + 0.075, zc - 0.05 + k * 0.36, 0.09, 0.06, c, roll: math.pi / 2));
-          }
-        }
-      }
-    }
+    // (Bare walls: the line is what's to see.) A fire extinguisher.
     parts
       ..add(_cyl(x0 + 0.32, 0.27, z0 + 0.35, 0.08, 0.5, 0xD8343F))
       ..add(_cyl(x0 + 0.32, 0.56, z0 + 0.35, 0.03, 0.08, 0x1B2233));
@@ -2328,35 +2313,6 @@ class GlyphWorks {
         RRect.fromRectAndRadius(Rect.fromLTWH(b.center.dx - 34, b.bottom - 26, 68, 12), const Radius.circular(6)),
         Paint()..color = const Color(0xFF3A2A1A),
       );
-    }
-    // A poster for the talk: the pipeline in seven boxes.
-    final p = _poster;
-    c.drawRect(p, Paint()..color = glow ? black : cream);
-    if (!glow) {
-      _text(c, 'Inside Flutter\'s Text Pipeline', Rect.fromLTWH(p.left + 14, p.top + 14, p.width - 28, 52), 40, navy);
-      _text(c, 'seven steps, bytes to pixels', Rect.fromLTWH(p.left + 14, p.top + 66, p.width - 28, 36), 26, const Color(0xFFE8505F));
-      for (var i = 0; i < 7; i++) {
-        final x = p.left + 22 + i * 56.0, y = p.top + 130;
-        c.drawRect(
-          Rect.fromLTWH(x, y, 44, 44),
-          Paint()
-            ..color = navy
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3,
-        );
-        _text(c, '${i + 1}', Rect.fromLTWH(x, y, 44, 44), 26, navy);
-        if (i < 6) {
-          c.drawLine(
-            Offset(x + 46, y + 22),
-            Offset(x + 54, y + 22),
-            Paint()
-              ..color = navy
-              ..strokeWidth = 3,
-          );
-        }
-      }
-      _text(c, 'UTF-8 → U+ → cmap → shape → outline → raster → pixels', Rect.fromLTWH(p.left + 14, p.top + 196, p.width - 28, 30), 20, const Color(0xFF2E6DA8));
-      _text(c, 'NAME CITY', Rect.fromLTWH(p.left + 14, p.top + 244, p.width - 28, 36), 24, navy);
     }
     // The decoder's panel.
     final dp = _decoderPanel;

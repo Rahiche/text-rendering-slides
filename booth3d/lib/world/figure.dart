@@ -440,6 +440,13 @@ class Figures {
       case 'casual_m4':
         plain(shortSleeves: true);
         l.shoes = c(0x2B282A);
+      case 'lab_m' || 'lab_f':
+        // (The coat to the knee, the trousers under it.)
+        plain(shortSleeves: false);
+        l
+          ..skirt = l.top
+          ..skirtLength = 1.0
+          ..shoes = c(0x2B282A);
       case 'casual_m2':
         plain(shortSleeves: false);
         l

@@ -45,7 +45,10 @@ class Rigged {
   static const workers = ['worker_a', 'worker_b', 'worker_c', 'worker_d'];
   static const men = ['office_m1', 'office_m2', 'office_m3', 'casual_m1', 'casual_m2', 'casual_m3', 'casual_m4'];
   static const women = ['office_f1', 'office_f2', 'office_f3', 'casual_f1', 'casual_f2', 'casual_f3', 'casual_f4'];
-  static const people = [...workers, ...men, ...women];
+
+  /// The Glyph Works' makers, in lab coats.
+  static const labs = ['lab_m', 'lab_f'];
+  static const people = [...workers, ...men, ...women, ...labs];
 
   /// The hairstyles of the city's head (people.glb), and its other parts.
   static const hairs = ['hair_short', 'hair_medium', 'hair_bob', 'hair_long'];

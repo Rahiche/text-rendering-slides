@@ -25,7 +25,7 @@ class AlleyRule {
 }
 
 const alleyRules = [
-  AlleyRule('Right-to-left', 'HEBREW', BP.coral, 'שלום — written from the right'),
+  AlleyRule('Right-to-left', 'URDU', BP.coral, 'اردو — written from the right'),
   AlleyRule('Joining', 'ARABIC', BP.amber, 'ب ي ت → بيت — each letter takes a shape for its neighbours'),
   AlleyRule('Reordering', 'DEVANAGARI', BP.violet, 'क + ि → कि — typed after, drawn before'),
   AlleyRule('Stacking', 'THAI', BP.pink, 'ป + ั + ่ → ปั่ — marks stack on the letter'),
@@ -127,7 +127,7 @@ class ScriptAlley {
   /// The stalls' letters and signs per script, for the web's font warm-up
   /// (the world fetches every fallback font it draws with at once).
   static List<(String, TextStyle)> get fontRuns => [
-    ('שלום ← بيت ب ي ت क ि कि ป น ั ่ ปั่น', _style(null)),
+    ('اردو ا ر د و ← بيت ب ي ت क ि कि ป น ั ่ ปั่น', _style(null)),
     ('ㅎ ㅏ ㄴ 한', _style('ko')),
     ('縦書き', _style('ja')),
   ];
@@ -388,7 +388,7 @@ class ScriptAlley {
 
   /// Each stall's pieces: the letters alone, and what they make.
   static const _texts = [
-    ['ש', 'ל', 'ו', 'ם', '←'],
+    ['ا', 'ر', 'د', 'و', '←'],
     ['ب', 'ي', 'ت', 'بيت'],
     ['क', 'ि', 'कि'],
     ['ป', 'น', 'ั', '่', 'ปั่น'],
@@ -435,7 +435,7 @@ class ScriptAlley {
       }
     }
     // Where the letters stand in the words they make (the real layout).
-    _layout(0, 'שלום', 4);
+    _layout(0, 'اردو', 4);
     _layout(1, 'بيت', 3);
     _layout(3, 'ปั่น', 4);
   }
@@ -544,7 +544,8 @@ class ScriptAlley {
     double pop(double at) => u < at ? 0 : _back(seg(u, at, at + 0.32)) * out;
     switch (i) {
       case 0:
-        // שלום letter by letter, from the right; the pen's arrow going left.
+        // اردو (Urdu) letter by letter, from the right (none of its letters
+        // joins the next: each stands as typed); the pen's arrow going left.
         if (d.x.length < 4) return;
         for (var k = 0; k < 4; k++) {
           _pen(ps[k], d.x[k], 0, pop(0.6 + 0.55 * k));

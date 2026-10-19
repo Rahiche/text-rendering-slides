@@ -177,8 +177,8 @@ List<TalkSection> talkSections(Site3D site) {
           'Text is stored in typing order; the bidi algorithm reorders it for display. A right-to-left '
               'run is reversed, its number stays left to right.',
           [
-            FactRow('memory', '\u202DH i ␠ ש ל ו ם ␠ 2 0 2 6 !\u202C'),
-            FactRow('screen', '\u202DH i ␠ 2 0 2 6 ␠ ם ו ל ש !\u202C', accent: true),
+            FactRow('memory', '\u202DH i ␠ ا ر د و ␠ 2 0 2 6 !\u202C'),
+            FactRow('screen', '\u202DH i ␠ 2 0 2 6 ␠ و د ر ا !\u202C', accent: true),
             FactRow('so', 'index i in memory ≠ position i on screen'),
           ],
         ),
@@ -249,7 +249,7 @@ List<TalkSection> talkSections(Site3D site) {
           'Six things Latin lets you assume, and a script that breaks each one: a stall for each in '
               'Script Alley.',
           [
-            FactRow('direction', 'right to left · Hebrew'),
+            FactRow('direction', 'right to left · Urdu'),
             FactRow('shape', 'by its neighbours · Arabic'),
             FactRow('order', 'stored after, drawn before · Devanagari'),
             FactRow('marks', 'stacked · Thai'),
@@ -263,12 +263,12 @@ List<TalkSection> talkSections(Site3D site) {
         'rtl',
         const TalkCard(
           'Right to left',
-          'שלום is written from the right: index 0 is the rightmost letter, and the caret moves left '
-              'as you type.',
+          'Urdu, \u2067اردو\u2069, is written from the right: index 0 is the rightmost letter, and the '
+              'caret moves left as you type.',
           [
-            FactLetters('memory', [('ש', '0', true), ('ל', '1', false), ('ו', '2', false), ('ם', '3', false)]),
-            FactRow('screen', 'שלום', accent: true),
-            FactRow('also', 'Arabic \u2067مرحبا\u2069 · Persian \u2067سلام\u2069 · Urdu \u2067اردو\u2069'),
+            FactLetters('memory', [('ا', '0', true), ('ر', '1', false), ('د', '2', false), ('و', '3', false)]),
+            FactRow('screen', 'اردو', accent: true),
+            FactRow('also', 'Arabic \u2067مرحبا\u2069 · Persian \u2067سلام\u2069 · Hebrew \u2067שלום\u2069'),
           ],
         ),
         [CityBeat.stall(0)],

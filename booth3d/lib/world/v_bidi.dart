@@ -12,12 +12,13 @@ import 'shot.dart';
 import 'vignette.dart';
 
 /// 双方向 · Bidi, across the left-hand side street from the plaza (where a
-/// block was): a works whose open ground floor shows "Hi שלום 2026!" twice.
-/// Above, as it is in memory — the characters in the order they were typed
-/// (logical order); below, as it goes on the screen. The machine drops
-/// them down one at a time, left to right on the screen: the Hebrew run is
-/// laid out right to left, so its letters cross over each other on the
-/// way (ש ends up rightmost), while the number inside it stays left to
+/// block was): a works whose open ground floor shows "Hi اردو 2026!" (Urdu,
+/// in Urdu: none of its letters joins the next, so each stands as typed)
+/// twice. Above, as it is in memory — the characters in the order they
+/// were typed (logical order); below, as it goes on the screen. The machine
+/// drops them down one at a time, left to right on the screen: the Urdu run
+/// is laid out right to left, so its letters cross over each other on the
+/// way (ا ends up rightmost), while the number inside it stays left to
 /// right (2026, not 6202) — what the Unicode bidi algorithm works out from
 /// each character's direction. Then back up, and again.
 class BidiWorks extends Vignette {
@@ -45,7 +46,7 @@ class BidiWorks extends Vignette {
   /// on screen (visual order: LTR paragraph, the R run and the number in
   /// it reordered by the bidi algorithm); each character's direction
   /// (0 left to right, 1 right to left, 2 a number).
-  static const _chars = ['H', 'i', ' ', 'ש', 'ל', 'ו', 'ם', ' ', '2', '0', '2', '6', '!'];
+  static const _chars = ['H', 'i', ' ', 'ا', 'ر', 'د', 'و', ' ', '2', '0', '2', '6', '!'];
   static const _screen = [0, 1, 2, 11, 10, 9, 8, 7, 3, 4, 5, 6, 12];
   static const _dir = [0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 0];
 
@@ -57,7 +58,7 @@ class BidiWorks extends Vignette {
   /// hold, back up.
   static const _light = 1.2, _drop0 = 2.2, _dropEvery = 0.42, _hold = 8.0, _up = 11.6;
 
-  static const _style = TextStyle(fontFamily: BP.display, fontSize: 160, fontWeight: FontWeight.w700);
+  static const _style = TextStyle(fontFamily: BP.display, fontFamilyFallback: [BP.arabic], fontSize: 160, fontWeight: FontWeight.w700);
 
   final _glyphs = <Glyph3D?>[];
   final _mats = <PhysicallyBasedMaterial>[];
@@ -66,7 +67,7 @@ class BidiWorks extends Vignette {
   bool _ready = false;
 
   @override
-  List<(String, TextStyle)> get fontRuns => [('Hi שלום 2026! BIDI MEMORY SCREEN ORDER', _style)];
+  List<(String, TextStyle)> get fontRuns => [('Hi اردو 2026! ا ر د و BIDI MEMORY SCREEN ORDER', _style)];
 
   static const _colors = [0x6C9BE0, 0xF2A33A, 0x58C08E];
 

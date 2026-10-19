@@ -53,7 +53,7 @@ And when a single word is longer than the whole line, like this famous German on
 """),
     ("01 bidi", """
 Next: memory is not the screen. Text is stored in the order you typed it, and the bidirectional algorithm reorders it for display.
-Here's hi, then shalom in Hebrew, then the year twenty twenty-six. On screen, the Hebrew run is reversed, but the number keeps reading left to right.
+Here's hi, then the word Urdu, written in Urdu, then the year twenty twenty-six. On screen, the Urdu run is reversed, but the number keeps reading left to right.
 So index i in memory is not position i on screen. And that matters for cursors, for selection, and for hit testing. Flutter's TextPainter does that math for you, so lean on it instead of doing it by hand.
 """),
     ("01 raster", """
@@ -73,13 +73,13 @@ And all of that is still only fifteen and a half percent of the code space. Ever
 """),
     ("02 alley", """
 Welcome to Script Alley. Here are six things Latin lets you assume, and a script that breaks each one, with a stall for each.
-Direction, with Hebrew. Shape, with Arabic. Order, with Devanagari. Stacked marks, with Thai. Syllable blocks, with Korean. And lines that run from top to bottom, with Japanese.
+Direction, with Urdu. Shape, with Arabic. Order, with Devanagari. Stacked marks, with Thai. Syllable blocks, with Korean. And lines that run from top to bottom, with Japanese.
 Each stall breaks one assumption, and together they break all six. Let's walk down the alley.
 """),
     ("02 rtl", """
 The first stall is right to left.
-Shalom is written starting from the right. Index zero is the rightmost letter, and as you type, the caret moves to the left.
-Arabic, Persian and Urdu work the same way. So your layout code can't assume that the start of a string is on the left. That's why Flutter's text align has start and end, and not just left and right.
+Urdu is written starting from the right. Here's the word Urdu itself: index zero is the rightmost letter, and as you type, the caret moves to the left.
+Arabic, Persian and Hebrew work the same way. So your layout code can't assume that the start of a string is on the left. That's why Flutter's text align has start and end, and not just left and right.
 """),
     ("02 joining", """
 Second stall: joining.

@@ -100,7 +100,7 @@ const _mEntries = <(String, Locale?)>[
   ('مرحبا', null),
   ('नमस्ते', null),
   ('你好', _zh),
-  ('שלום', null),
+  ('اردو', null),
   ('สวัสดี', null),
   ('Привет', null),
   ('안녕', null),

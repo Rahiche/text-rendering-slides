@@ -23,7 +23,7 @@ class ItemizeSlide extends StatefulWidget {
 const _presets = [
   'Hello مرحبا 世界 👋 123',
   'Hi كتاب 2026',
-  'नमस्ते Привет שלום',
+  'नमस्ते Привет اردو',
   'ไทย 한국어 かな 漢字',
 ];
 

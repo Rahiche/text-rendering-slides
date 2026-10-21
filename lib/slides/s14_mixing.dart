@@ -21,7 +21,7 @@ class _Frag {
 
 const _frags = [
   _Frag('arabic', 'مرحبا', Script.arabic),
-  _Frag('hebrew', 'שלום', Script.hebrew),
+  _Frag('urdu', 'اردو', Script.arabic),
   _Frag('devanagari', 'नमस्ते', Script.devanagari),
   _Frag('thai', 'สวัสดี', Script.thai),
   _Frag('japanese', 'こんにちは世界', Script.kana),

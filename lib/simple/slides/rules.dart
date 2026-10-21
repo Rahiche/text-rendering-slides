@@ -43,7 +43,7 @@ class _Rule {
 }
 
 final _rules = <_Rule>[
-  _Rule('right-to-left', Script.hebrew.color, () => const _Direction()),
+  _Rule('right-to-left', BP.coral, () => const _Direction()),
   _Rule('joining', Script.arabic.color, () => const _Forms()),
   _Rule('reordering', Script.devanagari.color, () => const _Reorder()),
   _Rule('stacking', Script.thai.color, () => const _Stacking()),
@@ -312,7 +312,8 @@ void _diamond(Canvas c, Offset o, double r, Color color) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1 · right-to-left — Hebrew typed from the right
+// 1 · right-to-left — Urdu typed from the right (اردو: none of its four
+// letters joins the next, so typed one by one it looks just as written)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Direction extends StatefulWidget {
@@ -323,7 +324,7 @@ class _Direction extends StatefulWidget {
 }
 
 class _DirectionState extends State<_Direction> with _FontAware {
-  static const _word = 'שלום';
+  static const _word = 'اردو';
   late TextProbe _probe;
   late List<TextPainter> _letters;
 

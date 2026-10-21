@@ -24,7 +24,7 @@ const _presets = [
   'Hello مرحبا 世界 👋 123',
   'Flutter で 日本語 🇯🇵',
   'Hi كتاب 2026',
-  'नमस्ते Привет שלום',
+  'नमस्ते Привет اردو',
 ];
 
 /// Top of the stage, below the text field and sample chips.

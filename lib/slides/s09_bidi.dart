@@ -15,7 +15,7 @@ class BidiSlide extends StatefulWidget {
   State<BidiSlide> createState() => _BidiSlideState();
 }
 
-const _presets = ['Hi שלום עולם 2026!', 'Hello مرحبا 123'];
+const _presets = ['Hi اردو زبان 2026!', 'Hello مرحبا 123'];
 
 const _rowX = 130.0;
 const _rowW = 1472.0 - _rowX;

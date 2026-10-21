@@ -44,9 +44,9 @@ class UnicodeArchive extends Vignette {
   @override
   bool get talkOnly => true;
   @override
-  double get loop => 40;
+  double get loop => 50;
   @override
-  double get visit => 36;
+  double get visit => 46.6;
 
   /// The stair's top on the tower's lot, by the side street, going down
   /// eastwards (the frame's +z: world +x; its +x is world −z).
@@ -84,16 +84,18 @@ class UnicodeArchive extends Vignette {
   /// What each version filled (racks, counted from the first: the code
   /// points / 128, rounded up), what it holds, when its lights come on and
   /// how long they take to reach its last rack; the empty rest of the hall
-  /// last. Timed to the narration ("…ASCII had 128 characters. Unicode 1,
-  /// in '91, had about 7,000. Emoji arrived with Unicode 6, in 2010, and
-  /// today Unicode 18 has 172,808 characters… only 15 and a half percent
-  /// of the code space.").
+  /// last. Timed to the narration, which holds between its sentences for
+  /// the picture (tool/narration/script.py's PAUSES): "…ASCII had 128
+  /// characters." (held on the rack) "Unicode 1, in '91, had about 7,000."
+  /// "Emoji arrived with Unicode 6, in 2010." "And today Unicode 18 has
+  /// 172,808 characters…" "And all of that is still only 15 and a half
+  /// percent of the code space."
   static const _eras = [
-    (1, 128, 4.4, 0.3),
-    (56, 7161, 8.1, 2.8),
-    (856, 109449, 12.1, 4.2),
-    (1351, 172808, 17.0, 3.6),
-    (_units, 1114112, 25.9, 3.6),
+    (1, 128, 6.9, 0.3),
+    (56, 7161, 14.6, 3.4),
+    (856, 109449, 20.7, 4.6),
+    (1351, 172808, 26.6, 3.8),
+    (_units, 1114112, 35.9, 4.4),
   ];
 
   /// Unicode 6.0's emoji: its first racks (722 of them).
@@ -732,21 +734,24 @@ class UnicodeArchive extends Vignette {
   /// beat doesn't slide the camera aside for it, down here.)
   static final _keys = <(double, vm.Vector3, vm.Vector3, double)>[
     (0.0, vm.Vector3(2.0, 1.8, -13.0), vm.Vector3(0.6, 0.4, 0.0), 50),
-    (2.8, vm.Vector3(2.0, 1.7, -6.2), vm.Vector3(1.4, -4.2, 6.0), 52),
-    (3.9, vm.Vector3(2.0, -0.3, -1.4), vm.Vector3(1.2, _floor + 1.4, 19.0), 52),
-    (5.2, vm.Vector3(2.0, -7.3, 9.5), vm.Vector3(0.4, _floor + 1.1, 23.8), 48),
-    (6.3, vm.Vector3(1.9, _floor + 1.75, 18.4), vm.Vector3(-0.6, _floor + 1.05, 23.8), 46),
-    (8.0, vm.Vector3(2.1, _floor + 1.7, 18.7), vm.Vector3(-0.4, _floor + 1.05, 23.8), 46),
-    (11.6, vm.Vector3(9.0, _floor + 3.4, 13.0), vm.Vector3(26.0, _floor + 2.4, 23.8), 54),
-    (15.8, vm.Vector3(30.0, _floor + 12.4, 14.0), vm.Vector3(44.0, _floor + 3.5, 38.0), 56),
-    (21.2, vm.Vector3(52.0, _floor + 12.2, 12.0), vm.Vector3(62.0, _floor + 2.5, 50.0), 58),
+    // Down the stair, slowly, into the dark; ASCII's rack lights up ahead.
+    (3.8, vm.Vector3(2.0, 1.7, -6.2), vm.Vector3(1.4, -4.2, 6.0), 52),
+    (5.5, vm.Vector3(2.0, -0.3, -1.4), vm.Vector3(1.2, _floor + 1.4, 19.0), 52),
+    (8.0, vm.Vector3(2.0, -7.3, 9.5), vm.Vector3(0.4, _floor + 1.1, 23.8), 48),
+    (10.2, vm.Vector3(1.9, _floor + 1.75, 18.4), vm.Vector3(-0.6, _floor + 1.05, 23.8), 46),
+    // (Held on it, closing in, while the narration waits.)
+    (14.2, vm.Vector3(2.1, _floor + 1.7, 19.6), vm.Vector3(-0.4, _floor + 1.05, 23.8), 44),
+    (18.6, vm.Vector3(9.0, _floor + 3.4, 13.0), vm.Vector3(26.0, _floor + 2.4, 23.8), 54),
+    (24.6, vm.Vector3(30.0, _floor + 12.4, 14.0), vm.Vector3(44.0, _floor + 3.5, 38.0), 56),
+    (30.6, vm.Vector3(52.0, _floor + 12.2, 12.0), vm.Vector3(62.0, _floor + 2.5, 50.0), 58),
     // Over all of that to where it ends, the dark beyond; then, as the
     // rest of the hall's lights race away to the far wall, looking after
     // them; out over the empty racks.
-    (25.6, vm.Vector3(70.0, _floor + 12.0, 22.0), vm.Vector3(68.0, _floor + 3.0, 62.0), 58),
-    (29.4, vm.Vector3(66.0, _floor + 11.8, 42.0), vm.Vector3(60.0, _floor + 1.5, 165.0), 62),
-    (33.2, vm.Vector3(62.0, _floor + 11.8, 76.0), vm.Vector3(57.0, _floor + 1.5, 190.0), 62),
-    (36.0, vm.Vector3(60.0, _floor + 11.8, 92.0), vm.Vector3(56.0, _floor + 1.5, 196.0), 62),
+    (35.6, vm.Vector3(70.0, _floor + 12.0, 22.0), vm.Vector3(68.0, _floor + 3.0, 62.0), 58),
+    // (Back from the counter till it's done counting, and a moment on it.)
+    (40.4, vm.Vector3(64.0, _floor + 11.8, 28.0), vm.Vector3(62.0, _floor + 2.5, 140.0), 60),
+    (42.6, vm.Vector3(63.0, _floor + 11.8, 31.0), vm.Vector3(60.0, _floor + 1.5, 165.0), 62),
+    (46.6, vm.Vector3(61.0, _floor + 11.8, 54.0), vm.Vector3(56.0, _floor + 1.5, 196.0), 62),
   ];
 
   @override

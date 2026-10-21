@@ -1,7 +1,8 @@
 """Speaks the narration (script.py) in the presenter's cloned voice with
 ElevenLabs, a clip per beat (assets/narration/NN.mp3), each told its
 neighbours' words so the voice runs on from one to the next; then
-timing.py times the presentation to them.
+pace.py holds them still where the picture needs it, and timing.py times
+the presentation to them.
 
     ELEVENLABS_API_KEY=… python3 tool/narration/gen.py [beat numbers…]   (from booth3d/)
 

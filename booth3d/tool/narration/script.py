@@ -5,6 +5,9 @@ are spelled out the way they're said ("S.K. Paragraph", "U plus zero three
 seven eight"), and Japanese is written in Japanese.
 
 A beat added to the talk needs its clip here, in the same place.
+
+PAUSES holds a clip still for a moment between sentences, for the picture
+to play out (pace.py puts them in, after gen.py).
 """
 BEATS = [
     ("title", """
@@ -231,3 +234,13 @@ That's it from me. Thank you so much for listening. ありがとうございま�
 I'd love to hear your questions.
 """),
 ]
+
+# Where a clip holds for the picture: the take's length (the pauses are
+# measured on that take: speaking the beat again means measuring them
+# again; pace.py lists a take's gaps), and, at gaps between its sentences
+# (seconds into the take), how long to hold.
+PAUSES = {
+    # Down the stair; ASCII's rack, lit; Unicode 1.0 along the first row;
+    # the emoji and the rows of 6.0; then on into "And all of that…".
+    '02 unicode': (35.971, [(1.835, 2.5), (7.10, 4.0), (11.30, 2.0), (15.18, 1.0), (24.92, 0.5)]),
+}

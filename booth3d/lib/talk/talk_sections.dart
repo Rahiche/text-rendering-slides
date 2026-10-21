@@ -241,8 +241,8 @@ List<TalkSection> talkSections(Site3D site) {
           ],
         ),
         // (Down into the Unicode archive, timed to the narration: the
-        // scene starts as the camera sets off.)
-        [CityBeat.scene('archive', hold: 36.0, fly: 3.0, lead: 3.0, shift: 0)],
+        // scene starts as the camera sets off; its clip runs 46.6 s.)
+        [CityBeat.scene('archive', hold: 46.6, fly: 3.0, lead: 3.0, shift: 0)],
       ),
       CityStop(
         'alley',

@@ -31,7 +31,8 @@
   "toigo_male_suit_tie_and_jacket": 24,
   "toigo_mj_cloth_shoes": 25,
   "toigo_shift_dress": 26,
-  "toigo_wool_pants": 27
+  "toigo_wool_pants": 27,
+  "plain": 28
  },
  "tinted": [
   "cortu_cargo_pants",

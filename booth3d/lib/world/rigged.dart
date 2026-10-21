@@ -52,7 +52,11 @@ class Rigged {
 
   /// The hairstyles of the city's head (people.glb), and its other parts.
   static const hairs = ['hair_short', 'hair_medium', 'hair_bob', 'hair_long'];
-  static final _headParts = ['head', 'eyes', 'brows', ...hairs, 'head_far', for (final h in hairs) '${h}_far'];
+  static final _headParts = [
+    for (final at in ['', '_mid']) ...['head$at', 'eyes$at', 'brows$at', for (final h in hairs) '$h$at'],
+    'head_far',
+    for (final h in hairs) '${h}_far',
+  ];
 
   /// The plain garments a person's top colour tints (the rest of the tinted
   /// ones, their legs').
@@ -69,8 +73,11 @@ class Rigged {
       ..baseColorTexture = await Texture2D.fromAsset('assets/people/atlas$size.jpg')
       ..normalTexture = await Texture2D.fromAsset('assets/people/atlas_normal$size.jpg', content: TextureContent.normal)
       ..normalScale = 0.8
+      // (How rough, tile by tile: skin a soft sheen, cloth matte;
+      // tool/textures/people_rough.py.)
+      ..metallicRoughnessTexture = await Texture2D.fromAsset('assets/people/atlas_rough.png', content: TextureContent.data)
       ..metallicFactor = 0
-      ..roughnessFactor = 0.75
+      ..roughnessFactor = 1
       ..sheenColor = vm.Vector4(0.1, 0.1, 0.11, 1)
       ..sheenRoughness = 0.6;
     final parts = await modelParts('assets/models/people.glb');
@@ -163,8 +170,9 @@ class RiggedPerson {
   /// Dresses it as someone: [skin] and [hairColor] (linear), a hairstyle
   /// ([Rigged.hairs]; null: none, under a hat); the plain garments' colours
   /// ([top], [legs]), a hi-vis [vest] (null: none) and [gloves]; [stand]
-  /// its clip for standing about, [seed] when in it it starts; [near], see
-  /// [near]. (Its mesh is made again only if what it wears changed.)
+  /// its clip for standing about, [seed] when in it it starts; [near] and
+  /// [close], see them. (Its mesh is made again only if what it wears
+  /// changed.)
   void dress({
     required vm.Vector4 skin,
     required vm.Vector4 hairColor,
@@ -176,23 +184,25 @@ class RiggedPerson {
     String stand = 'idle',
     int seed = 0,
     bool near = true,
+    bool close = false,
   }) {
     this.stand = stand;
     _offset = 13.7 * ((seed * 0.6180339887) % 1.0);
     _t = double.nan;
     String hex(vm.Vector4? c) => c == null ? '-' : '${c.x.toStringAsFixed(3)},${c.y.toStringAsFixed(3)},${c.z.toStringAsFixed(3)}';
     final dressed = [hex(skin), hex(hairColor), hair, hex(top), hex(legs), hex(vest), hex(gloves)].join('|');
-    if (dressed == _dressed && near == _near) return;
+    if (dressed == _dressed && near == _near && close == _close) return;
     _dressed = dressed;
     _near = near;
+    _close = close;
     _wears = (skin, hairColor, hair, top, legs, vest, gloves);
     _make();
   }
 
   (vm.Vector4, vm.Vector4, String?, vm.Vector4?, vm.Vector4?, vm.Vector4?, vm.Vector4?)? _wears;
 
-  /// Near the camera: its head and hair in full (further off, the simpler
-  /// ones the city's figures wear from afar).
+  /// Near the camera: its head and hair as the city's figures have them
+  /// near (further off, the simpler ones they wear from afar).
   bool get near => _near;
   set near(bool v) {
     if (v == _near) return;
@@ -202,13 +212,24 @@ class RiggedPerson {
 
   bool _near = true;
 
+  /// Close to the camera: its head and hair in full. (Only then: further
+  /// off, so many triangles in so few pixels cost more than they show.)
+  bool get close => _close;
+  set close(bool v) {
+    if (v == _close) return;
+    _close = v;
+    _make();
+  }
+
+  bool _close = false;
+
   /// Its mesh, as dressed, at its detail: one made lately, or a new one.
   void _make() {
     final w = _wears;
     if (w == null) return;
     final (skin, hairColor, hair, top, legs, vest, gloves) = w;
     final lib = _lib;
-    final key = '$name|$_dressed|${_near ? 'near' : 'far'}';
+    final key = '$name|$_dressed|${_close ? 'close' : (_near ? 'near' : 'far')}';
     if (lib._made.remove(key) case final g?) {
       lib._made[key] = g;
       _mesh.mesh = Mesh(g, lib.material);
@@ -228,20 +249,23 @@ class RiggedPerson {
         if (vest != null) pieces.add((p, 0, vm.Vector4(0.78, 0.79, 0.8, 1)));
       } else if (k == 'toigo_gloves_short') {
         if (gloves != null) pieces.add((p, a.tiles[k] ?? 0, tint(gloves)));
+      } else if (k == 'toigo_female_suit' && Rigged.labs.contains(name)) {
+        // A lab coat: plain cotton in its colour (not the suit's cloth).
+        pieces.add((p, a.tiles['plain'] ?? 0, top ?? white));
       } else {
         final c = !a.tinted.contains(k) ? null : (Rigged._tops.contains(k) ? top : legs);
         pieces.add((p, a.tiles[k] ?? 0, tint(c)));
       }
     }
-    final h = lib._heads[name]!, far = _near ? '' : '_far';
-    pieces.add((h['head$far']!, 0, skin));
+    final h = lib._heads[name]!, at = _close ? '' : (_near ? '_mid' : '_far');
+    pieces.add((h['head$at']!, 0, skin));
     // (The eyes and brows are too small to see from afar.)
-    if (_near) {
+    if (_near || _close) {
       pieces
-        ..add((h['eyes']!, 0, white))
-        ..add((h['brows']!, 0, hairColor));
+        ..add((h['eyes$at']!, 0, white))
+        ..add((h['brows$at']!, 0, hairColor));
     }
-    if (hair != null) pieces.add((h['$hair$far']!, 0, hairColor));
+    if (hair != null) pieces.add((h['$hair$at']!, 0, hairColor));
     final g = rigGeometry(pieces, a);
     lib._made[key] = g;
     while (lib._made.length > Rigged._kept) {

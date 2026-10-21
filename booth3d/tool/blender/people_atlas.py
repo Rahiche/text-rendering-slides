@@ -110,6 +110,10 @@ for i, name in enumerate(names, start=1):
     tiles[name] = i
     print(f"{i:2d} {name}{note}{' + normal' if 'normal' in maps else ''}")
 
+# (The next tile's left white, as the atlas is: plain cloth, matte in
+# atlas_rough.png: the makers' lab coats.)
+tiles["plain"] = len(names) + 1
+
 write(albedo, W, H, os.path.join(out, "atlas.jpg"))
 write(albedo, W, H, os.path.join(out, "atlas_2k.jpg"), scale=(W // 2, H // 2))
 write(normal, W, H, os.path.join(out, "atlas_normal.jpg"), normal=True)

@@ -797,14 +797,16 @@ class _People {
     }
     l.legs = pick(_bottoms, 9);
     if (p.role == _Role.keeper) {
-      // A happi in the stall's colour over a white shirt (the city's
-      // figures' own).
+      // In the stall's colour (a T-shirt, a jumper for her: the stall's
+      // uniform), dark trousers; at work (no phone, no folded arms).
       final c = lin(alleyRules[p.stall].color);
       return l
-        ..rigged = false
-        ..top = rgbHex(0xF2F0EA)
-        ..layer = c
-        ..sleeves = c
+        ..wear = l.slim ? 'casual_f4' : 'casual_m4'
+        ..atWork = true
+        ..top = c
+        ..legs = rgbHex(0x2A2D35)
+        ..layer = null
+        ..sleeves = null
         ..skirt = null;
     }
     if (l.slim && l.skirt == null && r(10) < 0.45) {

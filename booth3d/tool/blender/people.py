@@ -42,15 +42,19 @@ def wanted(name):
 # ── From a field to a part ───────────────────────────────────────────────────
 
 
-def part(name, field, lo, hi, step, tris, colour, reach=0.012, far=None):
+def part(name, field, lo, hi, step, tris, colour, reach=0.012, far=None, mid=None):
     """The surface of [field] in the box [lo]…[hi], meshed [step] fine,
     brought down to about [tris] triangles, coloured by [colour](points,
     normals, openness) → (N×3). With [far], a second, simpler one for far
-    away ('<name>_far', that many triangles), from the same sculpture."""
+    away ('<name>_far', that many triangles), from the same sculpture; with
+    [mid], one between ('<name>_mid': the city's figures near the camera,
+    the full one only for the rigged people closest to it)."""
     D, origin = S.sample(field, lo, hi, step)
     v, q = S.surface_nets(D, origin, step)
     q = S.orient(field, v, q)
     ob = _finish(name, field, v, q, tris, colour, reach)
+    if mid:
+        _finish(name + "_mid", field, v, q, mid, colour, reach)
     if far:
         _finish(name + "_far", field, v, q, far, colour, reach)
     return ob
@@ -133,46 +137,68 @@ def grey(k):
 
 # The eyes: dark ovals on the face (no whites, no irises: a simple face,
 # everyone's the same).
-EYE_X, EYE_Y = 0.031, 0.132
-EYE_R = (0.0106, 0.0086, 0.006)
+EYE_X, EYE_Y = 0.031, 0.127
+EYE_R = (0.0122, 0.0098, 0.006)
 
 
 def head_field():
-    """The head and neck, one for everyone: a smooth skull, the jaw and
-    chin, ears, a small soft nose, the mouth a soft crease."""
+    """The head and neck, one for everyone: a rounded skull, the forehead
+    turning into the face, the brow over eyes set in under it, cheekbones,
+    the mouth's soft rise, a jaw narrowing to a small chin, ears; a small
+    soft nose, the mouth a soft crease (no lips, no lids: a simple face)."""
 
     def field(p):
-        d = S.ellipsoid(p, (0, 0.158, 0.008), (0.077, 0.098, 0.097))
-        # The face's mass, the jaw and the chin, softly.
-        d = S.smin(d, S.ellipsoid(p, (0, 0.099, -0.03), (0.063, 0.064, 0.067)), 0.03)
+        # The skull, and the forehead turning down into the face.
+        d = S.ellipsoid(p, (0, 0.161, 0.012), (0.0745, 0.093, 0.095))
+        d = S.smin(d, S.ellipsoid(p, (0, 0.168, -0.034), (0.063, 0.052, 0.052)), 0.02)
+        # The face under it, narrower; the mouth's rise in front of it.
+        d = S.smin(d, S.ellipsoid(p, (0, 0.102, -0.026), (0.058, 0.058, 0.062)), 0.03)
+        d = S.smin(d, S.ellipsoid(p, (0, 0.08, -0.055), (0.034, 0.031, 0.034)), 0.02)
+        # Cheekbones.
         for s in (-1, 1):
-            d = S.smin(d, S.round_cone(p, (s * 0.052, 0.076, 0.014), (s * 0.015, 0.032, -0.06), 0.015, 0.0165), 0.03)
-        d = S.smin(d, S.ellipsoid(p, (0, 0.031, -0.066), (0.019, 0.018, 0.015)), 0.016)
-        # A soft brow, and the eyes set a little under it.
-        d = S.smin(d, S.ellipsoid(p, (0, 0.149, -0.081), (0.052, 0.012, 0.013)), 0.02)
+            d = S.smin(d, S.ellipsoid(p, (s * 0.043, 0.11, -0.05), (0.018, 0.012, 0.018)), 0.022)
+        # The jaw, from under the ears to a small chin.
         for s in (-1, 1):
-            d = S.cut(d, S.ellipsoid(p, (s * EYE_X, 0.133, -0.095), (0.016, 0.011, 0.008)), 0.012)
-        # A small soft nose.
-        nose = S.smin(S.round_cone(p, (0, 0.138, -0.091), (0, 0.105, -0.107), 0.0072, 0.0092), S.sphere(p, (0, 0.101, -0.1055), 0.0094), 0.006)
-        d = S.smin(d, nose, 0.011)
+            d = S.smin(d, S.round_cone(p, (s * 0.056, 0.082, 0.018), (s * 0.013, 0.046, -0.052), 0.0155, 0.0122), 0.026)
+        d = S.smin(d, S.ellipsoid(p, (0, 0.046, -0.058), (0.017, 0.015, 0.013)), 0.014)
+        # The brow, and the eyes set in a little under it.
+        d = S.smin(d, S.ellipsoid(p, (0, 0.142, -0.077), (0.05, 0.0115, 0.0135)), 0.018)
+        for s in (-1, 1):
+            d = S.cut(d, S.ellipsoid(p, (s * EYE_X, 0.128, -0.096), (0.017, 0.0115, 0.009)), 0.011)
+        # A small soft nose: its bridge, its tip, its wings.
+        nose = S.smin(S.round_cone(p, (0, 0.126, -0.088), (0, 0.101, -0.101), 0.006, 0.008), S.sphere(p, (0, 0.0975, -0.1005), 0.0084), 0.006)
+        for s in (-1, 1):
+            nose = S.smin(nose, S.sphere(p, (s * 0.0093, 0.095, -0.0935), 0.006), 0.005)
+        d = S.smin(d, nose, 0.01)
         # The mouth: a soft crease.
-        d = S.cut(d, S.ellipsoid(p, (0, 0.068, -0.097), (0.0145, 0.0011, 0.007)), 0.0016)
+        d = S.cut(d, S.ellipsoid(p, (0, 0.073, -0.0905), (0.0145, 0.0011, 0.007)), 0.0016)
         # Ears, their bowls hollowed.
         for s in (-1, 1):
             rot = S.rot_y(0.25 * s) @ S.rot_x(0.12)
-            ear = S.ellipsoid(p, (s * 0.0785, 0.124, 0.011), (0.0105, 0.0295, 0.0185), rot=rot)
-            ear = S.cut(ear, S.ellipsoid(p, (s * 0.0872, 0.122, 0.007), (0.0062, 0.016, 0.0098), rot=rot), 0.003)
+            ear = S.ellipsoid(p, (s * 0.0765, 0.124, 0.013), (0.0105, 0.0295, 0.0185), rot=rot)
+            ear = S.cut(ear, S.ellipsoid(p, (s * 0.0852, 0.122, 0.009), (0.0062, 0.016, 0.0098), rot=rot), 0.003)
             d = S.smin(d, ear, 0.006)
-        d = S.smin(d, S.round_cone(p, (0, -0.075, 0.012), (0, 0.06, 0.003), 0.05, 0.047), 0.03)
+        # The neck.
+        d = S.smin(d, S.round_cone(p, (0, -0.075, 0.016), (0, 0.06, 0.006), 0.054, 0.05), 0.03)
         return d
 
     return field
 
 
 def head_colour(p, n, open_):
-    c = grey(0.55 + 0.45 * open_)
+    # Shaded by how open each point is, warmer as it darkens (the light
+    # that's gone into the skin comes out red).
+    o = open_
+    c = np.stack([0.6 + 0.4 * o, 0.52 + 0.48 * o, 0.49 + 0.51 * o], axis=1)
+
+    # A little colour in the cheeks, on the nose and the ears.
+    def spot(x, y, z, r):
+        return np.exp(-((p[:, 0] - x) ** 2 + (p[:, 1] - y) ** 2 + (p[:, 2] - z) ** 2) / (r * r))
+
+    flush = np.maximum.reduce([spot(s * 0.042, 0.098, -0.07, 0.02) for s in (-1, 1)] + [spot(0, 0.097, -0.103, 0.012)] + [spot(s * 0.08, 0.11, 0.012, 0.018) for s in (-1, 1)])
+    c = c * (1 - flush[:, None] * np.array([0.0, 0.07, 0.08]))
     # The mouth's crease a shade darker and warmer.
-    m = np.clip(1 - np.hypot(p[:, 0] / 0.016, (p[:, 1] - 0.068) / 0.0032), 0, 1) * (p[:, 2] < -0.09)
+    m = np.clip(1 - np.hypot(p[:, 0] / 0.016, (p[:, 1] - 0.073) / 0.0032), 0, 1) * (p[:, 2] < -0.085)
     return c * (1 - m[:, None] * np.array([0.3, 0.42, 0.42]))
 
 
@@ -207,8 +233,8 @@ def around(p):
 HAIRLINES = {
     # (angle round the head, where the hair stops): its front, the temples,
     # sideburns, over the ears, the nape.
-    "short": [(0.0, 0.196), (0.5, 0.192), (0.85, 0.182), (1.05, 0.165), (1.12, 0.122), (1.27, 0.122), (1.34, 0.16), (1.85, 0.16), (2.1, 0.1), (2.6, 0.076), (math.pi, 0.072)],
-    "medium": [(0.0, 0.184), (0.6, 0.18), (1.0, 0.162), (1.12, 0.112), (1.3, 0.112), (1.36, 0.13), (1.9, 0.13), (2.2, 0.07), (math.pi, 0.05)],
+    "short": [(0.0, 0.196), (0.5, 0.192), (0.85, 0.182), (1.0, 0.17), (1.1, 0.142), (1.17, 0.12), (1.25, 0.124), (1.33, 0.148), (1.45, 0.16), (1.85, 0.158), (2.1, 0.1), (2.6, 0.076), (math.pi, 0.072)],
+    "medium": [(0.0, 0.184), (0.6, 0.18), (0.95, 0.165), (1.07, 0.135), (1.15, 0.112), (1.27, 0.114), (1.36, 0.128), (1.9, 0.128), (2.2, 0.07), (math.pi, 0.05)],
 }
 ENDS = {
     "bob": [(0.0, 0.056), (1.2, 0.05), (2.0, 0.058), (math.pi, 0.062)],
@@ -229,7 +255,11 @@ def hair_field(style):
         phi = np.arctan2(p[:, 0], p[:, 2] - 0.01)
         rho = np.hypot(p[:, 0], p[:, 2] - 0.01)
         wob = S.fbm(p * S.F(14), 2)
-        g = 0.5 + 0.5 * np.sin(n_clumps * phi + 1.8 * wob)
+        # (Uneven: each clump its own width and depth, finer strands over
+        # them.)
+        g = 0.5 + 0.5 * np.sin(n_clumps * phi + 3.2 * wob)
+        g = g * (0.55 + 0.9 * (0.5 + 0.5 * S.fbm(p * S.F(23) + S.F(7.7), 2)))
+        g = g + 0.3 * (0.5 + 0.5 * np.sin(2.7 * n_clumps * phi + 4.1 * wob + 1.3))
         # (None at the crown, where they'd all meet.)
         fade = np.clip((rho - 0.012) / 0.04, 0, 1)
         return (amp * g * fade + lump * (0.5 + 0.5 * S.fbm(p * S.F(9) + S.F(3.1), 2))).astype(S.F)
@@ -259,7 +289,9 @@ def hair_field(style):
             d = S.smax(d, -(y - keyed(ENDS[style], a)).astype(S.F), 0.006)
             # The face left open under a fringe; long hair falls behind the
             # shoulders, not on them.
-            window = np.maximum.reduce([np.abs(p[:, 0]) - 0.064, p[:, 2] - 0.004, y - (0.168 if style == "bob" else 0.188)])
+            # (Its fringe cut a little unevenly, not with a ruler.)
+            fringe = (0.168 if style == "bob" else 0.188) + 0.003 * np.sin(p[:, 0] * 150 + 0.7) + 0.002 * S.fbm(p * S.F(90), 2)
+            window = np.maximum.reduce([np.abs(p[:, 0]) - 0.064, p[:, 2] - 0.004, y - fringe])
             d = S.smax(d, -window.astype(S.F), 0.008)
             if style == "long":
                 d = S.smax(d, -np.maximum(y - 0.025, 0.055 - p[:, 2]).astype(S.F), 0.012)
@@ -290,8 +322,8 @@ def brow_field():
     head = head_field()
     strokes = []
     for s in (-1, 1):
-        pts = [(s * 0.013, 0.1505), (s * 0.027, 0.1535), (s * 0.041, 0.1525), (s * 0.049, 0.149)]
-        rad = [0.0023, 0.0023, 0.0019, 0.0012]
+        pts = [(s * 0.012, 0.1425), (s * 0.019, 0.1448), (s * 0.028, 0.146), (s * 0.038, 0.1452), (s * 0.047, 0.1418)]
+        rad = [0.0031, 0.0031, 0.0028, 0.0022, 0.0014]
         guess = np.array([[x, y, -0.12] for x, y in pts], dtype=float)
         on = S.project(head, guess, iters=10)
         nrm = S.normals(head, on)
@@ -416,19 +448,19 @@ if wanted("shoe"):
     part("sole", sole_field, (-0.055, -0.085, -0.225), (0.055, -0.045, 0.095), 0.0008, 500, lambda p, n, o: grey(0.55 + 0.45 * o), reach=0.006, far=120)
 
 if wanted("head"):
-    part("head", head_field(), (-0.11, -0.13, -0.13), (0.11, 0.275, 0.125), 0.0011, 2400, head_colour, far=600)
+    part("head", head_field(), (-0.11, -0.13, -0.13), (0.11, 0.275, 0.125), 0.0008, 4500, head_colour, far=700, mid=2400)
 if wanted("eyes"):
-    part("eyes", eyes(), (-0.05, 0.115, -0.115), (0.05, 0.15, -0.08), 0.0004, 300, lambda p, n, o: np.tile([0.035, 0.028, 0.025], (len(p), 1)))
+    part("eyes", eyes(), (-0.05, 0.108, -0.115), (0.05, 0.146, -0.08), 0.00025, 500, lambda p, n, o: np.tile([0.035, 0.028, 0.025], (len(p), 1)), mid=260)
 if wanted("brows"):
-    part("brows", brow_field(), (-0.07, 0.135, -0.11), (0.07, 0.17, -0.06), 0.0005, 360, lambda p, n, o: grey(0.45 + 0.4 * o))
-for style, tris, far, lo, hi in [
-    ("short", 1800, 420, (-0.105, 0.05, -0.125), (0.105, 0.29, 0.135)),
-    ("medium", 2200, 500, (-0.11, 0.03, -0.125), (0.11, 0.295, 0.14)),
-    ("bob", 2600, 600, (-0.115, 0.03, -0.125), (0.115, 0.295, 0.14)),
-    ("long", 3200, 760, (-0.115, -0.23, -0.125), (0.115, 0.295, 0.145)),
+    part("brows", brow_field(), (-0.07, 0.13, -0.11), (0.07, 0.165, -0.06), 0.0003, 500, lambda p, n, o: grey(0.45 + 0.4 * o), mid=300)
+for style, tris, mid, far, lo, hi in [
+    ("short", 3200, 1800, 450, (-0.105, 0.05, -0.125), (0.105, 0.29, 0.135)),
+    ("medium", 3600, 2200, 520, (-0.11, 0.03, -0.125), (0.11, 0.295, 0.14)),
+    ("bob", 4000, 2600, 620, (-0.115, 0.03, -0.125), (0.115, 0.295, 0.14)),
+    ("long", 4600, 3200, 780, (-0.115, -0.23, -0.125), (0.115, 0.295, 0.145)),
 ]:
     if wanted("hair_" + style):
-        part("hair_" + style, hair_field(style), lo, hi, 0.0012, tris, hair_colour(style), reach=0.018, far=far)
+        part("hair_" + style, hair_field(style), lo, hi, 0.0009, tris, hair_colour(style), reach=0.018, far=far, mid=mid)
 
 
 # ── Out ──────────────────────────────────────────────────────────────────────

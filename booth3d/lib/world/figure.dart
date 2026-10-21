@@ -295,7 +295,10 @@ class Figures {
 
     final parts = _parts!;
     MeshGeometry sculpted(String name) => MeshGeometry.fromMeshData(parts[name]!);
-    _Part both(String name, Material m, String label) => _Part(im(sculpted(name), m, label), im(sculpted('${name}_far'), m, '$label far'));
+    // (Near, the head's parts in their middle detail where there is one:
+    // the full ones are the rigged people's, closest to the camera.)
+    MeshGeometry near(String name) => sculpted(parts.containsKey('${name}_mid') ? '${name}_mid' : name);
+    _Part both(String name, Material m, String label) => _Part(im(near(name), m, label), im(sculpted('${name}_far'), m, '$label far'));
     _Part lofted(MeshGeometry Function(bool near) g, Material m, String label) => _Part(im(g(true), m, label), im(g(false), m, '$label far'));
     _Part one(MeshGeometry g, Material m, String label) => _Part(im(g, m, label));
 
@@ -304,8 +307,8 @@ class Figures {
     _hips = lofted(_hipsGeometry, cloth, 'hips');
     _head = both('head', skin, 'heads');
     // (Eyes and brows: too small to see from afar.)
-    _eyes = _Part(im(sculpted('eyes'), eye, 'eyes'), null, false);
-    _brows = _Part(im(sculpted('brows'), hair, 'brows'), null, false);
+    _eyes = _Part(im(near('eyes'), eye, 'eyes'), null, false);
+    _brows = _Part(im(near('brows'), hair, 'brows'), null, false);
     for (final h in Hair.values.skip(1)) {
       _hairs.add(both('hair_${h.name}', hair, 'hair ${h.name}'));
     }
@@ -610,9 +613,9 @@ class Figures {
   /// (The crew, from this far.)
   static const _leadOnAt = 30.0, _leadOffAt = 34.0;
 
-  /// Rigged people's heads in full up to this far (and until a little
-  /// further).
-  static const _fullAt = 9.0, _fullOffAt = 11.0;
+  /// Rigged people's heads as near up to this far (and until a little
+  /// further); in full only closer still.
+  static const _fullAt = 9.0, _fullOffAt = 11.0, _closeAt = 4.5, _closeOffAt = 5.5;
   static double _off(_Body b) => b.look.lead ? _leadOffAt : _offAt;
   final _pool = <String, List<RiggedPerson>>{};
   final _wanting = <_Body>[];
@@ -623,6 +626,13 @@ class Figures {
     return dx * dx + dz * dz;
   }
 
+  /// How far [eye] is from [b]'s head (squared): how big it is on screen
+  /// (from high up, someone right under the camera is still far off).
+  static double _head2(_Body b, vm.Vector3 eye) {
+    final dy = b.y + 1.55 * b.look.size - eye.y;
+    return _d2(b, eye) + dy * dy;
+  }
+
   /// Whoever's gone too far (or wasn't drawn) is the city's figure again,
   /// this frame: their rigged person back to the pool.
   void _release(vm.Vector3 eye) {
@@ -631,8 +641,11 @@ class Figures {
       if (a == null) continue;
       final d2 = _d2(b, eye);
       if (!b.hidden && b.seen == _frameAt && d2 < _off(b) * _off(b)) {
-        // (The full head near the camera, the simpler one further off.)
-        a.near = d2 < (a.near ? _fullOffAt * _fullOffAt : _fullAt * _fullAt);
+        // (The full head close to the camera, simpler ones further off.)
+        final h2 = _head2(b, eye);
+        a
+          ..near = h2 < (a.near ? _fullOffAt * _fullOffAt : _fullAt * _fullAt)
+          ..close = h2 < (a.close ? _closeOffAt * _closeOffAt : _closeAt * _closeAt);
         continue;
       }
       a.visible = false;
@@ -664,14 +677,16 @@ class Figures {
       a.dress(
         skin: _toned(l.skin),
         hairColor: l.hairColor,
-        hair: l.hardHat != null || l.cap != null ? null : b.hairStyle,
+        // (Under a cap or a hard hat, a short cut: not bald under it.)
+        hair: l.hardHat != null || l.cap != null ? 'hair_short' : b.hairStyle,
         top: l.top,
         legs: l.legs,
         vest: l.stripes ? l.layer : null,
         gloves: l.gloves,
         stand: b.stand,
         seed: b.n,
-        near: _d2(b, eye) < _fullAt * _fullAt,
+        near: _head2(b, eye) < _fullAt * _fullAt,
+        close: _head2(b, eye) < _closeAt * _closeAt,
       );
       b.avatar = a;
       _live++;

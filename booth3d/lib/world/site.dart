@@ -52,6 +52,7 @@ import 'v_locale.dart';
 import 'v_relay.dart';
 import 'v_ruby.dart';
 import 'v_tofu.dart';
+import 'v_archive.dart';
 import 'v_tower.dart';
 import 'v_tram.dart';
 import 'v_mix.dart';
@@ -124,6 +125,7 @@ class Site3D {
       LineTram(kit),
       LigatureForge(kit),
       UnicodeTower(kit),
+      UnicodeArchive(kit),
       ZwjFamily(kit),
       WeightGym(kit),
       BidiWorks(kit),

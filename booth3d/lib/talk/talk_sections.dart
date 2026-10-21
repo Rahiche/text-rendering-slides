@@ -240,7 +240,9 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('codespace', '15.5% of 1,114,112'),
           ],
         ),
-        [CityBeat.scene('tower', hold: 12.0, fly: 3.4)],
+        // (Down into the Unicode archive, timed to the narration: the
+        // scene starts as the camera sets off.)
+        [CityBeat.scene('archive', hold: 36.0, fly: 3.0, lead: 3.0, shift: 0)],
       ),
       CityStop(
         'alley',

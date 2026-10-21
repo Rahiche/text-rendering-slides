@@ -33,6 +33,11 @@ class Sky3D {
   /// scale), calmer colour, the frame's edges a little darker.
   double talk = 0;
 
+  /// How far the camera's underground (0 … 1, set by the world): down the
+  /// Unicode archive's stair, the air goes dark (no sky to take the colour
+  /// of, no sun to scatter), and thicker.
+  double underground = 0;
+
   /// The direction towards the sun.
   final sun = vm.Vector3(0, 1, 0);
 
@@ -121,9 +126,14 @@ class Sky3D {
   }
 
   void update(double t, [double dt = 1 / 60]) {
-    final k = talk;
+    final k = talk, g = underground;
     scene.exposure = _exposure * lerp(1, 0.97, k);
-    scene.fog.density = lerp(0.0014, 0.0022, k);
+    scene.fog
+      ..density = lerp(lerp(0.0014, 0.0022, k), 0.0035, g)
+      ..color.setValues(lerp(_horizon.x, 0.006, g), lerp(_horizon.y, 0.007, g), lerp(_horizon.z, 0.009, g))
+      ..heightFalloff = lerp(0.035, 0.0, g)
+      ..skyColorInfluence = lerp(0.85, 0.0, g)
+      ..sunInScatter = lerp(0.3, 0.0, g);
     scene.postProcess.bloom
       ..threshold = lerp(1.4, 1.3, k)
       ..intensity = lerp(0.07, 0.09, k);

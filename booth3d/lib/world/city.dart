@@ -84,11 +84,14 @@ class City3D {
   void _ground(PhysicallyBasedMaterial grass, PhysicallyBasedMaterial stone) {
     // The world: grass between the streets and the blocks, as far as the eye
     // goes (the lawn's photograph, 3 m to a tile).
-    const size = 1400.0;
-    scene.add(
-      Node(name: 'ground', mesh: Mesh(MeshGeometry.fromMeshData(_slabData(-size / 2, -size / 2, size / 2, size / 2, -0.12, tile: 3)), grass))
-        ..lightChannelMask = sunOnly,
-    );
+    // (Round the opening where the archive's stair goes down.)
+    const size = 1400.0, h = size / 2;
+    final (hx0, hz0, hx1, hz1) = Plan.archiveHole;
+    final ground = Batch();
+    for (final (x0, z0, x1, z1) in [(-h, -h, hx0, h), (hx1, -h, h, h), (hx0, -h, hx1, hz0), (hx0, hz1, hx1, h)]) {
+      ground.add(grass, _slabData(x0, z0, x1, z1, -0.12, tile: 3));
+    }
+    ground.build(scene, 'ground', lightChannelMask: sunOnly);
 
     // The plaza: stone, 3 m to a tile, edged in a dark granite band.
     const px = Plan.plazaX, z0 = Plan.plazaZ0, z1 = Plan.plazaZ1;

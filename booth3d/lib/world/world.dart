@@ -26,6 +26,7 @@ import 'lineup.dart';
 import 'physics.dart';
 import 'script_alley.dart' show ScriptAlley;
 import 'site.dart';
+import 'v_archive.dart';
 import 'sky.dart';
 import 'typing.dart';
 
@@ -154,7 +155,11 @@ class World3D {
     m.setShowcase(talk.questions ? Talk.thanks : null, now: true);
     // The talk's look comes in with it (and goes with it).
     sky.talk = dt <= 0 ? (talk.on ? 1.0 : 0.0) : approach(sky.talk, talk.on ? 1.0 : 0.0, dt, 0.5);
-    sky.update(m.t, dt);
+    final archive = site.vignettes.byName('archive') as UnicodeArchive?;
+    director.mayGoUnder ??= archive?.mayGoUnder;
+    sky
+      ..underground = archive?.undergroundAt(director.camera.position) ?? 0
+      ..update(m.t, dt);
     city.update(sky, m.t);
     mark('sky+city');
     site.fx

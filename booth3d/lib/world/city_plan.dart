@@ -52,6 +52,10 @@ abstract final class Plan {
     (-41.0, 33.0, -24.0, 49.0), // the demos store
   ];
 
+  /// The opening in the ground on the Unicode tower's lot where the stair
+  /// goes down to the Unicode archive (v_archive.dart): x0, z0, x1, z1.
+  static const archiveHole = (29.5, 84.5, 33.7, 87.5);
+
   /// Whether (x, z) is on one of the [lots] ([margin] metres round it).
   static bool inLot(double x, double z, [double margin = 0]) =>
       lots.any((l) => x > l.$1 - margin && x < l.$3 + margin && z > l.$2 - margin && z < l.$4 + margin);

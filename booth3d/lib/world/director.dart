@@ -32,6 +32,14 @@ class Director {
   /// buildings (centre, half extents). Set by the world.
   List<(vm.Vector3, vm.Vector3)> solids = const [];
 
+  /// Where the camera may go below the ground (a scene underground the
+  /// talk's in: the Unicode archive); everywhere else it keeps above it.
+  bool Function(vm.Vector3 eye)? mayGoUnder;
+
+  void _aboveGround(vm.Vector3 eye) {
+    if (eye.y < 0.9 && !(mayGoUnder?.call(eye) ?? false)) eye.y = 0.9;
+  }
+
   /// How far out from what it looks at the camera is, of the way the shot
   /// has it (1: all the way): pulled in at once in front of a building in
   /// the way, let out again slowly once it's clear.
@@ -212,7 +220,7 @@ class Director {
     final target = s.target.clone()
       ..x += d * 0.5 * math.sin(t * 0.53 + 0.7)
       ..y += d * 0.4 * math.sin(t * 0.61 + 1.9);
-    eye.y = math.max(eye.y, 0.9);
+    _aboveGround(eye);
     camera = PerspectiveCamera(position: eye, target: target, fovRadiansY: s.fov * math.pi / 180, fovNear: 0.2, fovFar: 900);
     focus = (target - eye).length;
     closeness = smooth(9.5, 5.0, focus) * smooth(54, 40, s.fov);
@@ -269,7 +277,7 @@ class Director {
   /// Keeps the camera above ground, out of the wall and its platform, the
   /// crane's mast and the brick yard.
   void _avoid(vm.Vector3 eye, Site3D site) {
-    eye.y = math.max(eye.y, 0.9);
+    _aboveGround(eye);
     final w = site.wallWidth, h = site.wallHeight;
     const front = -1.6, back = SiteLayout.deckZ1 + 0.8;
     if (eye.x.abs() < w / 2 + 1.6 && eye.z > front && eye.z < back && eye.y < h + 2.5) {

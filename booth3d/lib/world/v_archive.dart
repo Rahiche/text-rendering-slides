@@ -149,7 +149,7 @@ class UnicodeArchive extends Vignette {
   @override
   List<(String, TextStyle)> get fontRuns => [
     for (final (_, g) in _scripts) (g.join(), _ink.copyWith(fontSize: 40)),
-    ('UNICODE ARCHIVE ユニコード書庫 1963 ASCII 1991 Unicode 1.0 2010 6.0 2026 18 code points in use empty 0123456789,·%', _ink.copyWith(fontSize: 40)),
+    ('UNICODE ARCHIVE B1 one crate per code point 1963 ASCII 1991 Unicode 1.0 2010 6.0 2026 18 characters in use the rest still empty 0123456789,·%', _ink.copyWith(fontSize: 40)),
   ];
 
   @override
@@ -468,7 +468,8 @@ class UnicodeArchive extends Vignette {
         Vignette.c(0x5A5852),
       ),
     );
-    for (final x in [_sx0 - 0.08, _sx1 + 0.08]) {
+    // (A centimetre into the opening: in front of the ground's cut edge.)
+    for (final x in [_sx0 - 0.07, _sx1 + 0.07]) {
       // The wall beside it down from the street to the ceiling, and the
       // rail along it below.
       stair.add(_boxAt(0.16, 0.5 - _ceil, _sOpen - _s0, x, _ceil / 2 + 0.25, (_s0 + _sOpen) / 2, Vignette.c(0x77756F)));
@@ -481,6 +482,9 @@ class UnicodeArchive extends Vignette {
         ),
       );
     }
+    // The lintel where the street's opening ends over the stair (the
+    // ground's cut edge behind it).
+    stair.add(_boxAt(_sx1 - _sx0 + 0.32, 0.5, 0.08, (_sx0 + _sx1) / 2, -0.25, _sOpen - 0.04, Vignette.c(0x77756F)));
     _stair = InstancedMesh(geometry: merged(stair), material: UnlitMaterial())..addInstance(vm.Matrix4.identity());
   }
 
@@ -551,7 +555,7 @@ class UnicodeArchive extends Vignette {
       (c, s) {
         c.drawRect(Offset.zero & s, Paint()..color = const Color(0xFF14203A));
         Vignette.text(c, 'UNICODE ARCHIVE', Rect.fromLTWH(0, s.height * 0.08, s.width, s.height * 0.5), s.height * 0.38, const Color(0xFFF2C94C));
-        Vignette.text(c, 'ユニコード書庫 · B1', Rect.fromLTWH(0, s.height * 0.56, s.width, s.height * 0.36), s.height * 0.24, const Color(0xFFE8ECF4), lang: 'ja');
+        Vignette.text(c, 'B1 · one crate per code point', Rect.fromLTWH(0, s.height * 0.56, s.width, s.height * 0.36), s.height * 0.24, const Color(0xFFE8ECF4));
       },
       px: 900,
       glow: 0.45,

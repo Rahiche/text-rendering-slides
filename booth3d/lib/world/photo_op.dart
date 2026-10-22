@@ -28,23 +28,27 @@ class PhotoCue {
 
 /// The finale with the Glyph Works' mini name: its pixel board.
 ///
-/// As the wall's last letter goes in, two makers lift the board off its
-/// stand (upright in their hands) and carry it round to the front of the
-/// wall, the third following with the tripod. A few seconds into the
-/// celebration the team gathers in front of the big name — the six
-/// builders, the foreman, the makers — the makers holding the board by its
-/// sides, the foreman steadying its top from behind. The photographer counts
-/// down (3, 2, 1, a raised hand each), the flash goes, hats fly and the
-/// board goes up over their heads. The camera goes back and forth between
-/// the mini name in their hands and the big name with the team in front,
-/// ending on the flash. Then everyone goes back to their places and the
-/// board goes home to the works, safe before the wrecking ball.
+/// As the wall's last letter goes in, the works' drone comes over from its
+/// dock by the hall's door, takes the board off its stand, flies it out of
+/// the door, over the side street and the plaza, and brings it down in
+/// front of the wall.
+/// A few seconds into the celebration the team gathers in front of the big
+/// name — the six builders and the foreman — the two in the middle taking
+/// the board by its sides, the foreman steadying its top from behind; the
+/// drone goes up and round to face them: it takes the photo. It counts
+/// down (3, 2, 1, its light blinking faster), the flash goes, hats fly and
+/// the board goes up over their heads. The camera goes back and forth
+/// between the mini name in their hands and the big name with the team in
+/// front, ending on the flash. Then the drone takes the board back and
+/// flies it home to its stand, safe before the wrecking ball, and goes
+/// back to its dock; everyone goes back to their places.
 ///
-/// A pure function of scene time, planned once per build: the carry from
+/// A pure function of scene time, planned once per build: the flight from
 /// the build's end, the photo from the celebration's start. Called off
-/// early (a sample giving way to a visitor's name, or skipped), everyone
-/// turns back from wherever they are: no countdown, no flash, the board home
-/// the way it came (never lifted, it stays on its stand).
+/// early (a sample giving way to a visitor's name, or skipped), the drone
+/// turns back with the board from wherever it is (or comes back for it):
+/// no countdown, no flash; never lifted, it stays on its stand (and the
+/// drone, if it was on its way over, goes back to its dock).
 class PhotoOp {
   PhotoOp(this.crew, this.works, this.fx, this.parts);
 
@@ -55,17 +59,26 @@ class PhotoOp {
 
   final cue = PhotoCue();
 
-  /// The board's bottom edge in the carriers' hands (its sides at their
+  /// The board's bottom edge in the holders' hands (its sides at their
   /// waists), and raised in the cheer.
   static const _hold = 0.85, _raised = 1.05;
 
   /// Where the board is held for the photo (the middle of its bottom edge),
-  /// and where the tripod stands.
-  static final _spot = vm.Vector3(0, _hold, -2.75), _tripod = vm.Vector3(-1.55, 0, -6.15);
+  /// and where the drone takes it from (hovering, facing the team).
+  static final _spot = vm.Vector3(0, _hold, -2.75), _camera = vm.Vector3(-1.55, 1.7, -6.15);
 
   /// The photo's beats after [_Now.ready] (everyone in place): the
   /// countdown, "say cheese", the flash, the cheering.
   static const _counts = [2.8, 3.8, 4.8], _cheese = 5.6, _flash = 6.1, _cheers = 3.3;
+
+  /// The drone's cruising speed (metres a second, on average), and how
+  /// long it takes to come for the board or go from it.
+  static const _speed = 3.0, _hop = 1.6;
+
+  /// How long the drone takes from its dock onto the board's top on its
+  /// stand (its rotors spinning up first), or back; and how high its
+  /// middle is over what it stands on (on its skids).
+  static const _fetch = 2.6, _perch = 0.15;
 
   // ── Per build ─────────────────────────────────────────────────────────────
 
@@ -83,29 +96,32 @@ class PhotoOp {
       String f(double v) => v.toStringAsFixed(1);
       final c = plan.t0 + plan.len + CityPace.reveal;
       // ignore: avoid_print
-      print(
-        'PLAN photo lift=${f(p.lift)} there=${f(p.out.end)} tripod=${f(p.toSpot.end)} (if the celebration starts at ${f(c)}: ready=${f(p.readyAt(c))} flash=${f(p.readyAt(c) + _flash)} back=${f(p.backAt(c))})',
-      );
+      print('PLAN photo lift=${f(p.lift)} there=${f(p.arrive)} (if the celebration starts at ${f(c)}: ready=${f(p.readyAt(c))} flash=${f(p.readyAt(c) + _flash)} back=${f(p.backAt(c))})');
     }
     return p;
   }
 
-  /// Poses the makers, places the board and the tripod, and fills [cue], for
-  /// [j] at [t]. Call before the works' and the crew's updates.
+  /// Flies the drone, places the board and fills [cue], for [j] at [t].
+  /// Call before the works' and the crew's updates.
   void update(BoothModel m, Job j, BuildPlan? plan, double t) {
     _t = t;
     cue
       ..count = -1
       ..flash = 0;
     _now = null;
-    if (plan == null || !identical(plan.job, j) || works.boardDone == null) return;
-    if (j.phase.index < Phase.build.index) return;
+    if (plan == null || !identical(plan.job, j) || works.boardDone == null || j.phase.index < Phase.build.index) {
+      _docked();
+      return;
+    }
     final p = _plan(plan);
     // The celebration's start: as it happened, or (before) as it will be;
     // and when the demolition came (the finale called off, if it was early).
     if (j.phase == Phase.celebrate) p.celebrate = j.phaseStart;
     if (j.phase.index >= Phase.demolish.index && p.over.isNaN) p.over = j.phaseStart;
-    if (t < math.min(p.lift - 3.5, math.min(p.toBoard[0].start, p.toBoard[1].start))) return;
+    if (t < p.lift - _fetch) {
+      _docked();
+      return;
+    }
     final c = j.phase.index >= Phase.celebrate.index && !p.celebrate.isNaN ? p.celebrate : plan.t0 + plan.len + m.pace.phaseLen(Phase.reveal);
     final away = math.min(p.over.isNaN ? double.infinity : p.over, p.backAt(c));
     var now = _cached;
@@ -114,44 +130,38 @@ class PhotoOp {
         p,
         c,
         away,
-        boardW: works.boardWidth,
         watch: {for (var z = 0; z < Crew3D.builders; z++) z: crew.watchSpot(z, p.w), Crew3D.foreman: vm.Vector3(p.w / 2 + 0.75, 0, -1.55)},
       );
     }
-    if (t >= now.done) return;
+    if (t >= now.done) {
+      _docked();
+      return;
+    }
     _now = now;
     _board(now, t);
-    _makers(now, t);
-    _tripodAt(now, t);
+    _drone(now, t);
     _cue(now, t);
   }
 
   // ── The board ─────────────────────────────────────────────────────────────
 
   /// The board at [t] (null: on its stand): the middle of its bottom edge,
-  /// which way its carriers face, and how far it leans back (as on its
-  /// stand; upright in their hands). The board itself never turns: the mini
-  /// name always reads to the front (they carry it side by side going out
-  /// and in, one behind the other along the wall).
-  ({double x, double z, double yaw, double y, double tilt})? _boardAt(_Now n, double t) {
+  /// and how far it leans back (as on its stand; upright off it). It never
+  /// turns: the mini name always reads to the front.
+  ({double x, double y, double z, double tilt})? _boardAt(_Now n, double t) {
     final p = n.p;
     if (t < p.lift || t >= n.home) return null;
-    if (t < math.min(p.out.end, n.away)) {
-      final k = p.out.at(t);
-      final up = eio(seg(t, p.lift, p.lift + 0.6));
-      return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(WorksLayout.boardY, _hold, up), tilt: WorksLayout.boardTilt * (1 - up));
+    // Under the drone: out to the photo, or home.
+    final s = n.flownAt(t);
+    if (s != null) {
+      p.flight.at(s, _a);
+      final off = 1 - eio(seg(t, p.lift, p.lift + 0.8)) + eio(seg(t, n.home - 0.8, n.home));
+      return (x: _a.x, y: _a.y, z: _a.z, tilt: WorksLayout.boardTilt * off.clamp(0.0, 1.0));
     }
-    if (t < n.away) {
-      // Held for the photo, raised in the cheer.
-      final f = n.flash;
-      final up = eio(seg(t, f + 0.25, f + 0.9)) * (1 - eio(seg(t, f + 2.6, f + 3.2)));
-      return (x: _spot.x, z: _spot.z, yaw: 0.0, y: lerp(_hold, _raised, up) - 0.02 * math.sin(t * 2.2) * (1 - up), tilt: 0.0);
-    }
-    // (Lifted before [_Now.away], so there's a way back.)
-    final back = n.back!;
-    final k = back.at(t);
-    final down = eio(seg(t, back.end - 0.6, back.end));
-    return (x: k.x, z: k.z, yaw: k.yaw, y: lerp(_hold, WorksLayout.boardY, down), tilt: WorksLayout.boardTilt * down);
+    // In the holders' hands for the photo, raised in the cheer.
+    final f = n.flash;
+    final up = eio(seg(t, f + 0.25, f + 0.9)) * (1 - eio(seg(t, f + 2.6, f + 3.2)));
+    return (x: _spot.x, y: lerp(_hold, _raised, up) - 0.02 * math.sin(t * 2.2) * (1 - up), z: _spot.z, tilt: 0.0);
   }
 
   void _board(_Now n, double t) {
@@ -162,59 +172,12 @@ class PhotoOp {
 
   /// Where the board's side at [side] (−1 left, +1 right) is, [inset] in
   /// from its edge, a third of the way up.
-  vm.Vector3 _side(({double x, double z, double yaw, double y, double tilt}) k, double side, double inset, vm.Vector3 out) {
+  vm.Vector3 _side(({double x, double y, double z, double tilt}) k, double side, double inset, vm.Vector3 out) {
     final up = works.boardHeight * 0.35;
     return out..setValues(k.x + side * (works.boardWidth / 2 - inset), k.y + up * math.cos(k.tilt), k.z + up * math.sin(k.tilt));
   }
 
-  // ── The makers ────────────────────────────────────────────────────────────
-
   final _a = vm.Vector3.zero(), _b = vm.Vector3.zero();
-  static final _onStand = (x: WorksLayout.boardX, z: WorksLayout.boardZ, yaw: 0.0, y: WorksLayout.boardY, tilt: WorksLayout.boardTilt);
-
-  void _makers(_Now n, double t) {
-    final p = n.p;
-    final k = _boardAt(n, t);
-    for (var i = 0; i < 2; i++) {
-      final to = p.toBoard[i], home = n.toHome[i];
-      if (home == null || t < to.start || t >= home.end) continue;
-      works.finaleMakers |= 1 << i;
-      final f = crew.poses[Crew3D.makers + i]
-        ..rest()
-        ..visible = true;
-      final side = i == 0 ? -1.0 : 1.0;
-      final seed = 40 + i * 7;
-      if (t < to.end) {
-        // To their side of the board on its stand.
-        to.pose(f, t, seed);
-        continue;
-      }
-      if (k == null && t >= home.start) {
-        // Home again.
-        home.pose(f, t, seed);
-        continue;
-      }
-      if (k == null) {
-        // At the stand, hands on the board's sides: about to lift it (or
-        // just set it down).
-        to.pose(f, t, seed);
-        _grip(f, _side(_onStand, side, 0.02, _a));
-        f.lean = 0.2;
-        continue;
-      }
-      // At their side of the board, facing where it goes, holding it.
-      f.pos.setValues(k.x + side * (works.boardWidth / 2 + 0.17), 0, k.z);
-      f.yaw = k.yaw;
-      final walking = _moving(n, t);
-      if (walking) {
-        OffDuty.walk(f, t, 1.4, seed);
-      } else {
-        OffDuty.stand(f, t, seed);
-      }
-      _grip(f, _side(k, side, 0.03, _a));
-      if (!walking) _cheer(f, t, n.flash, seed, hands: true);
-    }
-  }
 
   /// Both of [f]'s hands on the board's side at [at], one above the other.
   void _grip(FigurePose f, vm.Vector3 at) {
@@ -222,22 +185,6 @@ class PhotoOp {
       _b
         ..setFrom(at)
         ..y += s == 0 ? -0.07 : 0.07;
-      crew.aim(f, s, _b);
-    }
-  }
-
-  bool _moving(_Now n, double t) {
-    final p = n.p, back = n.back;
-    if (t >= p.lift + 0.6 && t < math.min(p.out.end - 0.3, n.away)) return true;
-    return back != null && t >= n.away && t < back.end - 0.6;
-  }
-
-  /// Both of [f]'s hands on [at] (a little either side of it).
-  void _hands(FigurePose f, vm.Vector3 at) {
-    for (var s = 0; s < 2; s++) {
-      _b
-        ..setFrom(at)
-        ..z += s == 0 ? -0.06 : 0.06;
       crew.aim(f, s, _b);
     }
   }
@@ -252,92 +199,129 @@ class PhotoOp {
     if (!hands) Idle.clap(f, t, rate, k, seed * 0.1);
   }
 
-  // ── The photographer and the tripod ───────────────────────────────────────
+  // ── The drone ─────────────────────────────────────────────────────────────
 
-  static final _dark = v4(hex3(0x1B2233)), _steel = v4(hex3(0x8A96A6)), _body = v4(hex3(0x2A3344)), _white = vm.Vector4(1, 1, 1, 1);
-  final _head = vm.Vector3.zero();
+  static final _dark = v4(hex3(0x1B2233)), _shell = v4(hex3(0xF2F0EA)), _paint = v4(hex3(0xF0862A)), _blur = v4(hex3(0x39404D)), _white = vm.Vector4(1, 1, 1, 1);
+  final _at = vm.Vector3.zero(), _to = vm.Vector3.zero();
 
-  void _tripodAt(_Now n, double t) {
-    final go = n.p.toSpot, home = n.spotHome;
-    if (home == null || t < go.start || t >= home.end) return;
-    works.finaleMakers |= 4;
-    final w2 = crew.poses[Crew3D.makers + 2]
-      ..rest()
-      ..visible = true;
-    final f = n.flash;
-    final setUp = go.end, fold = n.fold;
-    if (n.away <= setUp || t < setUp || t >= n.packed) {
-      // Walking there (or home: turned back on the way, if it was called
-      // off) with the tripod folded on the shoulder.
-      (t < math.min(setUp, n.away) ? go : home).pose(w2, t, 61);
-      w2.handTo(1, 0.2, 0.52, -0.1);
-      OffDuty.hand(w2, 1, _a);
-      _b.setValues(_a.x + math.sin(w2.yaw) * 0.6, _a.y + 0.55, _a.z + math.cos(w2.yaw) * 0.6);
-      parts.rod(_a, _b, 0.025, _dark);
+  /// The drone at rest on its dock in the works, its charging light on.
+  void _docked() {
+    _at.setValues(WorksLayout.dockX, WorksLayout.dockY + _perch, WorksLayout.dockZ);
+    _drawDrone(_at, 0, false, 0);
+    parts.glow(WorksLayout.dockX + 0.25, WorksLayout.dockY - 0.03, WorksLayout.dockZ - 0.455, 0.05, 0.02, 0.01, _green * 0.5);
+  }
+
+  /// The drone [f] of the way from its dock (0) onto the board's top on its
+  /// stand (1): its rotors spinning up on the dock first (down after, back
+  /// on it); up off it, along the wall past the door, down onto the board
+  /// from in front (under the board's sign).
+  void _hopping(double f, double t) {
+    final m = eio(seg(f, 0.18, 1)), u = 1 - m;
+    final top = works.boardHeight, tilt = WorksLayout.boardTilt;
+    _a.setValues(WorksLayout.dockX, WorksLayout.dockY + _perch, WorksLayout.dockZ);
+    _b.setValues(WorksLayout.boardX, WorksLayout.boardY + top * math.cos(tilt) + 0.38, WorksLayout.boardZ + top * math.sin(tilt));
+    // (A curve through a point over the middle of the way.)
+    _to
+      ..setFrom(_a)
+      ..add(_b)
+      ..scale(0.5)
+      ..y += 0.9;
+    _at
+      ..setFrom(_a * (u * u))
+      ..add(_to * (2 * u * m))
+      ..add(_b * (m * m))
+      ..y += 0.025 * math.sin(t * 2.7) * seg(f, 0.18, 0.35);
+    _drawDrone(_at, 0, f > 0, t);
+  }
+
+  /// The drone at [t]: coming over from its dock or going back to it, with
+  /// the board under it, going for it or from it, or hovering where it
+  /// takes the photo (facing the team); its light counting down, the flash.
+  void _drone(_Now n, double t) {
+    if (n.hopAt(t) case final f?) {
+      _hopping(f, t);
       return;
     }
-    // Set up: legs out, the camera on top, pointed at the team.
-    final open = eio(seg(t, setUp, setUp + 1.2)) * (1 - eio(seg(t, fold, n.packed)));
-    _head.setValues(_tripod.x, 0.5 + 0.55 * open, _tripod.z);
-    final head = _head;
-    final aim = math.atan2(-(_spot.x - head.x), -(_spot.z - head.z));
-    final ax = -math.sin(aim), az = -math.cos(aim);
-    for (var leg = 0; leg < 3; leg++) {
-      final a = aim + (leg - 1) * 2.1;
-      _a.setValues(head.x + math.sin(a) * 0.36 * open, 0, head.z + math.cos(a) * 0.36 * open);
-      parts.rod(head, _a, 0.012, _dark);
-    }
-    if (open > 0.5) {
-      parts
-        ..box(head.x, head.y + 0.07, head.z, 0.16, 0.11, 0.09, _body, yaw: aim)
-        ..cyl(head.x + ax * 0.08, head.y + 0.07, head.z + az * 0.08, 0.035, 0.08, _steel, yaw: aim, pitch: math.pi / 2)
-        ..box(head.x, head.y + 0.15, head.z, 0.06, 0.04, 0.03, _white, yaw: aim);
-      // The self-timer's red light blinks faster as it counts down.
-      if (t >= n.ready + _counts[0] - 0.4 && t < math.min(f, n.away)) {
-        final rate = 2.0 + 3 * seg(t, n.ready + _counts[0], f);
-        if ((t * rate) % 1.0 < 0.5) parts.glow(head.x + ax * 0.05, head.y + 0.1, head.z + az * 0.05, 0.015, 0.015, 0.015, _red);
-      }
-      // The flash, and its light on the team (after dark, as a firework's).
-      if (t >= f && t < f + 0.14) {
-        parts.glow(head.x + ax * 0.02, head.y + 0.15, head.z + az * 0.02, 0.07, 0.05, 0.035, _blaze);
-        fx.spark(head.x + ax * 0.05, head.y + 0.15, head.z + az * 0.05, 0.5 * (1 - (t - f) / 0.14), _white, 18);
-      }
-      if (t >= f && t < f + 0.5) {
-        fx.flashes.insert(0, (vm.Vector3(head.x + ax * 0.4, head.y + 0.3, head.z + az * 0.4), _white, 2.4 * math.pow(1 - (t - f) / 0.5, 2).toDouble()));
-      }
-    }
-    // The photographer: unfolding it, at the viewfinder, counting down on
-    // the fingers of a hand held out, a thumbs up after.
-    w2.pos.setValues(head.x - ax * 0.5, 0, head.z - az * 0.5);
-    OffDuty.stand(w2, t, 61);
-    w2.yaw = aim;
-    if (t < setUp + 1.3 || t >= fold) {
-      w2.lean = 0.45;
-      _hands(w2, head);
-      return;
-    }
-    w2.lean = 0.3;
-    _b.setValues(head.x, head.y + 0.08, head.z);
-    crew.aim(w2, 0, _b);
-    if (t < f + 0.4) {
-      crew.aim(w2, 1, _b);
-      // A hand held out for each number.
-      for (final c in _counts) {
-        final k = math.sin(math.pi * seg(t, n.ready + c - 0.15, n.ready + c + 0.55));
-        if (k > 0) {
-          w2.handTo(1, 0.3, 0.3, -0.32, k);
-          w2.lean = lerp(w2.lean, 0.1, k);
-        }
-      }
+    final k = _boardAt(n, t);
+    final top = works.boardHeight;
+    var face = 0.0;
+    var carrying = false;
+    if (k != null && n.flownAt(t) != null) {
+      // Carrying it: just over its top.
+      _at.setValues(k.x, k.y + top * math.cos(k.tilt) + 0.38, k.z + top * math.sin(k.tilt));
+      carrying = true;
     } else {
-      w2
-        ..lean = 0.05
-        ..handTo(1, 0.2, 0.28, -0.3);
-      _cheer(w2, t, f, 61, hands: true);
+      // Off the board: up and round to where it takes the photo, and back
+      // for the board after.
+      _to.setValues(_spot.x, _hold + top + 0.38, _spot.z);
+      final out = eio(seg(t, n.handoff + 0.2, n.handoff + 0.2 + _hop + 0.6));
+      final back = eio(seg(t, n.pickup - _hop, n.pickup));
+      final f = out * (1 - back);
+      _at.setValues(lerp(_to.x, _camera.x, f), lerp(_to.y, _camera.y, f) + 0.45 * math.sin(math.pi * f), lerp(_to.z, _camera.z, f));
+      face = math.atan2(_spot.x - _camera.x, _spot.z - _camera.z) * f;
+    }
+    final bob = 0.025 * math.sin(t * 2.7);
+    _at.y += bob;
+    _drawDrone(_at, face, true, t);
+    if (carrying) {
+      // Its clamps on the board's top edge.
+      for (final sd in [-0.32, 0.32]) {
+        _b.setValues(_at.x + sd, _at.y - 0.06, _at.z);
+        _a.setValues(k!.x + sd, k.y + top * math.cos(k.tilt), k.z + top * math.sin(k.tilt));
+        parts.rod(_b, _a, 0.012, _dark);
+      }
+    }
+    // The countdown on its light (faster and faster), the flash, and its
+    // light on the team (after dark, as a firework's).
+    final f = n.flash;
+    final ax = math.sin(face), az = math.cos(face);
+    if (t >= n.ready + _counts[0] - 0.4 && t < math.min(f, n.away)) {
+      final rate = 2.0 + 3 * seg(t, n.ready + _counts[0], f);
+      if ((t * rate) % 1.0 < 0.5) parts.glow(_at.x + ax * 0.2, _at.y + 0.02, _at.z + az * 0.2, 0.03, 0.03, 0.03, _red);
+    }
+    if (t >= f && t < f + 0.14) {
+      parts.glow(_at.x + ax * 0.21, _at.y - 0.08, _at.z + az * 0.21, 0.08, 0.05, 0.04, _blaze);
+      fx.spark(_at.x + ax * 0.25, _at.y - 0.08, _at.z + az * 0.25, 0.5 * (1 - (t - f) / 0.14), _white, 18);
+    }
+    if (t >= f && t < f + 0.5) {
+      fx.flashes.insert(0, (vm.Vector3(_at.x + ax * 0.6, _at.y + 0.2, _at.z + az * 0.6), _white, 2.4 * math.pow(1 - (t - f) / 0.5, 2).toDouble()));
     }
   }
 
-  static final _red = vm.Vector4(8, 0.4, 0.3, 1), _blaze = vm.Vector4(30, 30, 30, 1);
+  /// A quadcopter at [at] facing [yaw]: a shell, four arms out to its
+  /// rotors (a blur while it flies, still blades on the dock), its camera
+  /// underneath, the skids it lands on, its lights.
+  void _drawDrone(vm.Vector3 at, double yaw, bool flying, double t) {
+    final sn = math.sin(yaw), cs = math.cos(yaw);
+    parts
+      ..box(at.x, at.y, at.z, 0.34, 0.11, 0.42, _shell, yaw: yaw)
+      ..box(at.x, at.y + 0.065, at.z, 0.22, 0.03, 0.26, _paint, yaw: yaw)
+      ..box(at.x + sn * 0.19, at.y - 0.08, at.z + cs * 0.19, 0.09, 0.08, 0.08, _dark, yaw: yaw);
+    for (final sx in [-0.13, 0.13]) {
+      parts.box(at.x + cs * sx, at.y - _perch + 0.012, at.z - sn * sx, 0.022, 0.022, 0.4, _dark, yaw: yaw);
+      for (final sz in [-0.1, 0.1]) {
+        parts.box(at.x + cs * sx + sn * sz, at.y - (_perch + 0.05) / 2, at.z - sn * sx + cs * sz, 0.016, _perch - 0.05, 0.016, _dark, yaw: yaw);
+      }
+    }
+    for (var i = 0; i < 4; i++) {
+      final a = yaw + math.pi / 4 + i * math.pi / 2;
+      _b.setValues(at.x + math.sin(a) * 0.42, at.y + 0.03, at.z + math.cos(a) * 0.42);
+      parts.rod(at, _b, 0.022, _dark);
+      if (flying) {
+        parts.cyl(_b.x, _b.y + 0.045, _b.z, 0.2, 0.008, _blur);
+      } else {
+        final r = 0.6 * i;
+        parts.box(_b.x, _b.y + 0.045, _b.z, 0.36, 0.006, 0.03, _dark, yaw: r);
+      }
+      parts.cyl(_b.x, _b.y + 0.015, _b.z, 0.035, 0.05, _paint);
+    }
+    // (Its lights: green ahead, red behind, steady.)
+    parts
+      ..glow(at.x + math.sin(yaw) * 0.215, at.y, at.z + math.cos(yaw) * 0.215, 0.025, 0.02, 0.01, _green)
+      ..glow(at.x - math.sin(yaw) * 0.215, at.y, at.z - math.cos(yaw) * 0.215, 0.025, 0.02, 0.01, _red * 0.5);
+  }
+
+  static final _red = vm.Vector4(8, 0.4, 0.3, 1), _green = vm.Vector4(0.5, 5, 1.6, 1), _blaze = vm.Vector4(30, 30, 30, 1);
 
   // ── The 2D overlay's cue ──────────────────────────────────────────────────
 
@@ -363,7 +347,8 @@ class PhotoOp {
   // ── The rest of the team ──────────────────────────────────────────────────
 
   /// The crew's stage hook: the builders and the foreman walk over for the
-  /// photo, pose, cheer, and walk back to their places.
+  /// photo, pose, cheer, and walk back to their places; the two in the
+  /// middle take the board from the drone and hold it.
   void pose(int who, FigurePose f) {
     final n = _now;
     if (n == null || (who >= Crew3D.builders && who != Crew3D.foreman)) return;
@@ -387,11 +372,23 @@ class PhotoOp {
     OffDuty.stand(f, t, seed);
     f.yaw = Idle.facing(t, Manner.of(seed), 0.15) * (1 - seg(t, n.ready + _counts[0] - 0.5, n.ready + _counts[0]));
     final fl = n.flash;
+    final holder = n.p.holders.indexOf(who);
+    if (holder >= 0) {
+      // Holding the board by its side, from the drone's handing it over to
+      // its taking it back.
+      final k = _boardAt(n, t);
+      if (k != null && t >= n.handoff - 0.4 && t < n.pickup + 0.3) {
+        f.yaw = 0;
+        _grip(f, _side(k, holder == 0 ? -1 : 1, 0.03, _a));
+        _cheer(f, t, fl, seed, hands: true);
+        return;
+      }
+    }
     if (who == Crew3D.foreman) {
       // Hands on the board's top edge from behind, steadying it (and up
       // with it in the cheer).
       final k = _boardAt(n, t);
-      if (k != null) {
+      if (k != null && t >= n.handoff && t < n.pickup) {
         final top = works.boardHeight;
         for (var s = 0; s < 2; s++) {
           crew.aim(f, s, _b..setValues(k.x + (s == 0 ? -0.2 : 0.2), k.y + top * math.cos(k.tilt) + 0.01, k.z + top * math.sin(k.tilt) + 0.04));
@@ -491,194 +488,151 @@ class PhotoOp {
   }
 }
 
-/// The board's carry: keys of where its middle is and which way the
-/// carriers face; between keys it moves evenly (turning on the spot the
-/// shortest way first, unless told which way to face: backing in).
-class _Track {
-  _Track(double t, double x, double z, double yaw) {
-    _key(t, x, z, yaw);
-  }
-
-  final _t = <double>[], _x = <double>[], _z = <double>[], _yaw = <double>[];
-
-  double get end => _t.last;
-
-  void _key(double t, double x, double z, double yaw) {
-    _t.add(t);
-    _x.add(x);
-    _z.add(z);
-    _yaw.add(yaw);
-  }
-
-  void hold(double d) => _key(end + d, _x.last, _z.last, _yaw.last);
-
-  void turn(double yaw) {
-    var d = (yaw - _yaw.last) % (2 * math.pi);
-    if (d > math.pi) d -= 2 * math.pi;
-    if (d.abs() < 1e-3) return;
-    _key(end + 0.2 + 0.35 * d.abs() / math.pi, _x.last, _z.last, _yaw.last + d);
-  }
-
-  void walk(double x, double z, double speed, {double? facing}) {
-    final dx = x - _x.last, dz = z - _z.last;
-    final l = math.sqrt(dx * dx + dz * dz);
-    if (l < 1e-3) return;
-    turn(facing ?? math.atan2(-dx, -dz));
-    _key(end + l / speed, x, z, _yaw.last);
-  }
-
-  /// The places it has been at by [t] (not counting where it's on its way
-  /// to), in order.
-  List<(double, double)> placesBy(double t) {
-    final out = <(double, double)>[];
-    for (var i = 0; i < _t.length && _t[i] <= t; i++) {
-      if (out.isEmpty || (out.last.$1 - _x[i]).abs() + (out.last.$2 - _z[i]).abs() > 1e-3) out.add((_x[i], _z[i]));
-    }
-    return out;
-  }
-
-  ({double x, double z, double yaw}) at(double t) {
-    if (t <= _t.first) return (x: _x.first, z: _z.first, yaw: _yaw.first);
-    for (var i = 0; i + 1 < _t.length; i++) {
-      if (t < _t[i + 1]) {
-        final f = smooth(0, 1, (t - _t[i]) / math.max(_t[i + 1] - _t[i], 1e-3));
-        return (x: lerp(_x[i], _x[i + 1], f), z: lerp(_z[i], _z[i + 1], f), yaw: lerp(_yaw[i], _yaw[i + 1], f));
+/// The drone's way from the board's stand to the photo (where the middle
+/// of the board's bottom edge is along it): a smooth curve through its
+/// waypoints, measured along its length.
+class _Flight {
+  _Flight(List<vm.Vector3> pts) {
+    vm.Vector3 p(int i) => pts[i.clamp(0, pts.length - 1)];
+    for (var i = 0; i + 1 < pts.length; i++) {
+      final a = p(i - 1), b = p(i), c = p(i + 1), d = p(i + 2);
+      for (var k = 0; k < 16; k++) {
+        final u = k / 16, u2 = u * u, u3 = u2 * u;
+        // (Catmull-Rom.)
+        _pts.add(
+          (b * 2.0 + (c - a) * u + (a * 2.0 - b * 5.0 + c * 4.0 - d) * u2 + (b * 3.0 - a - c * 3.0 + d) * u3) * 0.5,
+        );
       }
     }
-    return (x: _x.last, z: _z.last, yaw: _yaw.last);
+    _pts.add(pts.last.clone());
+    _len.add(0);
+    for (var i = 1; i < _pts.length; i++) {
+      _len.add(_len.last + _pts[i].distanceTo(_pts[i - 1]));
+    }
+  }
+
+  final _pts = <vm.Vector3>[];
+  final _len = <double>[];
+
+  double get length => _len.last;
+
+  /// How far along it (0..1) the drone is [u] of the way through its time:
+  /// speeding up off the stand, a steady cruise, slowing down to land.
+  static double pace(double u) {
+    const a = 0.18, d = 0.3, v = 1 / (1 - a / 2 - d / 2);
+    final x = u.clamp(0.0, 1.0);
+    if (x < a) return v * x * x / (2 * a);
+    if (x > 1 - d) return 1 - v * (1 - x) * (1 - x) / (2 * d);
+    return v * (a / 2 + x - a);
+  }
+
+  /// The point [s] metres along it, into [out].
+  vm.Vector3 at(double s, vm.Vector3 out) {
+    final x = s.clamp(0.0, length);
+    var i = 1;
+    while (i < _len.length - 1 && _len[i] < x) {
+      i++;
+    }
+    final f = (x - _len[i - 1]) / math.max(1e-6, _len[i] - _len[i - 1]);
+    return out
+      ..setFrom(_pts[i - 1])
+      ..add((_pts[i] - _pts[i - 1]) * f);
   }
 }
 
-/// The finale's plan for one build: when the board is lifted, the carry
-/// out, the makers' and the photographer's walks there, where everyone
-/// stands.
+/// The finale's plan for one build: when the drone lifts the board, its
+/// flight to the photo, who stands where.
 class _Plan {
   _Plan(BuildPlan plan, GlyphWorks works, Crew3D crew) : serial = plan.job.serial, w = plan.width {
     // (As the painting finishes: the reveal's last seconds, as long before
     // the celebration as when it was the booth's.)
     final end = plan.t0 + plan.len + CityPace.reveal - phaseSeconds[Phase.reveal]!;
+    // (Not before the board's arm is back from setting the last letter,
+    // and the drone has come over from its dock.)
+    lift = math.max(end - 1.6, works.boardDone! + 1.0 + PhotoOp._fetch);
+    // Up off the stand, round to the hall's door and out (over the heads of
+    // anyone walking by), up over the side street (clear of its traffic),
+    // over the plaza's corner, down in front of the wall from its left.
+    const door = WorksLayout.doorZ;
+    flight = _Flight([
+      vm.Vector3(WorksLayout.boardX, WorksLayout.boardY, WorksLayout.boardZ),
+      vm.Vector3(WorksLayout.boardX, 1.35, WorksLayout.boardZ - 0.6),
+      vm.Vector3(WorksLayout.x1 - 1.3, 1.9, door),
+      vm.Vector3(WorksLayout.x1 + 1.0, 2.3, door),
+      vm.Vector3(-24.0, 5.0, door + 0.3),
+      vm.Vector3(-19.0, 6.6, door + 0.6),
+      vm.Vector3(-12.0, 6.6, PhotoOp._spot.z - 1.2),
+      vm.Vector3(PhotoOp._spot.x - 1.6, 2.3, PhotoOp._spot.z - 0.35),
+      vm.Vector3(PhotoOp._spot.x, PhotoOp._hold, PhotoOp._spot.z),
+    ]);
+    arrive = lift + flight.length / PhotoOp._speed;
+    // The crew's places in the photo: the two in the middle at the board's
+    // sides (holding it), the foreman behind its middle, the other builders
+    // either side of them (in the order they stand watching, so their ways
+    // don't cross).
     final d = works.boardWidth / 2 + 0.17;
-    // To their sides of the board on its stand (once done with their
-    // letters, from wherever that left them).
-    for (var i = 0; i < 2; i++) {
-      final side = vm.Vector3(WorksLayout.boardX + (i == 0 ? -1 : 1) * d, 0, WorksLayout.boardZ);
-      toBoard.add(Walk(WorksLayout.route(works.freeSpot(i), side), math.max(end - 4.6, works.freeAt(i)), 1.8));
-    }
-    lift = [end - 1.6, works.boardDone! + 0.6, toBoard[0].end + 0.15, toBoard[1].end + 0.15].reduce(math.max);
-    // Out of the front, round the wall's left end, along its front to the
-    // middle; then turn to face the camera.
-    xa = math.min(WorksLayout.boardX, -(w / 2 + 3.0));
-    out = _Track(lift, WorksLayout.boardX, WorksLayout.boardZ, 0)
-      ..hold(0.6)
-      ..walk(WorksLayout.boardX, 3.0, 1.4)
-      ..walk(xa, 1.2, 1.75)
-      ..walk(xa, -2.6, 1.75)
-      ..walk(PhotoOp._spot.x, PhotoOp._spot.z, 1.75)
-      ..turn(0)
-      ..hold(0.2);
-    // The photographer, with the tripod, after the board (out past its
-    // left).
-    home = WorksLayout.homes[2];
-    toSpot = Walk(
-      [
-        ...WorksLayout.route(works.freeSpot(2), WorksLayout.exit.first),
-        WorksLayout.exit.last,
-        vm.Vector3(xa + 1.6, 0, 1.0),
-        vm.Vector3(xa + 1.6, 0, -4.4),
-        vm.Vector3(PhotoOp._tripod.x - 0.4, 0, PhotoOp._tripod.z - 0.5),
-      ],
-      math.max(lift + 0.8, works.freeAt(2)),
-      1.85,
-    );
-    // The crew's places in the photo: the makers at the board's sides, the
-    // foreman behind its middle, three builders either side (in the order
-    // they stand watching, so their ways don't cross).
     final order = List.generate(Crew3D.builders, (z) => z)..sort((a, b) => crew.watchSpot(a, w).x.compareTo(crew.watchSpot(b, w).x));
     for (var r = 0; r < Crew3D.builders; r++) {
       final left = r < 3;
       final k = left ? 2 - r : r - 3;
-      slots[order[r]] = vm.Vector3((left ? -1 : 1) * (d + 0.52 * (k + 1)), 0, PhotoOp._spot.z + 0.15 + (k.isOdd ? 0.12 : 0));
+      slots[order[r]] = vm.Vector3((left ? -1 : 1) * (d + 0.52 * k), 0, PhotoOp._spot.z + (k == 0 ? 0 : 0.15 + (k.isOdd ? 0.12 : 0)));
+      if (k == 0) holders[left ? 0 : 1] = order[r];
     }
     slots[Crew3D.foreman] = vm.Vector3(0, 0, PhotoOp._spot.z + 0.42);
   }
 
   final int serial;
   final double w;
-  final toBoard = <Walk>[];
-  late final double lift;
+  late final double lift, arrive;
+  late final _Flight flight;
 
-  /// Where the carry turns along the wall (left of its end).
-  late final double xa;
-  late final _Track out;
-  late final Walk toSpot;
-
-  /// Where the photographer goes back to, after.
-  late final vm.Vector3 home;
+  /// Who holds the board's left and right sides.
+  final holders = [-1, -1];
   final slots = <int, vm.Vector3>{};
 
   /// When the celebration started, and when the demolition did (once seen).
   double celebrate = double.nan, over = double.nan;
 
   /// When everyone's in place (the countdown follows): ten seconds into
-  /// the celebration [c], or as soon as the board and the tripod are there.
-  double readyAt(double c) => [c + 10, out.end + 0.8, toSpot.end + 2.0].reduce(math.max);
+  /// the celebration [c], or as soon as the board's there and the drone's
+  /// had time to go round to take the photo.
+  double readyAt(double c) => math.max(c + 10, arrive + 0.9);
 
   /// When the team goes back to their places and the board home.
   double backAt(double c) => readyAt(c) + PhotoOp._flash + PhotoOp._cheers;
 }
 
 /// The finale's times for one celebration (starting at [c]; the team going
-/// back at [away]): when everyone's in place, the board's way home,
-/// everyone's walks there and back. Called off before the photo ([away]
-/// early: the demolition came first), they turn back from wherever they've
-/// got to, and whoever hadn't set out stays put.
+/// back at [away]): when everyone's in place, when the drone hands the
+/// board over and takes it back, its flight home, everyone's walks there
+/// and back. Called off before the photo ([away] early: the demolition came
+/// first), the drone turns back with the board from where it is (or comes
+/// back for it), and whoever hadn't set out stays put.
 class _Now {
-  _Now(this.p, this.c, this.away, {required double boardW, required Map<int, vm.Vector3> watch}) : ready = p.readyAt(c), calledOff = away < p.backAt(c) - 1e-6 {
+  _Now(this.p, this.c, this.away, {required Map<int, vm.Vector3> watch}) : ready = p.readyAt(c), calledOff = away < p.backAt(c) - 1e-6 {
     // (Never: far off, not infinite, so the easing over it stays a number.)
     flash = away > ready + PhotoOp._flash ? ready + PhotoOp._flash : 1e9;
-    // The board home: back the way it came from where it got to (in a hurry
-    // when called off), backing in at the end. Never lifted, it stays.
-    if (away > p.lift) {
-      final at = p.out.at(math.min(away, p.out.end));
-      final way = p.out.placesBy(away);
-      final b = back = _Track(away, at.x, at.z, at.yaw);
-      for (var i = way.length - 1; i >= 0; i--) {
-        final (x, z) = way[i];
-        if (i == 0) {
-          b.walk(x, z, 1.0, facing: 0);
-        } else {
-          b.walk(x, z, calledOff ? 2.0 : 1.6);
-        }
-      }
-      b.hold(0.6);
-      home = b.end;
+    final len = p.flight.length;
+    if (away <= p.arrive) {
+      // Turned back on the way there, from where it got to.
+      handoff = pickup = 1e9;
+      backFrom = away;
+      backS = len * _Flight.pace(seg(away, p.lift, p.arrive));
     } else {
-      back = null;
-      home = away;
+      handoff = math.max(p.arrive, ready - 0.4);
+      pickup = math.max(away, handoff + 0.3) + PhotoOp._hop;
+      backFrom = pickup;
+      backS = len;
     }
-    for (var i = 0; i < 2; i++) {
-      final to = p.toBoard[i];
-      if (away <= to.start) {
-        toHome.add(null);
-        continue;
-      }
-      final side = vm.Vector3(WorksLayout.boardX + (i == 0 ? -1 : 1) * (boardW / 2 + 0.17), 0, WorksLayout.boardZ);
-      toHome.add(Walk(WorksLayout.route(side, WorksLayout.homes[i]), math.max(home, to.end) + 0.2, 1.35));
-    }
-    // The photographer packs up and follows (or turns back on the way),
-    // and goes on home.
-    final go = p.toSpot;
-    List<vm.Vector3> andHome(List<vm.Vector3> way) => [...way, ...WorksLayout.route(way.last, p.home).skip(1)];
-    if (away <= go.start) {
-      spotHome = null;
-      fold = packed = away;
-    } else if (away < go.end) {
-      spotHome = Walk(andHome(go.backFrom(away)), away + 0.15, 1.5);
-      fold = packed = away;
+    home = backFrom + backS / PhotoOp._speed + 0.2;
+    // The drone back to its dock: off the board's top once it's home, or
+    // (called off before it took the board) from where it had got to.
+    if (away < p.lift) {
+      hopBack = away;
+      hopFrom = seg(away, p.lift - PhotoOp._fetch, p.lift);
     } else {
-      fold = calledOff ? away : away - 0.9;
-      packed = fold + 0.9;
-      spotHome = Walk(andHome(go.pts.reversed.toList()), calledOff ? packed + 0.3 : away + 1.2, 1.5);
+      hopBack = home;
+      hopFrom = 1;
     }
     // The builders and the foreman: over for the photo, and back. The
     // builders by the lane in front of their row and up into their places
@@ -696,17 +650,20 @@ class _Now {
       if (away <= go.start) continue;
       final face = who == Crew3D.foreman ? 0.9 : 0.5;
       final Walk back;
-      if (away < go.end) {
-        final backPts = go.backFrom(away);
-        back = Walk(backPts, away, math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
+      // (Once the drone has the board again, the holders keeping it till
+      // then: all together, as they came, so nobody catches anybody up.)
+      final leave = pickup < 1e8 ? pickup + 0.3 : away;
+      if (leave < go.end) {
+        final backPts = go.backFrom(leave);
+        back = Walk(backPts, leave, math.max(1.4, Walk.lengthOf(backPts) / 3.6), face: face);
       } else {
         final backPts = [slot, via, if (!foreman) vm.Vector3(from.x, 0, Crew3D.watchLane), from];
         final rank = foreman ? 6 : right.indexWhere((e) => e.$1 == who);
-        back = Walk(backPts, away + 0.1 + 0.18 * rank, foreman ? math.max(1.4, Walk.lengthOf(backPts) / 3.6) : 2.2, face: face);
+        back = Walk(backPts, leave + 0.1 + 0.18 * rank, foreman ? math.max(1.4, Walk.lengthOf(backPts) / 3.6) : 2.2, face: face);
       }
       crew[who] = (go: go, back: back);
     }
-    done = [away, home, for (final w in toHome) ?w?.end, ?spotHome?.end, for (final w in crew.values) w.back.end].reduce(math.max);
+    done = [away, home, hopBack + hopFrom * PhotoOp._fetch, for (final w in crew.values) w.back.end].reduce(math.max);
   }
 
   final _Plan p;
@@ -717,12 +674,31 @@ class _Now {
 
   /// The flash (never, if called off before it: 1e9).
   late final double flash;
-  late final _Track? back;
-  late final double home, done;
 
-  /// When the photographer starts folding the tripod, and has.
-  late final double fold, packed;
-  final toHome = <Walk?>[];
-  late final Walk? spotHome;
+  /// When the drone hands the board to the holders and takes it back (1e9:
+  /// never, turned back on the way there); when, and from how far along its
+  /// way, it flies it home; when it's back on its stand; when the drone
+  /// sets off back to its dock, and from how far along its hop (1: the
+  /// board's top); when it's all over.
+  late final double handoff, pickup, backFrom, backS, home, hopBack, hopFrom, done;
+
+  /// How far the drone is along its hop from its dock (0) onto the board's
+  /// top (1) at [t], while it comes over or goes back; null while it's off
+  /// with the board.
+  double? hopAt(double t) {
+    if (t >= hopBack) return hopFrom * (1 - seg(t, hopBack, hopBack + hopFrom * PhotoOp._fetch));
+    if (t < p.lift) return seg(t, p.lift - PhotoOp._fetch, p.lift);
+    return null;
+  }
+
+  /// How far along the flight the board is at [t] (null: it's not flying,
+  /// it's with the holders).
+  double? flownAt(double t) {
+    if (t < p.lift || t >= home) return null;
+    if (t < math.min(handoff, backFrom)) return p.flight.length * _Flight.pace(seg(t, p.lift, p.arrive));
+    if (t < backFrom) return null;
+    return backS * (1 - _Flight.pace(seg(t, backFrom, home - 0.2)));
+  }
+
   final crew = <int, ({Walk go, Walk back})>{};
 }

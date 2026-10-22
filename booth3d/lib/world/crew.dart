@@ -19,12 +19,12 @@ export 'figure_rig.dart' show FigurePose;
 /// The site crew: six builders (one per stretch of wall, zone colours on
 /// their vests), the foreman with his clipboard, the crane operator in the
 /// cab, and the driver who brings the bricks (posed by the delivery, see
-/// delivery.dart); and, posed by their own scenes, the Glyph Works' three
-/// makers (glyph_works.dart), the new manager and his two planners
-/// (verdict.dart). They're drawn with everyone else in the city (see
-/// figure.dart), each in their work clothes: the builders in hi-vis vests
-/// over work shirts, gloves and hard hats, the foreman in white with his
-/// clipboard, the makers in lab coats, the manager in a suit.
+/// delivery.dart); and, posed by their own scene, the new manager and his
+/// two planners (verdict.dart). (The Glyph Works needs nobody: it runs
+/// itself.) They're drawn with everyone else in the city (see figure.dart),
+/// each in their work clothes: the builders in hi-vis vests over work
+/// shirts, gloves and hard hats, the foreman in white with his clipboard,
+/// the manager in a suit.
 /// Also the climbing platform the builders work on: two lattice masts and a
 /// deck that rises with the wall.
 ///
@@ -39,8 +39,8 @@ class Crew3D {
 
   static const builders = NameRaster.zones, foreman = builders, operator = builders + 1, driver = builders + 2;
 
-  /// The Glyph Works' makers (three), the manager and his planners (two).
-  static const makers = builders + 3, manager = builders + 6, planners = builders + 7, count = builders + 9;
+  /// The new manager and his planners (two).
+  static const manager = builders + 3, planners = builders + 4, count = builders + 6;
 
   /// One vest colour per zone, as on the 2D booth's hard hats.
   static const vests = [BP.amber, BP.coral, BP.green, BP.violet, BP.pink, BP.line];
@@ -141,11 +141,10 @@ class Crew3D {
   /// What figure [i] wears: the builders a hi-vis vest in their zone's
   /// colour over a work shirt, gloves and a yellow hard hat; the foreman a
   /// white jacket and hat; the crane operator orange; the driver navy; the
-  /// makers white lab coats and light gloves; the manager a navy suit and a white
-  /// hat, his planners light blue shirts.
+  /// manager a navy suit and a white hat, his planners light blue shirts.
   static FigureLook _lookOf(int i) {
-    const skins = [0xEAC9AE, 0xC59A7C, 0xE0BB9E, 0x9A6C52, 0xF0D2BC, 0xD6AE90, 0xB88B6E, 0xE8C6AC, 0xDDB89C, 0xF2D4C0, 0xC09073, 0xE6C2A6, 0xD9B194, 0xEFCDB4, 0xA97A5E];
-    const hairs = [0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x1A1714, 0x2A211B, 0x8F8B86, 0x1A1714, 0x2A211B, 0x1A1714, 0x5A3F2C, 0x2A211B, 0x3D2B20, 0x1A1714, 0x2A211B];
+    const skins = [0xEAC9AE, 0xC59A7C, 0xE0BB9E, 0x9A6C52, 0xF0D2BC, 0xD6AE90, 0xB88B6E, 0xE8C6AC, 0xDDB89C, 0xD9B194, 0xEFCDB4, 0xA97A5E];
+    const hairs = [0x1A1714, 0x2A211B, 0x1A1714, 0x3D2B20, 0x1A1714, 0x2A211B, 0x8F8B86, 0x1A1714, 0x2A211B, 0x3D2B20, 0x1A1714, 0x2A211B];
     final l = FigureLook()
       ..lead = true
       ..skin = rgbHex(skins[i % skins.length])
@@ -190,27 +189,14 @@ class Crew3D {
           ..shoes = rgbHex(0x141416)
           ..hardHat = rgbHex(0xFFFFFF)
           ..girth = 1.05;
-      case >= planners:
+      default:
+        // The planners.
         l
           ..top = lin(const Color(0xFFA9CBEA))
           ..legs = rgbHex(0x4A5466)
           ..hardHat = lin(BP.line)
           ..slim = i == planners + 1
           ..hair = i == planners + 1 ? Hair.bob : l.hair;
-      default:
-        // The makers: white lab coats to the knee over dark trousers, light
-        // blue gloves, at work at the bench.
-        final coat = lin(const Color(0xFFF2F4F5));
-        l
-          ..wear = i == makers + 1 ? 'lab_f' : 'lab_m'
-          ..atWork = true
-          ..top = coat
-          ..skirt = coat
-          ..skirtLength = 1.0
-          ..legs = rgbHex(0x2B3442)
-          ..gloves = lin(const Color(0xFF8EC5E8))
-          ..slim = i == makers + 1
-          ..hair = i == makers + 1 ? Hair.bob : l.hair;
     }
     return l;
   }
@@ -481,7 +467,7 @@ class Crew3D {
     _foremanPose(j, t, w, impact, trip, plan);
     _operatorPose(j, t, seat, seatYaw);
     // The others are posed by their own scenes (the driver by the delivery,
-    // the makers by the works, the manager's party by the verdict).
+    // the manager's party by the verdict).
     for (var i = foreman; i < count; i++) {
       stage?.call(i, poses[i]);
       _draw(i);

@@ -1450,8 +1450,7 @@ class _People {
       az = hz + (right ? 0.9 : -0.35);
     } else if ((phase == Phase.reveal || phase == Phase.celebrate) && p.job == 0 && !right) {
       // At the wall's left end, behind its front (clear of the platform's
-      // end): out of the way of the Glyph Works' tray coming round to the
-      // front.
+      // end): out of the way of the team gathering for the photo in front.
       hx = ax = -(half + 1.75);
       hz = az = 0.6 + 0.9 * (p.crewNo ~/ 2);
     } else if (p.job == 1) {

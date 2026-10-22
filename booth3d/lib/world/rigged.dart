@@ -46,7 +46,7 @@ class Rigged {
   static const men = ['office_m1', 'office_m2', 'office_m3', 'casual_m1', 'casual_m2', 'casual_m3', 'casual_m4'];
   static const women = ['office_f1', 'office_f2', 'office_f3', 'casual_f1', 'casual_f2', 'casual_f3', 'casual_f4'];
 
-  /// The Glyph Works' makers, in lab coats.
+  /// In lab coats (nobody wears them now: the Glyph Works runs itself).
   static const labs = ['lab_m', 'lab_f'];
   static const people = [...workers, ...men, ...women, ...labs];
 

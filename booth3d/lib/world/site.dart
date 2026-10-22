@@ -80,8 +80,9 @@ import 'vignette.dart';
 /// bricks, and a recycling truck hauls the rubble away. Meanwhile a
 /// delivery truck brings the pallets (delivery.dart), builders the build
 /// doesn't need go for a coffee, a smoke or a chat (crew_breaks.dart,
-/// site_props.dart), and the Glyph Works crafts a mini name in gold, letter
-/// by letter with the wall (glyph_works.dart).
+/// site_props.dart), and the Glyph Works, a hall of robots across the side
+/// street, makes a mini name in pixels, letter by letter with the wall
+/// (glyph_works.dart).
 class Site3D {
   Site3D(this.scene);
 
@@ -95,10 +96,10 @@ class Site3D {
   late final breaks = CrewBreaks(scene, fx, crew);
   late final delivery = Delivery3D(scene, crew, breaks);
 
-  /// Small moving props of the works and the scenes round the finished
-  /// name (one pool: three draws).
-  late final parts = PropPool(scene, 'site parts', home: vm.Vector3(WorksLayout.cx, 0.5, WorksLayout.z1 - 1));
-  late final works = GlyphWorks(scene, crew, fx, parts);
+  /// Small moving props of the scenes round the finished name and the
+  /// finale's drone (one pool: three draws), parked at the plaza's back.
+  late final parts = PropPool(scene, 'site parts', home: vm.Vector3(-12.5, 0.5, 6.75));
+  late final works = GlyphWorks(scene, fx);
 
   /// The finale: the team's photo with the mini name.
   late final photo = PhotoOp(crew, works, fx, parts);

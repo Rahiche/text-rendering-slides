@@ -281,7 +281,8 @@ class Director {
     final w = site.wallWidth, h = site.wallHeight;
     const front = -1.6, back = SiteLayout.deckZ1 + 0.8;
     if (eye.x.abs() < w / 2 + 1.6 && eye.z > front && eye.z < back && eye.y < h + 2.5) {
-      // Out by the nearer side (behind the platform for the works' shots).
+      // Out by the nearer side: in front of the wall, or behind the
+      // platform.
       eye.z = eye.z - front < back - eye.z ? front : back;
     }
     final dx = eye.x - SiteLayout.mastX, dz = eye.z - SiteLayout.mastZ;

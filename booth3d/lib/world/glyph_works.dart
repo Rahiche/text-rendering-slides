@@ -12,93 +12,60 @@ import 'package:text_slides/deck/font_data.dart';
 import 'package:text_slides/deck/theme.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-import 'crew.dart';
-import 'crew_breaks.dart' show OffDuty;
 import 'kit.dart';
-import 'motion.dart';
 import 'prop_pool.dart';
 import 'shot.dart';
 import 'site_fx.dart';
 import 'site_geo.dart';
 import 'site_letters.dart' show NameLetters;
 import 'site_plan.dart';
-import 'walk.dart';
 import 'works_name.dart';
 
-/// Where the Glyph Works stands (world units): the plaza's left-rear corner,
-/// behind the smoking corner, open to the front (−z, the sun's side).
-/// Inside, the text pipeline runs along a belt at the back, left to right
-/// as the name reads from the front; the pixel board stands at the front
-/// right.
+/// Where the Glyph Works stands (world units): a hall of its own across the
+/// west side street from the plaza, on the corner with the avenue (the
+/// city's block there gives way: Plan.lots), glass along its two street
+/// sides. Inside, the text pipeline runs down the middle of the hall on a
+/// belt, left to right as the name reads from the front (−z, the avenue);
+/// the pixel board stands at the front right. Nobody works it: the belt,
+/// the machines and four robot arms do every step.
 abstract final class WorksLayout {
-  static const x0 = -16.65, x1 = -8.45, z0 = 4.6, z1 = 7.75;
-  static const cx = (x0 + x1) / 2;
+  /// The hall: its walls' outer faces.
+  static const x0 = -45.4, x1 = -28.4, z0 = -8.6, z1 = 3.8;
+  static const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
 
-  /// The roof, and the top of the open front (the sign board above it).
-  static const roof = 3.0, open = 2.45;
+  /// The walls' top (the roof), and the underside of its steel trusses.
+  static const roof = 6.4, trusses = 5.5;
 
   /// The belt: its ends, its middle line, its top and its width.
-  static const beltX0 = -16.4, beltX1 = -10.2, beltZ = 6.25, beltY = 0.6, beltW = 0.46;
+  static const beltX0 = -43.55, beltX1 = -30.55, beltZ = -1.6, beltY = 0.6, beltW = 0.46;
 
   /// Where each step of the pipeline works on a letter, along the belt:
   /// the feeder (UTF-8), the decoder, the font cases, the composing stick
   /// (shaping), the wire bender (outline), the rasterizer.
-  static const stepX = [-16.05, -15.15, -14.15, -12.94, -11.8, -10.8];
-
-  /// Where a maker stands to work each step (behind the belt, facing out;
-  /// beside the bender and the rasterizer, at their crank and controls),
-  /// and the lane behind for walking back.
-  static const workX = [-16.05, -15.15, -14.15, -12.94, -11.3, -10.3];
-  static const workZ = 6.8, laneZ = 7.3;
-
-  /// The walkway past the belt's right end, from the back to the front.
-  static const walkX = -9.7;
+  static const stepX = [-43.0, -40.9, -38.4, -35.7, -33.4, -31.3];
 
   /// The pixel board on its stand at the front right: the middle of its
-  /// bottom edge, and how far it leans back (radians). A maker sets pixels
-  /// on it from behind it ([placeZ]).
-  static const boardX = -9.85, boardY = 0.62, boardZ = 5.12, boardTilt = 0.5, placeZ = 5.8;
+  /// bottom edge, and how far it leans back (radians).
+  static const boardX = -29.95, boardY = 0.62, boardZ = -2.9, boardTilt = 0.5;
 
-  /// Where the makers wait for their next letter: in a row at the works'
-  /// right end, behind the board, out of the way of the lane behind the
-  /// belt (the works aren't deep enough for a row of them there too).
-  static final homes = [vm.Vector3(-9.05, 0, 7.35), vm.Vector3(-9.05, 0, 6.85), vm.Vector3(-9.05, 0, 6.35)];
+  /// The robot arms' bases (on the floor): at the font cases, at the
+  /// composing stick, between the bender and the rasterizer, and behind
+  /// the board (a bigger one: from the rasterizer to the board).
+  static final arms = [
+    (base: vm.Vector3(-37.55, 0, beltZ + 0.95), reach: 0.95),
+    (base: vm.Vector3(-35.7, 0, beltZ + 1.05), reach: 0.95),
+    (base: vm.Vector3(-32.35, 0, beltZ + 0.95), reach: 0.95),
+    (base: vm.Vector3(-29.2, 0, beltZ + 0.45), reach: 1.25),
+  ];
 
-  /// The way out of the front, past the board's left (for whoever leaves
-  /// on foot).
-  static final exit = [vm.Vector3(-10.7, 0, placeZ), vm.Vector3(-10.7, 0, z0 - 0.35)];
+  /// The way in from the street: the loading door in the hall's east wall
+  /// (open, its shutter rolled up), its middle, width and height.
+  static const doorZ = -5.6, doorW = 3.0, doorH = 4.0;
 
-  /// A way through the works from [from] to [to], both on the floor: along
-  /// the lane behind the belt and the walkway past its end, never through
-  /// the line.
-  static List<vm.Vector3> route(vm.Vector3 from, vm.Vector3 to) {
-    bool back(vm.Vector3 v) => v.z > beltZ + 0.3 && v.x < beltX1 + 0.2;
-    // (The waiting row, right of the walkway: onto the walkway beside it.)
-    bool row(vm.Vector3 v) => v.x > walkX + 0.2;
-    if (row(to) && !row(from)) return route(to, from).reversed.toList();
-    if (row(from)) {
-      final pts = [from.clone(), vm.Vector3(walkX, 0, from.z)];
-      if (row(to)) return pts..addAll([vm.Vector3(walkX, 0, to.z), to.clone()]);
-      final z = back(to) ? laneZ : placeZ;
-      return pts..addAll([vm.Vector3(walkX, 0, z), vm.Vector3(to.x, 0, z), to.clone()]);
-    }
-    final pts = [from.clone()];
-    if (back(from) && back(to)) {
-      pts.addAll([vm.Vector3(from.x, 0, laneZ), vm.Vector3(to.x, 0, laneZ)]);
-    } else if (back(from)) {
-      pts.addAll([vm.Vector3(from.x, 0, laneZ), vm.Vector3(walkX, 0, laneZ), vm.Vector3(walkX, 0, placeZ), vm.Vector3(to.x, 0, placeZ)]);
-    } else if (back(to)) {
-      pts.addAll([vm.Vector3(from.x, 0, placeZ), vm.Vector3(walkX, 0, placeZ), vm.Vector3(walkX, 0, laneZ), vm.Vector3(to.x, 0, laneZ)]);
-    } else {
-      pts.addAll([vm.Vector3(from.x, 0, placeZ), vm.Vector3(to.x, 0, placeZ)]);
-    }
-    pts.add(to.clone());
-    final out = <vm.Vector3>[];
-    for (final p in pts) {
-      if (out.isEmpty || out.last.distanceTo(p) > 1e-3) out.add(p);
-    }
-    return out;
-  }
+  /// The drone's dock: a charging stand in the hall's front corner by the
+  /// door (a clear way along the wall to the board); the middle of its
+  /// pad's top.
+  static const dockX = -29.5, dockY = 1.5, dockZ = -7.6;
 }
 
 /// What the works needs of one of the name's smooth letters (made by the site
@@ -148,8 +115,9 @@ class WorksCaption {
 
 /// 文字工場 · Glyph Works: while the crew build the name in bricks, the works
 /// runs it through the text pipeline, letter by letter in step with the
-/// wall, onto a pixel board. Each letter goes down the line on the belt, a
-/// maker with it, and changes form at every step:
+/// wall, onto a pixel board. Each letter goes down the line on the belt
+/// (nobody with it: the machines and the robot arms do every step) and
+/// changes form at every step:
 ///
 /// 1. 文字列 · UTF-8: its bytes come out of the feeder as crates, one per
 ///    byte (`utf8.encode`: K is 4B, よ is E3 82 88); the whole string's
@@ -173,9 +141,10 @@ class WorksCaption {
 ///    print head runs it scanline by scanline; each pixel takes the glyph's
 ///    real coverage there (painted alone at its place in the line by the
 ///    text stack): solid inside, grey on the anti-aliased edges.
-/// 7. 画面 · pixels: the maker carries the pixels to the board — the
-///    framebuffer — and sets them in at the letter's shaped place; letter by
-///    letter the name appears, pixel for pixel as the text stack draws it.
+/// 7. 画面 · pixels: an arm lifts the pixels off the plate onto the board —
+///    the framebuffer — and sets them in at the letter's shaped place;
+///    letter by letter the name appears, pixel for pixel as the text stack
+///    draws it.
 ///
 /// Letters overlap on the line (one being shaped while the next is
 /// decoded); each step takes one letter at a time. The board is done as the
@@ -183,18 +152,21 @@ class WorksCaption {
 /// Now and then the camera cuts over, a step at a time in pipeline order
 /// across the build, and a caption gives the step's real values ([caption]).
 ///
-/// The building and its machines are two merged meshes over one painted
-/// atlas; each name's labels, glyph faces and string are painted once into
-/// an atlas of its own; the pixels are instanced tiles; the moving parts
-/// come from the site's [PropPool]. Everything is a pure function of scene
-/// time, planned once per build.
+/// The hall (its walls and machines, its roof) is two merged meshes over
+/// one painted atlas, its glass a third; each name's labels, glyph faces
+/// and string are painted once into an atlas of its own; the pixels are
+/// instanced tiles; the moving parts (the arms among them) come from its
+/// own [PropPool]. Everything is a pure function of scene time, planned
+/// once per build.
 class GlyphWorks {
-  GlyphWorks(this.scene, this.crew, this.fx, this.props);
+  GlyphWorks(this.scene, this.fx);
 
   final Scene scene;
-  final Crew3D crew;
   final Fx3D fx;
-  final PropPool props;
+
+  /// The line's moving parts (its own: they're far from the site's), parked
+  /// in the hall.
+  late final props = PropPool(scene, 'works parts', home: vm.Vector3(WorksLayout.cx, 0.5, WorksLayout.beltZ), maxBoxes: 72, maxCyls: 48, maxGlows: 64);
 
   PhysicallyBasedMaterial? _mat;
   late final PhysicallyBasedMaterial _wireMat;
@@ -208,9 +180,6 @@ class GlyphWorks {
   /// finale carries it): the middle of its bottom edge, its turn (yaw, as a
   /// figure's) and how far it leans back. Set before [update]; cleared by it.
   ({vm.Vector3 at, double yaw, double tilt})? held;
-
-  /// Makers the finale poses this frame (bit i: maker i); [update] leaves them.
-  int finaleMakers = 0;
 
   /// When the camera cuts over to the works (the breaks keep clear).
   final camWindows = <(double, double)>[];
@@ -226,6 +195,7 @@ class GlyphWorks {
   final _stick = Node(name: 'works stick'), _strip = Node(name: 'works string'), _display = Node(name: 'works decoder display');
 
   void init() {
+    props.init();
     _wireMat = pbr(lin(const Color(0xFFE8A04A)), metallic: 0.75, roughness: 0.32, emissive: lin(const Color(0xFFFFB347)), emissiveStrength: 0.35);
     _pixelMat = UnlitMaterial();
     _platePixels = InstancedMesh(geometry: CuboidGeometry(vm.Vector3.all(1)), material: _pixelMat);
@@ -246,7 +216,7 @@ class GlyphWorks {
         ..castsShadows = false
         ..visible = false;
     }
-    _display.localTransform = trs(vm.Vector3(-15.15, WorksLayout.beltY + 0.19, WorksLayout.beltZ - 0.282));
+    _display.localTransform = trs(vm.Vector3(WorksLayout.stepX[1], WorksLayout.beltY + 0.19, WorksLayout.beltZ - 0.282));
     scene
       ..add(_plateNode)
       ..add(_boardRoot)
@@ -274,29 +244,17 @@ class GlyphWorks {
   /// and while a talk has the works: the finale leaves its board be).
   double? get boardDone => _steps.isEmpty || _talking ? null : _steps.last.at[7];
 
-  /// The board's width and height (the finale's carriers hold its sides).
+  /// The board's width and height (the finale's holders take it by its
+  /// sides).
   double get boardWidth => _job?.boardW ?? 1.2;
   double get boardHeight => _job?.boardH ?? 0.4;
-
-  /// When maker [i] is free after their last letter (back home, as
-  /// everyone goes once their letter's on the board), and where.
-  double freeAt(int i) => _freeOf(i).t;
-  vm.Vector3 freeSpot(int i) => _freeOf(i).at;
-
-  ({double t, vm.Vector3 at}) _freeOf(int i) {
-    _Steps? last;
-    for (final s in _steps) {
-      if (s.maker == i) last = s;
-    }
-    if (last == null) return (t: double.negativeInfinity, at: WorksLayout.homes[i]);
-    return (t: math.max(last.homeAt, last.toHome?.end ?? last.homeAt), at: WorksLayout.homes[i]);
-  }
 
   /// Each step's share of a letter's way down the line.
   static const _share = [0.08, 0.12, 0.18, 0.14, 0.13, 0.16, 0.19];
 
-  /// From home to the feeder, and (about) from the board back home.
-  static const _walkIn = 6.2, _walkHome = 2.6;
+  /// From the name's start to its first letter out of the feeder; from a
+  /// letter's pixels on the board to its line being done with it.
+  static const _lead0 = 1.5, _settle = 0.6;
 
   /// Plans the build's letters down the line and the camera's visits (once,
   /// when its plan is ready), keeping clear of [busyCam] (the deliveries'
@@ -323,7 +281,7 @@ class GlyphWorks {
       final l = name.letters[s.k];
       // ignore: avoid_print
       print(
-        'PLAN works ${l.text} maker ${s.maker}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}',
+        'PLAN works ${l.text}: ${[for (var i = 0; i < 7; i++) '${worksSteps[i].split(' ').first.toLowerCase()} ${f(s.at[i])}'].join(', ')}, on the board ${f(s.at[7])}',
       );
     }
     for (final c in _cuts) {
@@ -410,10 +368,10 @@ class GlyphWorks {
   /// The name's font (its cmap and metrics), once loaded.
   FontData? get latin => _latin;
 
-  /// Plans [text] for a talk: its first letter down the whole line with its
-  /// maker (alone: nobody's left mid-stride while the presenter talks); the
-  /// rest of the name dropped into the stick right after it, shaped as one
-  /// run, and onto the board right after it, drawn in one go.
+  /// Plans [text] for a talk: its first letter down the whole line (alone:
+  /// nothing's left half done while the presenter talks); the rest of the
+  /// name dropped into the stick right after it, shaped as one run, and
+  /// onto the board right after it, drawn in one go.
   void planTalk(String text, NameLetters letters) {
     _clear();
     _talking = true;
@@ -430,19 +388,19 @@ class GlyphWorks {
     _talking = false;
   }
 
-  /// When the talk's maker sets off from home; how long they then stand by
-  /// the feeder; the rest of the name's sorts, one after another; the line
-  /// measured.
-  static const _talkGo = 1.0, _talkWait = 1.2, _talkSort = 0.28, _talkLine = 1.8;
+  /// When the talk's line starts; how long before its letter's bytes come
+  /// out of the feeder; the rest of the name's sorts, one after another;
+  /// the line measured.
+  static const _talkGo = 1.0, _talkWait = 0.8, _talkSort = 0.28, _talkLine = 1.8;
 
   void _scheduleTalk(WorksName name) {
     final n = name.letters.length;
     if (n == 0) return;
     final l = name.letters.first;
     final fallback = l.fonts.isEmpty ? l.codePoints.any((c) => c > 0x2FF) : l.font > 0;
-    final s = _Steps(0, 0)..walkIn = _talkGo;
+    final s = _Steps(0);
     _steps.add(s);
-    var t = _talkGo + _walkIn + _talkWait;
+    var t = _talkGo + _talkWait;
     void step(int i) {
       s
         ..at[i] = t
@@ -456,11 +414,9 @@ class GlyphWorks {
     // The rest of the name into the stick after it, a sort at a time.
     final set0 = s.end[3] + 0.3;
     for (var k = 1; k < n; k++) {
-      final g = _Steps(k, -1)..ghost = true;
+      final g = _Steps(k)..ghost = true;
       final a = set0 + (k - 1) * _talkSort;
-      g
-        ..walkIn = a
-        ..homeAt = a;
+      g.homeAt = a;
       g.at.fillRange(0, 4, a);
       g.end.fillRange(0, 3, a);
       g.end[3] = a + 0.32;
@@ -475,7 +431,7 @@ class GlyphWorks {
     }
     s
       ..at[7] = t
-      ..homeAt = t + 0.3 + _walkHome;
+      ..homeAt = t + _settle;
     // Onto the board right after it.
     for (var k = 1; k < n; k++) {
       final b = s.at[7] + 0.5 + (k - 1) * 0.06;
@@ -506,23 +462,21 @@ class GlyphWorks {
   /// ends as the big letter's does, so the mini letter lands as the wall's
   /// is kerned into place, and the next letter is on the line before it
   /// lands. A step takes one letter at a time (and the plate one letter
-  /// from the rasterizer to the board), and a maker one letter: a letter
-  /// waits for whichever is busy, at the step it's done. A letter [pins]
-  /// for the camera (its step, when) sets off early enough and waits for
-  /// it. All of it a little faster when the last letter would land after
-  /// the build.
+  /// from the rasterizer to the board): a letter waits for whichever is
+  /// busy, at the step it's done. A letter [pins] for the camera (its
+  /// step, when) sets off early enough and waits for it. All of it a
+  /// little faster when the last letter would land after the build.
   void _schedule(BuildPlan plan, Map<int, (int, double)> pins) {
     final sc = plan.sched, n = plan.letterCount;
-    // (The first letter no sooner than its maker can walk in from home.)
-    final deadline = plan.t0 + plan.len - 0.25, first = plan.job.startedAt + 0.5 + _walkIn;
+    // (The first letter a moment after the name's in.)
+    final deadline = plan.t0 + plan.len - 0.25, first = plan.job.startedAt + 0.5 + _lead0;
     var squeeze = 1.0;
     for (var tries = 0; tries < 14; tries++) {
       _steps.clear();
       final free = List.filled(7, -1e9);
-      final makers = List.filled(3, -1e9);
       var plate = -1e9;
       for (var k = 0; k < n; k++) {
-        final s = _Steps(k, k % 3);
+        final s = _Steps(k);
         if (_journey case final jn? when jn.k == k) {
           // Followed all the way: its own times, the others behind it.
           for (var i = 0; i < 7; i++) {
@@ -534,24 +488,20 @@ class GlyphWorks {
           s.at[7] = jn.at[7];
           free[6] = jn.at[7] + 0.3;
           plate = jn.at[7];
-          s
-            ..walkIn = s.at[0] - _walkIn
-            ..homeAt = jn.at[7] + 0.3 + _walkHome;
-          makers[s.maker] = s.homeAt;
+          s.homeAt = jn.at[7] + _settle;
           _steps.add(s);
           continue;
         }
         final a = plan.at(sc.layA[k]), d = plan.at(sc.downB[k]);
         final len = (1.8 * (d - a)).clamp(12.0, 32.0) * squeeze;
-        final ready = math.max(first, makers[s.maker] + _walkIn + 0.3);
-        var t = math.max(d - len, ready);
+        var t = math.max(d - len, first);
         final pin = pins[k];
         if (pin != null) {
           var lead = 0.0;
           for (var i = 0; i < pin.$1; i++) {
             lead += _share[i] * len;
           }
-          t = math.max(ready, math.min(t, pin.$2 - lead));
+          t = math.max(first, math.min(t, pin.$2 - lead));
         }
         for (var i = 0; i < 7; i++) {
           t = math.max(t, free[i]);
@@ -565,10 +515,7 @@ class GlyphWorks {
         s.at[7] = t;
         free[6] = t + 0.3;
         plate = t;
-        s
-          ..walkIn = s.at[0] - _walkIn
-          ..homeAt = t + 0.3 + _walkHome;
-        makers[s.maker] = s.homeAt;
+        s.homeAt = t + _settle;
         _steps.add(s);
       }
       if (_steps.isEmpty || _steps.last.at[7] <= deadline) break;
@@ -857,28 +804,44 @@ class GlyphWorks {
     }
   }
 
-  /// The works to begin a visit: from just inside its front right corner,
-  /// under its sign, down the whole line (whoever's about in front of it,
-  /// on a break or on the way to one, is behind the camera).
-  static final _front = Shot(vm.Vector3(-9.2, 2.6, 3.4), vm.Vector3(-13.8, 0.9, 6.4), fov: 56, settle: 0.6, drift: 0.4);
+  /// The works to begin a visit: from inside the hall's front right
+  /// corner, down the whole line.
+  static final _front = Shot(vm.Vector3(WorksLayout.x1 - 1.6, 3.3, WorksLayout.beltZ - 5.0), vm.Vector3(WorksLayout.stepX[2], 0.9, WorksLayout.beltZ + 0.2), fov: 58, settle: 0.6, drift: 0.4);
 
   /// The visits' framings, for a talk: the whole works, and in on a step.
   static Shot get front => _front;
   static Shot stepShot(int step, [double drift = 0]) => _stepShot(step, drift);
 
-  /// In on step [step] through the open front (clear of the smoking corner
-  /// in front, past the board's left for the rasterizer).
+  /// The talk's other framings of the works: the hall from the plaza's side
+  /// of the street, its sign and the line through its windows; low and close
+  /// on the decoder; close on the stick as the line's measured; the board,
+  /// square on. And where its pin goes on the map, and the map's view.
+  static final outside = Shot(vm.Vector3(-18.0, 2.5, -7.4), vm.Vector3(WorksLayout.x1 - 1.5, 2.2, WorksLayout.doorZ + 2.4), fov: 52, settle: 1.3, drift: 0.5);
+
+  /// Just inside the hall's door, looking down the line (where the camera
+  /// comes in from the street). (As the talk frames it, slid left for its
+  /// card, by ~2.9 m: the eye's then just inside the door, and the way in
+  /// from [outside] goes through the middle of the doorway.)
+  static final inside = Shot(vm.Vector3(WorksLayout.x1 - 1.56, 2.1, WorksLayout.beltZ - 0.14), vm.Vector3(WorksLayout.stepX[1], 0.9, WorksLayout.beltZ), fov: 52, settle: 1.3, drift: 0.4);
+  static final decoderClose = Shot(vm.Vector3(WorksLayout.stepX[1] + 0.35, 1.22, WorksLayout.beltZ - 1.4), vm.Vector3(WorksLayout.stepX[1] + 0.15, 0.78, WorksLayout.beltZ - 0.25), fov: 40, settle: 1.3, drift: 0.3);
+  static final stickClose = Shot(vm.Vector3(WorksLayout.stepX[3] - 0.06, 1.32, WorksLayout.beltZ - 1.55), vm.Vector3(WorksLayout.stepX[3] - 0.18, 0.86, WorksLayout.beltZ + 0.05), fov: 36, settle: 1.3, drift: 0.3);
+  static final boardSquare = Shot(vm.Vector3(WorksLayout.boardX, 1.5, WorksLayout.boardZ - 1.87), vm.Vector3(WorksLayout.boardX, 0.8, WorksLayout.boardZ), fov: 38, settle: 1.3, drift: 0.3);
+  static final pin = vm.Vector3(WorksLayout.cx, WorksLayout.roof + 1.0, WorksLayout.cz);
+
+  /// In on step [step] from in front of the line (its arm reaching over
+  /// from behind).
   static Shot _stepShot(int step, double drift) {
     const z = WorksLayout.beltZ;
+    final x = WorksLayout.stepX;
     return switch (step) {
-      // The string's bytes on the wall, the feeder and the decoder.
-      0 || 1 => Shot(vm.Vector3(-15.0 + drift, 1.6, 4.1), vm.Vector3(-15.35, 1.12, z + 0.55), fov: 48, settle: 1.3, drift: 0.3),
-      2 => Shot(vm.Vector3(-13.95 - drift, 1.72, 4.15), vm.Vector3(-14.15, 0.95, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
-      3 => Shot(vm.Vector3(-12.8 - drift, 1.72, 4.15), vm.Vector3(-12.95, 0.92, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
-      4 => Shot(vm.Vector3(-11.65 - drift, 1.75, 4.2), vm.Vector3(-11.8, 0.85, z + 0.15), fov: 44, settle: 1.3, drift: 0.3),
-      5 => Shot(vm.Vector3(-11.25 + drift, 1.75, 4.15), vm.Vector3(-10.8, 0.85, z + 0.1), fov: 44, settle: 1.3, drift: 0.3),
-      // The board, the pixels set in (and the letter's tile, held up).
-      _ => Shot(vm.Vector3(-10.3 + drift, 1.7, 2.85), vm.Vector3(-9.8, 1.05, WorksLayout.boardZ + 0.08), fov: 54, settle: 1.3, drift: 0.3),
+      // The string's bytes on their board, the feeder and the decoder.
+      0 || 1 => Shot(vm.Vector3(x[1] + 0.15 + drift, 1.6, z - 2.15), vm.Vector3(x[1] - 0.2, 1.12, z + 0.55), fov: 48, settle: 1.3, drift: 0.3),
+      2 => Shot(vm.Vector3(x[2] + 0.25 - drift, 1.85, z - 2.3), vm.Vector3(x[2] + 0.1, 1.0, z + 0.2), fov: 50, settle: 1.3, drift: 0.3),
+      3 => Shot(vm.Vector3(x[3] + 0.1 - drift, 1.85, z - 2.3), vm.Vector3(x[3] - 0.05, 0.95, z + 0.2), fov: 48, settle: 1.3, drift: 0.3),
+      4 => Shot(vm.Vector3(x[4] + 0.35 - drift, 1.8, z - 2.2), vm.Vector3(x[4] + 0.25, 0.9, z + 0.15), fov: 48, settle: 1.3, drift: 0.3),
+      5 => Shot(vm.Vector3(x[5] - 0.2 + drift, 1.8, z - 2.25), vm.Vector3(x[5] + 0.2, 0.9, z + 0.1), fov: 48, settle: 1.3, drift: 0.3),
+      // The board, the pixels set in.
+      _ => Shot(vm.Vector3(WorksLayout.boardX - 0.6 + drift, 1.75, WorksLayout.boardZ - 2.3), vm.Vector3(WorksLayout.boardX - 0.1, 1.05, WorksLayout.boardZ + 0.3), fov: 54, settle: 1.3, drift: 0.3),
     };
   }
 
@@ -935,11 +898,12 @@ class GlyphWorks {
 
   // ── Per frame ─────────────────────────────────────────────────────────────
 
-  final _m = vm.Matrix4.identity(), _n = vm.Matrix4.identity();
+  final _m = vm.Matrix4.identity(), _n = vm.Matrix4.identity(), _o = vm.Matrix4.identity();
   final _p = vm.Vector3.zero(), _q = vm.Vector3.zero();
 
-  /// Poses the makers and the letters for [j] at [t] ([plan]: the build's
-  /// plan, if ready). [shapes]: unused (see [LetterShape]).
+  /// Runs the line for [j] at [t] ([plan]: the build's plan, if ready):
+  /// the letters, the machines, the arms. [shapes]: unused (see
+  /// [LetterShape]).
   void update(Job j, BuildPlan? plan, double t, double night, List<LetterShape> shapes) {
     caption.show = 0;
     _mat?.emissiveStrength = 0.5 + 2.2 * smooth(0.1, 0.5, night);
@@ -949,27 +913,16 @@ class GlyphWorks {
     final job = _job, name = _name;
     if (job?.mat case final mat?) mat.emissiveStrength = 0.1 + 0.6 * smooth(0.2, 0.6, night);
     // A sample cut short: the works stops; what's on the board stays there,
-    // the rest is put away and the makers stand about.
+    // the rest is put away and the arms go back to rest.
     final pl = _plan;
     final cutT = pl != null && j.cutAt != null && j.phase.index >= Phase.demolish.index ? math.min(t, pl.t0 + (j.cutFrac ?? 0) * pl.len) : null;
     final stopped = cutT != null;
     // (A talk's works on the talk's clock, whatever the site's doing.)
     final tt = _talking ? talkTime : cutT ?? t;
     final ready = job != null && name != null && job.mat != null;
-    if (ready) _meshes(job, name, tt);
-    for (var i = 0; i < 3; i++) {
-      if (finaleMakers & (1 << i) != 0) continue;
-      final p = crew.poses[Crew3D.makers + i]..rest();
-      final s = stopped || !ready ? null : _makerJob(i, tt);
-      if (s == null) {
-        p.pos.setFrom(WorksLayout.homes[i]);
-        OffDuty.stand(p, t, 40 + i * 7);
-        _idle(p, i, t);
-      } else {
-        _work(p, s, tt, t);
-      }
-    }
+    props.begin();
     if (ready) {
+      _meshes(job, name, tt);
       _string(job, name, tt, stopped);
       _letters(job, name, tt, t, stopped);
       _stickAt(job, name, tt);
@@ -977,17 +930,9 @@ class GlyphWorks {
       _boardAt(job, name, tt);
     }
     _machines(tt, t, stopped);
+    _arms(ready && !stopped ? name : null, tt, t);
+    props.end();
     held = null;
-    finaleMakers = 0;
-  }
-
-  /// The letter maker [i] is with at [tt] (from setting off for the feeder
-  /// to being back home), or null.
-  _Steps? _makerJob(int i, double tt) {
-    for (final s in _steps) {
-      if (!s.ghost && s.maker == i && tt >= s.walkIn && tt < math.max(s.homeAt, s.toHome?.end ?? 0)) return s;
-    }
-    return null;
   }
 
   /// Builds what's missing of the letters' meshes: one letter a frame ahead
@@ -1010,7 +955,7 @@ class GlyphWorks {
       job.stripMesh = Mesh(merged([_region(_Atlas.size, _Atlas.strip, 1.76, 0.22, 0, 0, 0, 0.02)]), job.mat!);
       _strip
         ..mesh = job.stripMesh
-        ..localTransform = trs(vm.Vector3(_stripX, _stripY, WorksLayout.z1 - 0.135))
+        ..localTransform = trs(vm.Vector3(_stripX, _stripY, _stripZ - 0.01))
         ..visible = true;
     }
     if (name.rendered && job.cell == 0) job.cell = _cellFor(name);
@@ -1019,8 +964,10 @@ class GlyphWorks {
 
   // ── The string, and the letters down the line ─────────────────────────────
 
-  /// The string board over the feeder: its middle.
-  static const _stripX = -15.15, _stripY = 1.62;
+  /// The string board over the feeder and the decoder, on its stand
+  /// behind the line: its middle.
+  static final _stripX = (WorksLayout.stepX[0] + WorksLayout.stepX[1]) / 2;
+  static const _stripY = 1.72, _stripZ = WorksLayout.beltZ + 0.62;
 
   /// Lights up the letter being read on the string board.
   void _string(_Job job, WorksName name, double tt, bool stopped) {
@@ -1032,7 +979,7 @@ class GlyphWorks {
       final k = math.min(1.0, seg(tt, s.at[0] - 0.2, s.at[0] + 0.2)) * (1 - seg(tt, s.at[2] - 0.3, s.at[2]));
       final x = _stripX + (r.center.dx / _Atlas.size - 0.5) * 1.76, w = r.width / _Atlas.size * 1.76;
       final y = _stripY + (0.5 - r.bottom / _Atlas.stripH) * 0.22;
-      props.glow(x, y + 0.004, WorksLayout.z1 - 0.15, w, 0.008, 0.01, _amberGlow * k);
+      props.glow(x, y + 0.004, _stripZ - 0.025, w, 0.008, 0.01, _amberGlow * k);
     }
   }
 
@@ -1063,7 +1010,7 @@ class GlyphWorks {
   }
 
   /// The feeder's slot, the decoder's ends.
-  static const _feedOut = -15.82, _decodeIn = -15.4, _decodeOut = -14.9;
+  static final _feedOut = WorksLayout.stepX[0] + 0.23, _decodeIn = WorksLayout.stepX[1] - 0.25, _decodeOut = WorksLayout.stepX[1] + 0.25;
 
   void _cratesAt(_Piece piece, _Steps s, double tt) {
     final node = piece.crates!;
@@ -1085,7 +1032,8 @@ class GlyphWorks {
 
   /// The font cases (their middles), and the height a tile is held up to
   /// them at.
-  static const _caseX = [-14.45, -14.15, -13.85], _caseY = 1.12, _lookY = 1.02;
+  static final _caseX = [for (final d in [-0.3, 0.0, 0.3]) WorksLayout.stepX[2] + d];
+  static const _caseY = 1.12, _lookY = 1.02;
 
   /// When (seconds into a font step [d] long) a glyph from font [f] comes
   /// out of its case: the tile moved over and lifted, a look in each case
@@ -1114,17 +1062,18 @@ class GlyphWorks {
     final y0 = WorksLayout.beltY, z = WorksLayout.beltZ;
     if (tt < s.at[1] + 0.45 * (s.end[1] - s.at[1])) return;
     if (tt < s.at[2]) {
-      // Out of the decoder's far side.
+      // Out of the decoder's far side and along the belt to under the
+      // first case.
       final f = eio(seg(tt, s.at[1] + 0.45 * (s.end[1] - s.at[1]), s.end[1]));
-      _place(node, lerp(_decodeOut - half - 0.02, _decodeOut + half + 0.05, f), y0, z);
+      _place(node, lerp(_decodeOut - half - 0.02, _caseX[0], f), y0, z);
       return;
     }
     if (tt >= s.at[3]) return;
-    // Along to the first case, up to each case in turn, and into the one
-    // that has the glyph.
+    // The arm takes it (its moment to reach), up to each case in turn, and
+    // into the one that has the glyph.
     final a = s.at[2], d = s.end[2] - a, mv = math.min(0.6, 0.2 * d);
     final f = l.font, per = (d - mv - 0.35 - 0.9) / (f + 1);
-    final start = _decodeOut + half + 0.05;
+    final start = _caseX[0];
     if (tt < a + mv) {
       _place(node, lerp(start, _caseX[0], eio(seg(tt, a, a + mv))), y0, z);
       return;
@@ -1142,7 +1091,8 @@ class GlyphWorks {
 
   /// The composing stick: its left end (em 0, before scrolling), its rail's
   /// top, the sorts' middle line; and its em.
-  static const _stickX0 = -13.44, _railY = 0.74, _sortZ = WorksLayout.beltZ + 0.07, _em = 0.2, _stickEm = 5.15;
+  static final _stickX0 = WorksLayout.stepX[3] - 0.5;
+  static const _railY = 0.74, _sortZ = WorksLayout.beltZ + 0.07, _em = 0.2, _stickEm = 5.15;
 
   /// Where the stick's line starts (em) while letter [k] is set in it: far
   /// enough along that the letter fits.
@@ -1171,16 +1121,26 @@ class GlyphWorks {
       _place(node, x, y, WorksLayout.beltZ);
       return;
     }
-    // Up onto the stick after the letter before (the pen, unkerned), its
-    // advance lit, then the kerning's nudge.
+    // Along the belt to under its place on the stick, after the letter
+    // before (the pen, unkerned); the arm lifts it on, its advance lit,
+    // then nudges it (the kerning).
     final a = s.at[3], d = s.end[3] - a;
-    final set = eio(seg(tt, a + 0.1, a + 0.4 * d));
-    final nudge = eio(seg(tt, a + 0.6 * d, a + 0.85 * d));
+    final ride = eio(seg(tt, a, a + _ride(d)));
+    final set = eio(seg(tt, a + _ride(d) + 0.1, a + 0.55 * d));
+    final nudge = eio(seg(tt, a + 0.65 * d, a + 0.85 * d));
     final xs = _stickXOf(name, s.k, lerp(l.unkerned, l.pen, nudge)) + w / 2;
-    final x = lerp(_caseX[2] + 0.36, xs, set);
-    final y = lerp(WorksLayout.beltY + h / 2 + 0.005, _railY + h / 2, set) + 0.08 * math.sin(math.pi * set);
+    final x = set > 0 ? xs : lerp(_caseX[2] + 0.36, xs, ride);
+    final y = lerp(WorksLayout.beltY + h / 2 + 0.005, _railY + h / 2, set) + 0.1 * math.sin(math.pi * set);
     _place(node, x, y, lerp(WorksLayout.beltZ, _sortZ, set));
   }
+
+  /// How long a sort rides the belt from the font cases to the stick (of
+  /// a shaping step [d] long).
+  static double _ride(double d) => math.min(1.6, 0.35 * d);
+
+  /// How long the arm takes to lift a letter's outline from the bender
+  /// over to the rasterizer's plate.
+  static double _lay(_Steps s) => math.min(1.3, 0.3 * (s.end[5] - s.at[5]));
 
   /// The bender's board and the rasterizer's plate lean back this much; a
   /// frame's origin is the middle of its bottom edge.
@@ -1218,11 +1178,12 @@ class GlyphWorks {
       }
       return;
     }
-    // Lifted over to the plate and laid on its grid, for the scan.
+    // Lifted over to the plate by the arm and laid on its grid, for the
+    // scan.
     if (!identical(node.mesh, piece.wireFull)) node.mesh = piece.wireFull;
-    final a = s.at[5], mv = math.min(0.7, 0.2 * (s.end[5] - a));
-    final f = eio(seg(tt, a, a + mv));
-    final lift = 0.1 * math.sin(math.pi * f);
+    final a = s.at[5];
+    final f = eio(seg(tt, a, a + _lay(s)));
+    final lift = 0.35 * math.sin(math.pi * f);
     node
       ..visible = true
       ..place((m) => _frame(lerp(WorksLayout.stepX[4], WorksLayout.stepX[5], f), m, lift: lift));
@@ -1309,7 +1270,7 @@ class GlyphWorks {
       }
     }
     // The scan: a pixel at a time, row by row from the top.
-    final a = s.at[5], e = s.at[6], mv = math.min(0.7, 0.2 * (s.end[5] - a));
+    final a = s.at[5], e = s.at[6], mv = _lay(s);
     final scanA = a + mv + 0.15, scanE = s.end[5] - 0.3;
     final n = l.w * l.h;
     final f = seg(tt, scanA, scanE);
@@ -1346,27 +1307,19 @@ class GlyphWorks {
       }
       return;
     }
-    // Carried to the board in the maker's hands, and set in at the letter's
-    // place (shrinking to the board's pixels).
-    final p = crew.poses[Crew3D.makers + s.maker];
-    OffDuty.hand(p, 0, _p);
-    OffDuty.hand(p, 1, _q);
-    final hx = (_p.x + _q.x) / 2, hy = (_p.y + _q.y) / 2, hz = (_p.z + _q.z) / 2;
-    final set = eio(seg(tt, s.at[7] - 0.55, s.at[7]));
-    final lift = eio(seg(tt, e, e + 0.3));
-    // Upright in the hands, facing where they go (rising off the stand).
-    final carry = setTrs(_n, hx - math.sin(p.yaw) * 0.05, hy - 0.04, hz - math.cos(p.yaw) * 0.05, yaw: p.yaw, pitch: 0.25);
-    final from = set > 0 ? _slotM(job, name, s.k, _m) : _frame(WorksLayout.stepX[5], _m);
+    // Lifted off its stand by the arm behind the board, over to in front
+    // of the letter's place on the board and set in there (shrinking to
+    // the board's pixels).
+    final lift = eio(seg(tt, e, e + 0.4));
+    final go = eio(seg(tt, e + 0.4, s.at[7] - 0.6));
+    final set = eio(seg(tt, s.at[7] - 0.6, s.at[7]));
+    final off = _frame(WorksLayout.stepX[5], _m, lift: 0.3 * lift);
+    final slot = _slotM(job, name, s.k, _n);
+    final over = _o..setFrom(slot);
+    over.storage[13] += 0.22;
+    over.storage[14] -= 0.16;
     _plateHome = false;
-    _plateNode.place((m) {
-      if (set > 0) {
-        _blendM(carry, from, set, m);
-      } else if (lift < 1) {
-        _blendM(from, carry, lift, m);
-      } else {
-        m.setFrom(carry);
-      }
-    });
+    _plateNode.place((m) => set > 0 ? _blendM(over, slot, set, m) : _blendM(off, over, go, m));
   }
 
   /// [a] towards [b] by [f] (positions and axes; a quick stand-in for an
@@ -1392,15 +1345,6 @@ class GlyphWorks {
 
   final _slot = vm.Matrix4.identity();
   bool _plateHome = false;
-
-  /// Where letter [k]'s pixels go on the board, in the world (x).
-  double _slotX(int k) {
-    final name = _name, job = _job;
-    final b = held?.at.x ?? WorksLayout.boardX;
-    if (name == null || job == null || !name.rendered || job.boardW == null) return b;
-    final l = name.letters[k];
-    return b + (l.x - name.x0 + l.w / 2 - name.cols / 2) * job.px;
-  }
 
   static const _boardMargin = 0.035, _boardThick = 0.03;
 
@@ -1572,7 +1516,7 @@ class GlyphWorks {
       final at = (b + 0.5) * (piece.crate + 0.008) / (piece.rowW + 0.045);
       if (f < at) continue;
       final lead = l.bytes[b] & 0xC0 != 0x80;
-      final x = -15.15 + (b - (n - 1) / 2) * 0.06;
+      final x = WorksLayout.stepX[1] + (b - (n - 1) / 2) * 0.06;
       props.glow(x, WorksLayout.beltY + 0.075, WorksLayout.beltZ - 0.28, 0.03, 0.03, 0.008, lead ? _amberGlow : _greenGlow);
     }
   }
@@ -1621,234 +1565,183 @@ class GlyphWorks {
   /// to pen + advance) and, while it's nudged, where the pen was unkerned.
   void _bracket(_Steps s, WorksName name, double tt) {
     final a = s.at[3], d = s.end[3] - a;
-    if (tt < a + 0.4 * d || tt >= s.end[3] + 0.2) return;
+    if (tt < a + 0.55 * d || tt >= s.end[3] + 0.2) return;
     final l = name.letters[s.k];
-    final on = seg(tt, a + 0.4 * d, a + 0.5 * d) * (1 - seg(tt, s.end[3], s.end[3] + 0.2));
-    final nudge = eio(seg(tt, a + 0.6 * d, a + 0.85 * d));
+    final on = seg(tt, a + 0.55 * d, a + 0.62 * d) * (1 - seg(tt, s.end[3], s.end[3] + 0.2));
+    final nudge = eio(seg(tt, a + 0.65 * d, a + 0.85 * d));
     final x0 = _stickXOf(name, s.k, lerp(l.unkerned, l.pen, nudge)), x1 = x0 + l.advance * _em;
     final y = _railY + 1.2 * _em + 0.025, z = _sortZ - 0.03;
     props
       ..glow((x0 + x1) / 2, y, z, x1 - x0, 0.008, 0.008, _amberGlow * on)
       ..glow(x0, y - 0.012, z, 0.006, 0.03, 0.008, _amberGlow * on)
       ..glow(x1, y - 0.012, z, 0.006, 0.03, 0.008, _amberGlow * on);
-    if (s.k > 0 && (l.kern).abs() > 0.0005 && tt >= a + 0.55 * d) {
+    if (s.k > 0 && (l.kern).abs() > 0.0005 && tt >= a + 0.62 * d) {
       final xu = _stickXOf(name, s.k, l.unkerned);
       props.glow(xu, _railY + 0.6 * _em, z - 0.004, 0.005, 1.2 * _em, 0.006, _redGlow * on);
     }
   }
 
-  // ── The makers ────────────────────────────────────────────────────────────
+  // ── The robot arms ────────────────────────────────────────────────────────
 
-  /// Maker [p] with letter [s] at [tt]: to the feeder, along the line with
-  /// it, a step at a time, its pixels to the board, and home.
-  void _work(FigurePose p, _Steps s, double tt, double t) {
-    final seed = 40 + s.maker * 7;
-    _walksOf(s);
-    if (tt < math.max(s.at[0], s.toFeeder!.end)) {
-      if (tt >= s.toFeeder!.end) {
-        // There early (a talk's maker): standing by the feeder.
-        p.pos.setValues(WorksLayout.workX[0], 0, WorksLayout.workZ);
-        OffDuty.stand(p, t, seed);
-        p.yaw = 0;
-        return;
-      }
-      s.toFeeder!.pose(p, tt, seed);
-      if (tt >= s.toFeeder!.end - 0.05) p.yaw = 0;
-      return;
-    }
-    final step = s.stepAt(tt);
-    if (step >= 7 && tt >= s.toHome!.start) {
-      s.toHome!.pose(p, tt, seed);
-      return;
-    }
-    if (step >= 6) {
-      // The pixels to the board: round the belt's end, behind the board,
-      // leaning over it to set them in.
-      // (There once the walk's over: in a hurry, a little late, never in
-      // a jump.)
-      final there = math.max(s.at[7] - 0.6, s.toBoard!.end);
-      if (tt < there) {
-        final back = s.stepBack;
-        if (back != null && tt < s.toBoard!.start) {
-          // (Facing the line again while they wait.)
-          back.pose(p, tt, seed);
-        } else {
-          s.toBoard!.pose(p, tt, seed);
-          if (tt < s.toBoard!.start) p.yaw = 0;
-        }
-        _holdOut(p);
-        return;
-      }
-      p.pos.setValues(s.slotX, 0, WorksLayout.placeZ);
-      p.yaw = 0;
-      OffDuty.stand(p, t, seed);
-      final k = math.sin(math.pi * seg(tt, there, math.max(there + 0.5, s.at[7] + 0.3)));
-      p.lean = 0.45 * k;
-      _holdOut(p);
-      p.armPitch[0] = p.armPitch[1] = lerp(0.85, 1.25, k);
-      return;
-    }
-    // At the step (walking along from the last one as it starts).
-    final x = WorksLayout.workX[step];
-    final a = s.at[step], d = s.end[step] - a;
-    final prev = step == 0 ? x : WorksLayout.workX[step - 1];
-    final mv = math.min(0.6, 0.2 * d);
-    if (tt < a + mv && (x - prev).abs() > 0.05) {
-      p.pos.setValues(lerp(prev, x, seg(tt, a, a + mv)), 0, WorksLayout.workZ);
-      OffDuty.walk(p, t, (x - prev).abs() / mv, seed, dist: (x - prev).abs() * seg(tt, a, a + mv), total: (x - prev).abs());
-      p.yaw = x > prev ? -math.pi / 2 : math.pi / 2;
-      return;
-    }
-    p.pos.setValues(x, 0, WorksLayout.workZ);
-    OffDuty.stand(p, t, seed);
-    p.yaw = 0;
-    final pieces = _job!.pieces;
-    final piece = pieces[s.k];
-    switch (step) {
-      case 0:
-        // Pulling the feeder's lever.
-        _p.setValues(_feedOut - 0.04, WorksLayout.beltY + 0.3, WorksLayout.beltZ - 0.22);
-        _reach(p, 1, _p, math.sin(math.pi * seg(tt, a - 0.1, a + 0.7)));
-        p.lean = 0.12;
-      case 1:
-        // A hand on the decoder, watching the bytes go in.
-        _p.setValues(-15.1, WorksLayout.beltY + 0.36, WorksLayout.beltZ + 0.12);
-        crew.aim(p, 1, _p, maxStoop: _bench);
-        p.lean = 0.18;
-      case 2 || 3:
-        // The tile up to the cases, the sort out of one, onto the stick.
-        final node = piece.sort?.visible == true ? piece.sort : (piece.tile?.visible == true ? piece.tile : null);
-        p.lean = 0.25;
-        if (node == null) {
-          p.armRoll[0] = p.armRoll[1] = 0.85;
-          p.armPitch[0] = p.armPitch[1] = -0.3;
-          break;
-        }
-        final at = node.globalTransform.getTranslation();
-        for (var h = 0; h < 2; h++) {
-          _p.setValues(at.x + (h == 0 ? -0.06 : 0.06), at.y, at.z + 0.04);
-          crew.aim(p, h, _p, maxStoop: _bench);
-        }
-        p.yaw = (-(at.x - p.pos.x) * 0.6).clamp(-0.5, 0.5);
-      case 4:
-        // Turning the bender's crank (a hand on it once it's still).
-        final c = _crank(s, tt);
-        _p.setValues(WorksLayout.stepX[4] + 0.44, WorksLayout.beltY + 0.32 + 0.09 * math.sin(c), WorksLayout.beltZ + 0.16 - 0.09 * math.cos(c));
-        crew.aim(p, 1, _p, maxStoop: _bench);
-        p.lean = 0.22;
-        p.armRoll[0] = 0.85;
-        p.armPitch[0] = -0.3;
-      default:
-        // Laying the wire on the plate, then a hand on the rasterizer's
-        // controls while it runs.
-        if (tt < a + math.min(0.7, 0.2 * d) + 0.1) {
-          final m = _frame(WorksLayout.stepX[5], _m);
-          for (var h = 0; h < 2; h++) {
-            _p.setValues(h == 0 ? -0.18 : 0.18, 0.25, -0.05);
-            m.transform3(_p);
-            crew.aim(p, h, _p, maxStoop: _bench);
+  /// Where each arm last held something, and when (it goes back to rest
+  /// from there, or on to its next hold if that's soon).
+  final _held = [for (var i = 0; i < 4; i++) vm.Vector3.zero()];
+  final _heldAt = List.filled(4, double.negativeInfinity);
+  final _grip = vm.Vector3.zero(), _to = vm.Vector3.zero(), _from = vm.Vector3.zero();
+  final _sh = vm.Vector3.zero(), _el = vm.Vector3.zero(), _wr = vm.Vector3.zero();
+
+  /// The arms' paint (an industrial orange) and their joints'.
+  static final _armPaint = v4(hex3(0xF0862A)), _armJoint = v4(hex3(0x2A3344));
+
+  /// How long an arm takes to reach for what it'll hold (and to go back).
+  static const _reachT = 0.8;
+
+  /// The arms: each holds what's on its step while it's moved (the tile up
+  /// to the font cases and the sort out of one; the sort up onto the
+  /// stick; the outline over to the plate; the plate onto the board),
+  /// reaching for it a moment before, back to rest after.
+  void _arms(WorksName? name, double tt, double t) {
+    for (var i = 0; i < 4; i++) {
+      _rest(i, _to);
+      var holding = false;
+      if (name != null) {
+        // Holding now, or the next hold coming up within reach.
+        double? soon;
+        _Steps? soonS;
+        var soonKind = 0;
+        for (final s in _steps) {
+          if (s.ghost) continue;
+          for (final (a, e, kind) in _holds(i, s, name)) {
+            if (tt >= a && tt <= e && _gripOf(kind, s, name, _grip)) {
+              holding = true;
+            } else if (tt < a && a - tt < _reachT && (soon == null || a < soon)) {
+              soon = a;
+              soonS = s;
+              soonKind = kind;
+            }
           }
-          p.lean = 0.3;
-        } else {
-          _p.setValues(WorksLayout.stepX[5] + 0.42, WorksLayout.beltY + 0.2, WorksLayout.beltZ + 0.12);
-          crew.aim(p, 1, _p, maxStoop: _bench);
-          p.lean = 0.15;
-          p.armRoll[0] = 0.85;
-          p.armPitch[0] = -0.3;
+          if (holding) break;
         }
+        // (From where it last held, if that was a moment ago.)
+        final recent = tt >= _heldAt[i] && tt - _heldAt[i] < 2.5;
+        if (holding) {
+          _to.setFrom(_grip);
+          _held[i].setFrom(_grip);
+          _heldAt[i] = tt;
+        } else if (soon != null) {
+          _pickup(soonKind, soonS!, name, _grip);
+          _from.setFrom(recent ? _held[i] : _to);
+          _to.setFrom(_from + (_grip - _from) * eio(1 - (soon - tt) / _reachT));
+        } else if (recent) {
+          _from.setFrom(_to);
+          _to.setFrom(_held[i] + (_from - _held[i]) * eio((tt - _heldAt[i]) / _reachT));
+        }
+      }
+      _drawArm(i, _to, holding, t);
     }
   }
 
-  /// [s]'s maker's walks (made once, and again if the letter's place on
-  /// the board moves, once its pixels are in): from home to the feeder,
-  /// with its pixels to the board, and home again.
-  void _walksOf(_Steps s) {
-    final x = _slotX(s.k);
-    if (s.toBoard != null && s.slotX == x) return;
-    s.slotX = x;
-    final home = WorksLayout.homes[s.maker], slot = vm.Vector3(x, 0, WorksLayout.placeZ);
-    // In from home (once back from their last letter: then a little
-    // brisker, to be there on time).
-    final toFeeder = WorksLayout.route(home, vm.Vector3(WorksLayout.workX[0], 0, WorksLayout.workZ));
-    var feedGo = s.walkIn;
-    if (s.k >= 3) {
-      final pm = _steps[s.k - 3];
-      _walksOf(pm);
-      feedGo = math.max(feedGo, pm.toHome!.end + 0.1);
+  /// When arm [i] holds letter [s]'s piece: (from, to, what: 0 the tile,
+  /// 1 the sort out of its case, 2 the sort onto the stick, 3 the outline,
+  /// 4 the plate).
+  List<(double, double, int)> _holds(int i, _Steps s, WorksName name) {
+    switch (i) {
+      case 0:
+        final a = s.at[2], d = s.end[2] - a, mv = math.min(0.6, 0.2 * d), f = name.letters[s.k].font;
+        final per = (d - mv - 0.35 - 0.9) / (f + 1);
+        return [(a + mv, a + mv + 0.35 + (f + 0.8) * per, 0), (a + mv + 0.35 + (f + 0.8) * per, s.end[2], 1)];
+      case 1:
+        final a = s.at[3], d = s.end[3] - a;
+        return [(a + _ride(d) + 0.1, a + 0.85 * d, 2)];
+      case 2:
+        return [(s.at[5], s.at[5] + _lay(s), 3)];
+      default:
+        return [(s.at[6], s.at[7], 4)];
     }
-    // (A talk's maker gets there a moment early, and waits.)
-    final arrive = s.at[0] - (_talking ? _talkWait : 0);
-    s.toFeeder = Walk(toFeeder, feedGo, math.min(2.2, Walk.lengthOf(toFeeder) / math.max(0.5, arrive - feedGo)));
-    // Round to the board once the walkway's clear: the last letter's maker
-    // goes home along it, and it's a corridor for one (they wait their
-    // turn at the rasterizer; no faster than a brisk walk after).
-    var go = s.at[6] + 0.3;
-    if (s.k > 0 && s.k - 1 < _steps.length) {
-      final q = _steps[s.k - 1];
-      if (q.maker != s.maker) {
-        _walksOf(q);
-        final h = q.toHome!;
-        go = math.max(go, h.at(h.pts.length - 2) + 0.4);
-      }
-    }
-    // (Waiting, a step back into the lane behind the belt: off the
-    // rasterizer, which the next letter's maker comes to.)
-    var way = _boardWay(slot);
-    s.stepBack = null;
-    if (go > s.at[6] + 0.35) {
-      final back = vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.laneZ);
-      final step = s.stepBack = Walk([way.first, back], s.at[6] + 0.3, 1.0);
-      go = math.max(go, step.end + 0.1);
-      way = [back, vm.Vector3(WorksLayout.walkX, 0, WorksLayout.laneZ), ...way.skip(2)];
-    }
-    final there = s.at[7] - 0.6;
-    s.toBoard = Walk(way, go, math.min(2.2, Walk.lengthOf(way) / math.max(0.4, there - go)));
-    // Home once they've set it on the board (later, if they were late).
-    final back = WorksLayout.route(slot, home), homeGo = math.max(s.at[7] + 0.3, s.toBoard!.end + 0.7);
-    s.toHome = Walk(back, homeGo, math.min(2.2, Walk.lengthOf(back) / math.max(0.5, s.homeAt - homeGo)));
   }
 
-  /// A maker's way from the rasterizer round the belt's end to the board's
-  /// [slot].
-  static List<vm.Vector3> _boardWay(vm.Vector3 slot) => [
-    vm.Vector3(WorksLayout.workX[5], 0, WorksLayout.workZ),
-    vm.Vector3(WorksLayout.walkX, 0, WorksLayout.workZ),
-    vm.Vector3(WorksLayout.walkX, 0, WorksLayout.placeZ),
-    slot,
-  ];
+  /// Where the gripper holds piece [kind] of letter [s] now (its top), if
+  /// it's there to hold.
+  bool _gripOf(int kind, _Steps s, WorksName name, vm.Vector3 out) {
+    final piece = _job!.pieces[s.k];
+    switch (kind) {
+      case 0:
+        final n = piece.tile;
+        if (n == null || !n.visible) return false;
+        out.setFrom(n.localTransform.getTranslation()..y += 0.08);
+      case 1 || 2:
+        final n = piece.sort;
+        if (n == null || !n.visible) return false;
+        out.setFrom(n.localTransform.getTranslation()..y += 0.6 * _em + 0.005);
+      case 3:
+        final n = piece.wire;
+        if (n == null || !n.visible) return false;
+        out.setFrom(n.localTransform.transform3(vm.Vector3(0, 0.6, 0)));
+      default:
+        if (!_plateNode.visible) return false;
+        final l = name.letters[s.k];
+        out.setFrom(_plateNode.localTransform.transform3(vm.Vector3(0, 0.06 + l.h * (_job!.cell), 0)));
+    }
+    return true;
+  }
 
-  /// How low a maker crouches to reach along the belt (a little: they lean
-  /// over it, rather than duck under the bench).
-  static const _bench = 0.12;
+  /// Where the gripper takes piece [kind] of letter [s] from (as it reaches
+  /// for it).
+  void _pickup(int kind, _Steps s, WorksName name, vm.Vector3 out) {
+    final l = name.letters[s.k];
+    switch (kind) {
+      case 0:
+        out.setValues(_caseX[0], WorksLayout.beltY + 0.08, WorksLayout.beltZ);
+      case 1:
+        out.setValues(_caseX[l.font], _caseY - 0.02 + 0.4 * 1.2 * _em + 0.005, WorksLayout.beltZ);
+      case 2:
+        out.setValues(_stickXOf(name, s.k, l.unkerned) + l.advance * _em / 2, WorksLayout.beltY + 1.2 * _em + 0.01, WorksLayout.beltZ);
+      case 3:
+        out.setFrom(_frame(WorksLayout.stepX[4], _m).transform3(vm.Vector3(0, 0.6, 0)));
+      default:
+        out.setFrom(_frame(WorksLayout.stepX[5], _m).transform3(vm.Vector3(0, 0.06 + l.h * (_job?.cell ?? 0.02), 0)));
+    }
+  }
 
-  /// Arm [s] of [p] towards [at], by [k] (0: as it was).
-  void _reach(FigurePose p, int s, vm.Vector3 at, double k) => crew.aimBy(p, s, at, k, maxStoop: _bench);
-
-  void _idle(FigurePose p, int i, double t) {
-    // A word with the neighbour now and then, else watching the line.
-    final cycle = (t / 6.5).floor();
-    if (rnd(cycle, i, 71) < 0.35) {
-      // (They wait one behind another: the back one turns to the front,
-      // the front one to the back, the middle one either way.)
-      p.yaw = i == 0 ? 0.0 : (i == 2 ? math.pi : (cycle.isEven ? 0.0 : math.pi));
-      if ((cycle + i).isEven) {
-        OffDuty.talk(p, t, i * 5);
-      } else {
-        OffDuty.listen(p, t, i * 5);
-      }
+  /// Arm [i] at rest: up over its base, leaning a little towards the line.
+  void _rest(int i, vm.Vector3 out) {
+    final arm = WorksLayout.arms[i], b = arm.base, r = arm.reach;
+    if (i == 3) {
+      out.setValues(b.x - 0.35 * r, 1.25 * r + 0.1, b.z - 0.35 * r);
     } else {
-      // Watching the line (west, along the belt).
-      p.yaw = math.pi / 2 + Idle.facing(t, Manner.of(40 + i * 7), 0.15);
-      p.lean = 0.06;
-      p.armRoll[0] = p.armRoll[1] = 0.85;
-      p.armPitch[0] = p.armPitch[1] = -0.3;
+      out.setValues(b.x, 1.25 * r + 0.1, b.z - 0.45 * r);
     }
   }
 
-  /// Both hands out in front, holding something.
-  void _holdOut(FigurePose p) {
-    p.armPitch[0] = p.armPitch[1] = 0.85;
-    p.armRoll[0] = p.armRoll[1] = -0.22;
+  /// Arm [i] with its gripper at [grip]: a turret on a pedestal, two links
+  /// (the elbow up), a wrist over the gripper, its fingers closed on what
+  /// it holds; a lamp on the turret (green while it holds something).
+  void _drawArm(int i, vm.Vector3 grip, bool holding, double t) {
+    final arm = WorksLayout.arms[i], b = arm.base, l = arm.reach, k = l / 0.95;
+    _sh.setValues(b.x, 0.62 * k, b.z);
+    _wr.setValues(grip.x, grip.y + 0.17 * k, grip.z);
+    final dx = _wr.x - _sh.x, dz = _wr.z - _sh.z, h = _wr.y - _sh.y;
+    final r = math.sqrt(dx * dx + dz * dz), yaw = math.atan2(dx, dz);
+    final d = math.min(math.sqrt(r * r + h * h), 2 * l - 0.005);
+    final up = math.atan2(h, r) + math.acos((d / (2 * l)).clamp(-1.0, 1.0));
+    final hx = math.sin(yaw), hz = math.cos(yaw);
+    _el.setValues(_sh.x + hx * l * math.cos(up), _sh.y + l * math.sin(up), _sh.z + hz * l * math.cos(up));
+    // (Out of reach: the wrist where the forearm ends, towards it.)
+    final fx = _wr.x - _el.x, fy = _wr.y - _el.y, fz = _wr.z - _el.z, fl = math.max(1e-6, math.sqrt(fx * fx + fy * fy + fz * fz));
+    _wr.setValues(_el.x + fx / fl * l, _el.y + fy / fl * l, _el.z + fz / fl * l);
+    final ax = math.cos(yaw), az = -math.sin(yaw), gap = (holding ? 0.075 : 0.12) * k;
+    props
+      ..cyl(b.x, 0.12, b.z, 0.26 * k, 0.24, _armJoint)
+      ..box(b.x, _sh.y - 0.2 * k, b.z, 0.3 * k, 0.32 * k, 0.34 * k, _armPaint, yaw: yaw)
+      ..cyl(_sh.x, _sh.y, _sh.z, 0.11 * k, 0.26 * k, _armJoint, yaw: yaw, roll: math.pi / 2)
+      ..rod(_sh, _el, 0.075 * k, _armPaint)
+      ..cyl(_el.x, _el.y, _el.z, 0.085 * k, 0.21 * k, _armJoint, yaw: yaw, roll: math.pi / 2)
+      ..rod(_el, _wr, 0.058 * k, _armPaint)
+      ..box(_wr.x, _wr.y - 0.035 * k, _wr.z, 0.11 * k, 0.07 * k, 0.11 * k, _armJoint, yaw: yaw);
+    for (final sd in [-1.0, 1.0]) {
+      props.box(_wr.x + ax * sd * gap / 2, _wr.y - 0.11 * k, _wr.z + az * sd * gap / 2, 0.02, 0.11 * k, 0.045, _steel, yaw: yaw);
+    }
+    props.glow(b.x - hx * 0.15 * k, _sh.y - 0.1 * k, b.z - hz * 0.15 * k, 0.04, 0.04, 0.04, holding ? _greenGlow * 0.5 : _amberGlow * (0.25 + 0.15 * math.sin(t * 3 + i)));
   }
 
   // ── The letters' meshes ───────────────────────────────────────────────────
@@ -2032,9 +1925,12 @@ class GlyphWorks {
       ..metallicFactor = 0.05
       ..roughnessFactor = 0.62;
     _mat = mat;
-    scene.add(Node(name: 'glyph works', mesh: Mesh(merged(_walls()), mat)));
-    // The roof (and its signs) casts no shadow: the sun reaches the line.
+    // The hall casts no shadow (its walls, its roof): the sun reaches the
+    // line as through its skylights and windows.
+    scene.add(Node(name: 'glyph works', mesh: Mesh(merged(_walls()), mat))..castsShadows = false);
     scene.add(Node(name: 'glyph works roof', mesh: Mesh(merged(_roof()), mat))..castsShadows = false);
+    final glass = pbr(rgb(0.78, 0.87, 0.92, 0.16), roughness: 0.05, metallic: 0.1)..alphaMode = AlphaMode.blend;
+    scene.add(Node(name: 'glyph works glass', mesh: Mesh(merged(_glassParts), glass))..castsShadows = false);
   }
 
   /// A texture painted with a canvas; its mip levels averaged as data (the
@@ -2100,22 +1996,105 @@ class GlyphWorks {
     double pitch = 0,
   }) => _region(_atlas, region, w, h, 0, 0, 0, thick, plain: _white, edge: edge).transformed(trs(vm.Vector3(x, y, z), rotY: yaw, rotX: pitch));
 
+  /// The hall: its floor, walls with window bays of glass on the two street
+  /// sides (and high ones on the others), the door; and the line's
+  /// machines inside. (The glass is [_glassParts], its own material.)
   List<MeshData> _walls() {
-    const x0 = WorksLayout.x0, x1 = WorksLayout.x1, z0 = WorksLayout.z0, z1 = WorksLayout.z1, cx = WorksLayout.cx;
-    const w = x1 - x0, d = z1 - z0, h = WorksLayout.roof, zc = (z0 + z1) / 2;
-    const wall = 0xE6DED0, band = 0x2A3344, floor = 0x4B5566, steel = 0x3A4558;
+    const x0 = WorksLayout.x0, x1 = WorksLayout.x1, z0 = WorksLayout.z0, z1 = WorksLayout.z1, cx = WorksLayout.cx, cz = WorksLayout.cz;
+    const h = WorksLayout.roof, t = 0.3;
+    const wall = 0xD9D4CA, inner = 0xEAE7E0, base = 0x3A4252, steel = 0x3A4558, floor = 0x9A9C9E, frame = 0x2A3344;
     final parts = <MeshData>[
-      // Floor, back wall, side walls (a navy band along their feet).
-      _box(cx, 0.008, zc, w, 0.016, d, floor),
-      _box(cx, h / 2, z1 - 0.06, w, h, 0.12, wall),
-      _box(cx, 0.3, z1 - 0.125, w - 0.2, 0.6, 0.012, band),
-      for (final x in [x0 + 0.06, x1 - 0.06]) ...[
-        _box(x, h / 2, zc, 0.12, h, d, wall),
-        _box(x + (x < cx ? 0.065 : -0.065), 0.3, zc, 0.012, 0.6, d - 0.2, band),
-      ],
-      // The front's corner posts.
-      for (final x in [x0 + 0.1, x1 - 0.1]) _box(x, WorksLayout.open / 2, z0 + 0.1, 0.2, WorksLayout.open, 0.2, steel),
+      // The floor (polished concrete), yellow lines round the line's arms.
+      _box(cx, 0.008, cz, x1 - x0 - 0.2, 0.016, z1 - z0 - 0.2, floor),
+      for (final z in [WorksLayout.beltZ - 0.95, WorksLayout.beltZ + 1.75]) _box((WorksLayout.beltX0 + WorksLayout.beltX1) / 2 + 0.6, 0.018, z, WorksLayout.beltX1 - WorksLayout.beltX0 + 1.4, 0.004, 0.08, 0xE5B200),
     ];
+    // A wall along x (at [z]) or along z (at [x]) from [a] to [b]: solid
+    // under [sill] and over [head], piers between bays of [bay], glass in
+    // the bays.
+    void wallRun({double? x, double? z, required double a, required double b, required double sill, required double head, double bay = 2.4}) {
+      final alongX = z != null;
+      MeshData seg(double u0, double u1, double y0, double y1, int c) {
+        final um = (u0 + u1) / 2, ul = u1 - u0;
+        return alongX ? _box(um, (y0 + y1) / 2, z, ul, y1 - y0, t, c) : _box(x!, (y0 + y1) / 2, um, t, y1 - y0, ul, c);
+      }
+
+      parts
+        ..add(seg(a, b, head, h, wall))
+        ..add(seg(a, b, 0, 0.6, base));
+      final n = math.max(1, ((b - a) / bay).round());
+      final w = (b - a) / n;
+      for (var i = 0; i < n; i++) {
+        final u0 = a + i * w, u1 = u0 + w;
+        // The pier at the bay's start (and the last one's end).
+        parts.add(seg(u0, u0 + 0.4, 0.6, head, wall));
+        if (i == n - 1) parts.add(seg(u1 - 0.4, u1, 0.6, head, wall));
+        final g0 = u0 + (i == 0 ? 0.4 : 0.2), g1 = u1 - (i == n - 1 ? 0.4 : 0.2);
+        parts.add(seg(u0 + 0.4, u1 - (i == n - 1 ? 0.4 : 0.0), 0.6, sill, wall));
+        // The glass, its frame and a mullion across.
+        _glassParts.add(alongX ? _glassBox((g0 + g1) / 2, (sill + head) / 2, z, g1 - g0, head - sill, 0.02) : _glassBox(x!, (sill + head) / 2, (g0 + g1) / 2, 0.02, head - sill, g1 - g0));
+        for (final (yy, hh) in [(sill + 0.03, 0.06), (head - 0.03, 0.06), ((sill + head) / 2 + 0.6, 0.05)]) {
+          parts.add(alongX ? _box((g0 + g1) / 2, yy, z, g1 - g0, hh, 0.08, frame) : _box(x!, yy, (g0 + g1) / 2, 0.08, hh, g1 - g0, frame));
+        }
+        final mid = (g0 + g1) / 2;
+        parts.add(alongX ? _box(mid, (sill + head) / 2, z, 0.05, head - sill, 0.08, frame) : _box(x!, (sill + head) / 2, mid, 0.08, head - sill, 0.05, frame));
+      }
+    }
+
+    // Glass along the avenue (south) and the side street (east, either side
+    // of the loading door: a solid corner, then bays); high windows along
+    // the other two.
+    const dz = WorksLayout.doorZ, d0 = dz - WorksLayout.doorW / 2, d1 = dz + WorksLayout.doorW / 2, dh = WorksLayout.doorH;
+    wallRun(z: z0 + t / 2, a: x0, b: x1, sill: 0.9, head: 4.6);
+    parts
+      ..add(_box(x1 - t / 2, (0.6 + h) / 2, (z0 + t + d0) / 2, t, h - 0.6, d0 - z0 - t, wall))
+      ..add(_box(x1 - t / 2, 0.3, (z0 + t + d0) / 2, t, 0.6, d0 - z0 - t, base));
+    wallRun(x: x1 - t / 2, a: d1, b: z1, sill: 0.9, head: 4.6);
+    wallRun(z: z1 - t / 2, a: x0, b: x1, sill: 4.0, head: 5.3, bay: 3.4);
+    wallRun(x: x0 + t / 2, a: z0 + t, b: z1 - t, sill: 4.0, head: 5.3, bay: 3.4);
+    // The inside of the walls a lighter paint, up to the windows' sills.
+    parts
+      ..add(_box(cx, 2.0, z1 - t - 0.006, x1 - x0 - 0.7, 3.9, 0.012, inner))
+      ..add(_box(x0 + t + 0.006, 2.0, cz, 0.012, 3.9, z1 - z0 - 0.7, inner));
+    // The loading door: the wall over it, its shutter rolled up into the
+    // box over it inside, the guides it runs down, a steel threshold; a
+    // canopy over it outside, a bollard either side.
+    const xi = x1 - t;
+    parts
+      ..add(_box(x1 - t / 2, (dh + h) / 2, dz, t, h - dh, d1 - d0, wall))
+      ..add(_box(xi - 0.24, dh + 0.24, dz, 0.46, 0.46, d1 - d0 + 0.3, 0x5E6878))
+      ..add(_box(xi - 0.03, dh - 0.04, dz, 0.06, 0.08, d1 - d0, 0x8A96A6))
+      ..add(_box(x1 - t / 2, 0.01, dz, t + 0.04, 0.02, d1 - d0, 0x8A96A6))
+      ..add(_box(x1 + 0.6, dh + 0.3, dz, 1.2, 0.12, d1 - d0 + 0.8, frame));
+    for (final z in [d0 + 0.05, d1 - 0.05]) {
+      parts
+        ..add(_box(xi - 0.05, dh / 2, z, 0.1, dh, 0.1, 0x5E6878))
+        ..add(_cyl(x1 + 0.35, 0.5, z + (z < dz ? -0.35 : 0.35), 0.1, 1.0, 0xE5B200))
+        ..add(_cyl(x1 + 0.35, 0.82, z + (z < dz ? -0.35 : 0.35), 0.102, 0.08, 0x1B2233));
+    }
+    // A fire extinguisher just inside the door.
+    parts
+      ..add(_cyl(xi - 0.2, 0.27, d1 + 0.45, 0.08, 0.5, 0xD8343F))
+      ..add(_cyl(xi - 0.2, 0.56, d1 + 0.45, 0.03, 0.08, 0x1B2233));
+    // The drone's dock: a post on a base plate, its pad on top (a yellow
+    // rim, a landing ring).
+    const kx = WorksLayout.dockX, ky = WorksLayout.dockY, kz = WorksLayout.dockZ;
+    parts
+      ..add(_box(kx, 0.03, kz, 0.62, 0.06, 0.62, frame))
+      ..add(_box(kx, ky / 2, kz, 0.2, ky, 0.2, steel))
+      ..add(_box(kx, ky - 0.08, kz, 0.4, 0.06, 0.4, steel))
+      ..add(_box(kx, ky - 0.03, kz, 0.9, 0.06, 0.9, 0x1B2233))
+      ..add(_cyl(kx, ky + 0.002, kz, 0.3, 0.004, 0xEAE7E0, segments: 24))
+      ..add(_cyl(kx, ky + 0.004, kz, 0.26, 0.004, 0x1B2233, segments: 24));
+    for (final (ox, oz, w, d) in [(0.0, -0.43, 0.9, 0.04), (0.0, 0.43, 0.9, 0.04), (-0.43, 0.0, 0.04, 0.82), (0.43, 0.0, 0.04, 0.82)]) {
+      parts.add(_box(kx + ox, ky + 0.004, kz + oz, w, 0.012, d, 0xE5B200));
+    }
+    // Control cabinets along the back wall, a screen on each.
+    for (var i = 0; i < 4; i++) {
+      final x = WorksLayout.stepX[1] + i * 3.4;
+      parts
+        ..add(_box(x, 1.0, z1 - t - 0.35, 1.1, 2.0, 0.6, 0x2E3A4E))
+        ..add(_board(x, 1.45, z1 - t - 0.66, 0.6, 0.38, _screen, thick: 0.01));
+    }
     // The belt: rubber on a steel frame, legs, a roller at each end.
     const bx0 = WorksLayout.beltX0, bx1 = WorksLayout.beltX1, bz = WorksLayout.beltZ, by = WorksLayout.beltY, bw = WorksLayout.beltW;
     const bm = (bx0 + bx1) / 2, bl = bx1 - bx0;
@@ -2131,28 +2110,32 @@ class GlyphWorks {
     for (final x in [bx0 + 0.02, bx1 - 0.02]) {
       parts.add(_cyl(x, by - 0.035, bz, 0.035, bw - 0.03, 0x8A96A6, pitch: math.pi / 2));
     }
+    final st = WorksLayout.stepX;
     // 1 The feeder: a low hopper over the belt's start, the bytes come out
-    // of its slot; the string's board on the wall above.
+    // of its slot; the string's board on its stand behind.
     parts
-      ..add(_box(-16.12, by + 0.14, bz, 0.6, 0.28, 0.52, 0x2E6DA8))
-      ..add(_box(-16.12, by + 0.3, bz, 0.66, 0.05, 0.58, 0x2A3344))
+      ..add(_box(st[0] - 0.07, by + 0.14, bz, 0.6, 0.28, 0.52, 0x2E6DA8))
+      ..add(_box(st[0] - 0.07, by + 0.3, bz, 0.66, 0.05, 0.58, 0x2A3344))
       ..add(_box(_feedOut + 0.002, by + 0.06, bz, 0.004, 0.11, 0.3, 0x0B0F16))
       ..add(_box(_feedOut - 0.06, by + 0.2, bz - 0.27, 0.05, 0.05, 0.03, 0x1B2233))
-      ..add(_box(_stripX, _stripY, z1 - 0.125, 1.84, 0.3, 0.01, 0x2A3344));
+      ..add(_box(_stripX, _stripY, _stripZ + 0.01, 1.92, 0.36, 0.03, 0x2A3344));
+    for (final s in [-0.9, 0.9]) {
+      parts.add(_box(_stripX + s, _stripY / 2, _stripZ + 0.04, 0.05, _stripY, 0.05, steel));
+    }
     // 2 The decoder: low over the belt (the bytes go in one side, the code
     // point comes out of the other), its label, display and lamps in front.
     parts
-      ..add(_box(-15.15, by + 0.16, bz, 0.5, 0.32, 0.54, 0x3A4558))
-      ..add(_box(-15.15, by + 0.335, bz, 0.54, 0.03, 0.58, 0x2A3344))
-      ..add(_board(-15.15, by + 0.285, bz - 0.278, 0.36, 0.05, _decoderPanel, thick: 0.006))
-      ..add(_box(-15.15, by + 0.075, bz - 0.274, 0.4, 0.05, 0.006, 0x0B0F16))
-      ..add(_box(-15.15, by + 0.19, bz - 0.274, 0.4, 0.09, 0.006, 0x0B0F16));
+      ..add(_box(st[1], by + 0.16, bz, 0.5, 0.32, 0.54, 0x3A4558))
+      ..add(_box(st[1], by + 0.335, bz, 0.54, 0.03, 0.58, 0x2A3344))
+      ..add(_board(st[1], by + 0.285, bz - 0.278, 0.36, 0.05, _decoderPanel, thick: 0.006))
+      ..add(_box(st[1], by + 0.075, bz - 0.274, 0.4, 0.05, 0.006, 0x0B0F16))
+      ..add(_box(st[1], by + 0.19, bz - 0.274, 0.4, 0.09, 0.006, 0x0B0F16));
     // 3 The font cases on a gantry over the belt, in the order they're
     // looked in.
-    for (final x in [-14.64, -13.66]) {
+    for (final x in [st[2] - 0.49, st[2] + 0.49]) {
       parts.add(_box(x, (by + _caseY + 0.29) / 2, bz + 0.2, 0.04, _caseY + 0.29 - by + 0.02, 0.04, steel));
     }
-    parts.add(_box(-14.15, _caseY + 0.3, bz + 0.2, 1.02, 0.04, 0.05, steel));
+    parts.add(_box(st[2], _caseY + 0.3, bz + 0.2, 1.02, 0.04, 0.05, steel));
     for (var i = 0; i < 3; i++) {
       parts
         ..add(_box(_caseX[i], _caseY + 0.125, bz + 0.04, 0.28, 0.25, 0.28, 0x9C6B3C))
@@ -2160,7 +2143,7 @@ class GlyphWorks {
         ..add(_box(_caseX[i], _caseY + 0.005, bz - 0.04, 0.22, 0.012, 0.12, 0x0B0F16));
     }
     // 4 The composing stick: a rail with a ruler in em, a ledge behind.
-    const sm = _stickX0 + _stickEm * _em / 2, sw = _stickEm * _em + 0.04;
+    final sm = _stickX0 + _stickEm * _em / 2, sw = _stickEm * _em + 0.04;
     parts
       ..add(_box(sm, _railY - 0.02, _sortZ, sw, 0.04, 0.1, steel))
       ..add(_board(sm, _railY - 0.02, _sortZ - 0.052, sw, 0.04, _ruler, thick: 0.004))
@@ -2168,19 +2151,21 @@ class GlyphWorks {
     for (final x in [_stickX0 - 0.03, _stickX0 + _stickEm * _em + 0.03]) {
       parts.add(_box(x, (by + _railY) / 2, _sortZ, 0.04, _railY - by, 0.04, steel));
     }
-    // 5 The wire bender: its board leaning back, a spool, the crank's wheel.
+    // 5 The wire bender: its board leaning back, a spool, the crank's wheel
+    // (turned by its motor).
     MeshData leaning(double x, double ly, double lz, double sx, double sy, double sz, int rgb, {Rect patch = _white}) {
       final m = _frame(x, vm.Matrix4.identity());
       final c = m.transform3(vm.Vector3(0, ly, lz));
       return _box(c.x, c.y, c.z, sx, sy, sz, rgb, pitch: _tilt, patch: patch);
     }
 
-    final bx = WorksLayout.stepX[4], rx = WorksLayout.stepX[5];
+    final bx = st[4], rx = st[5];
     parts
       ..add(leaning(bx, 0.3, 0.015, 0.62, 0.62, 0.02, 0x9C6B3C))
       ..add(leaning(bx, 0.3, 0.03, 0.66, 0.66, 0.02, 0x2A3344))
       ..add(_cyl(bx - 0.36, by + 0.12, bz + 0.12, 0.08, 0.06, 0xE8A04A, pitch: math.pi / 2))
-      ..add(_cyl(bx + 0.38, by + 0.32, bz + 0.16, 0.1, 0.03, 0x3A4558, roll: math.pi / 2));
+      ..add(_cyl(bx + 0.38, by + 0.32, bz + 0.16, 0.1, 0.03, 0x3A4558, roll: math.pi / 2))
+      ..add(_box(bx + 0.38, by + 0.1, bz + 0.3, 0.16, 0.2, 0.16, 0x2E6DA8));
     // 6 The rasterizer: the plate leaning back on its stand (a grid under
     // the pixels), its gantry's rails, the control box.
     parts
@@ -2204,37 +2189,71 @@ class GlyphWorks {
         ..add(_box(gx + s, (gy - 0.035) / 2, gz - 0.02, 0.04, gy - 0.035, 0.04, steel))
         ..add(_box(gx + s, gy * 0.75, gz + 0.22, 0.035, gy * 1.4, 0.035, steel, pitch: -0.35));
     }
-    // (Bare walls: the line is what's to see.) A fire extinguisher.
-    parts
-      ..add(_cyl(x0 + 0.32, 0.27, z0 + 0.35, 0.08, 0.5, 0xD8343F))
-      ..add(_cyl(x0 + 0.32, 0.56, z0 + 0.35, 0.03, 0.08, 0x1B2233));
     return parts;
   }
 
+  /// The hall's glass (filled by [_walls]).
+  final _glassParts = <MeshData>[];
+
+  MeshData _glassBox(double x, double y, double z, double w, double h, double d) =>
+      CuboidGeometry(vm.Vector3(w, h, d)).extractMeshData().transformed(trs(vm.Vector3(x, y, z)));
+
+  /// The roof (skylights over the line, a parapet round it, its signs) and
+  /// what hangs from its trusses inside: each step's sign over it, lamps
+  /// over the line.
   List<MeshData> _roof() {
     const x0 = WorksLayout.x0, x1 = WorksLayout.x1, z0 = WorksLayout.z0, z1 = WorksLayout.z1, cx = WorksLayout.cx;
-    const h = WorksLayout.roof, open = WorksLayout.open, zc = (z0 + z1) / 2;
-    final parts = <MeshData>[
-      _box(cx, h + 0.08, zc - 0.1, x1 - x0 + 0.3, 0.16, z1 - z0 + 0.4, 0x2A3344),
-      _box(cx, h + 0.17, z0 - 0.28, x1 - x0 + 0.3, 0.04, 0.05, 0xFFC23D),
-      // The fascia over the opening, and the sign on it.
-      _box(cx, (open + h) / 2, z0 + 0.05, x1 - x0, h - open, 0.1, 0x1B2A44),
-      _board(cx, (open + h) / 2 + 0.01, z0 - 0.02, 5.2, 0.52, _sign, edge: 0x1B2A44, thick: 0.04),
-    ];
+    const h = WorksLayout.roof, tr = WorksLayout.trusses, zc = (z0 + z1) / 2;
+    // The roof's deck, open for three skylights (bands along x, over the
+    // line and either side of it).
+    final sky = [WorksLayout.beltZ - 2.6, WorksLayout.beltZ, WorksLayout.beltZ + 2.6];
+    final parts = <MeshData>[];
+    var from = z0 - 0.1;
+    for (final z in sky) {
+      parts.add(_box(cx, h + 0.1, (from + z - 0.6) / 2, x1 - x0 + 0.2, 0.2, z - 0.6 - from, 0x5A6170));
+      _glassParts.add(_glassBox(cx, h + 0.12, z, x1 - x0 - 0.6, 0.04, 1.2));
+      from = z + 0.6;
+    }
+    parts.add(_box(cx, h + 0.1, (from + z1 + 0.1) / 2, x1 - x0 + 0.2, 0.2, z1 + 0.1 - from, 0x5A6170));
+    // The parapet, a dark cornice band.
+    parts
+      ..add(_box(cx, h + 0.35, z0 + 0.05, x1 - x0 + 0.2, 0.5, 0.2, 0x2A3344))
+      ..add(_box(cx, h + 0.35, z1 - 0.05, x1 - x0 + 0.2, 0.5, 0.2, 0x2A3344))
+      ..add(_box(x0 + 0.05, h + 0.35, zc, 0.2, 0.5, z1 - z0, 0x2A3344))
+      ..add(_box(x1 - 0.05, h + 0.35, zc, 0.2, 0.5, z1 - z0, 0x2A3344));
+    // The signs: over the windows on the side facing the plaza, and on the
+    // avenue's.
+    parts
+      ..add(_board(x1 + 0.03, 5.45, (z0 + WorksLayout.doorZ) / 2 + 3.6, 6.4, 0.95, _sign, edge: 0x1B2A44, thick: 0.08, yaw: -math.pi / 2))
+      ..add(_board(cx + 2.0, 5.45, z0 - 0.03, 6.4, 0.95, _sign, edge: 0x1B2A44, thick: 0.08));
+    // The trusses across, the purlins along.
+    for (var x = x0 + 1.4; x < x1 - 0.5; x += 2.8) {
+      parts
+        ..add(_box(x, tr + 0.03, zc, 0.16, 0.06, z1 - z0 - 0.6, 0x2A3344))
+        ..add(_box(x, h - 0.08, zc, 0.12, 0.08, z1 - z0 - 0.6, 0x2A3344));
+      for (var z = z0 + 1.0; z < z1 - 0.6; z += 1.5) {
+        parts.add(_box(x, (tr + h) / 2, z, 0.05, h - tr - 0.1, 0.05, 0x2A3344, pitch: 0.45));
+      }
+    }
+    for (final z in [z0 + 2.0, WorksLayout.beltZ - 1.3, WorksLayout.beltZ + 1.3, z1 - 2.0]) {
+      parts.add(_box(cx, tr + 0.06, z, x1 - x0 - 0.6, 0.08, 0.1, 0x2A3344));
+    }
     // Each step's sign, hung over it; lamps over the line.
     final signs = [...WorksLayout.stepX, WorksLayout.boardX];
     for (var i = 0; i < 7; i++) {
-      final x = signs[i], z = i < 6 ? WorksLayout.beltZ - 0.3 : WorksLayout.boardZ + 0.25, y = i < 6 ? 2.08 : 1.75;
+      final x = signs[i], z = i < 6 ? WorksLayout.beltZ - 0.3 : WorksLayout.boardZ + 0.25, y = i < 6 ? 2.45 : 2.2;
       parts.add(_board(x, y, z, 0.86, 0.22, _stepSigns[i], thick: 0.02));
       for (final s in [-0.34, 0.34]) {
-        parts.add(_box(x + s, (y + 0.11 + h) / 2, z, 0.012, h - y - 0.11, 0.012, 0x1B2233));
+        parts.add(_box(x + s, (y + 0.11 + tr) / 2, z, 0.012, tr - y - 0.11, 0.012, 0x1B2233));
       }
     }
-    for (final x in [-15.6, -14.15, -12.94, -11.3]) {
-      parts
-        ..add(_cyl(x, h - 0.2, WorksLayout.beltZ + 0.1, 0.012, 0.4, 0x1B2233))
-        ..add(_cyl(x, h - 0.45, WorksLayout.beltZ + 0.1, 0.2, 0.12, 0x2E6DA8, top: 0.06))
-        ..add(_cyl(x, h - 0.515, WorksLayout.beltZ + 0.1, 0.16, 0.012, 0xFFF1D6, patch: _lampPatch));
+    for (var x = WorksLayout.beltX0 + 0.8; x < WorksLayout.beltX1 + 1.2; x += 2.6) {
+      for (final z in [WorksLayout.beltZ + 0.1, WorksLayout.beltZ - 2.6]) {
+        parts
+          ..add(_cyl(x, (tr + 4.3) / 2, z, 0.012, tr - 4.3, 0x1B2233))
+          ..add(_cyl(x, 4.25, z, 0.26, 0.16, 0x2E6DA8, top: 0.08))
+          ..add(_cyl(x, 4.165, z, 0.21, 0.012, 0xFFF1D6, patch: _lampPatch));
+      }
     }
     return parts;
   }
@@ -2383,25 +2402,16 @@ class GlyphWorks {
 
 /// One letter's way down the line: when each step starts ([at] 0 the
 /// bytes … 6 the board), when its work there is done ([end]; it waits
-/// there until the next step's start) and when its pixels land ([at] 7);
-/// its maker, when they set off for the feeder and when they're back home.
+/// there until the next step's start), when its pixels land ([at] 7) and
+/// when the line's done with it ([homeAt]: the arm back at rest).
 class _Steps {
-  _Steps(this.k, this.maker);
-  final int k, maker;
+  _Steps(this.k);
+  final int k;
   final at = Float64List(8), end = Float64List(7);
-  double walkIn = 0, homeAt = 0;
-
-  /// Its maker's walks (see [GlyphWorks._walksOf]), and where on the board
-  /// they were made for.
-  Walk? toFeeder, toBoard, toHome;
-
-  /// Back out of the way (into the lane) while the walkway's busy, if it
-  /// is.
-  Walk? stepBack;
-  double slotX = double.nan;
+  double homeAt = 0;
 
   /// A talk's letter that isn't carried down the line: it only drops into
-  /// the stick (at [at] 3) and lands on the board (at [at] 7), with nobody.
+  /// the stick (at [at] 3) and lands on the board (at [at] 7).
   bool ghost = false;
 
   /// The step it's at, at [t]: −1 before, 7 once on the board.
@@ -2414,10 +2424,10 @@ class _Steps {
   }
 }
 
-/// A talk's moments on its clock (see [GlyphWorks.planTalk]): its maker
-/// setting off, its letter at each step ([at] 7: on the board), the whole
+/// A talk's moments on its clock (see [GlyphWorks.planTalk]): the line
+/// starting, its letter at each step ([at] 7: on the board), the whole
 /// name set in the stick, the line measured, the whole name on the board,
-/// and the maker home again.
+/// and the line done with it ([home]).
 class WorksTalk {
   const WorksTalk({
     required this.go,

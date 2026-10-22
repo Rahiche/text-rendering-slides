@@ -230,8 +230,8 @@ class CityProps {
         (s * 15.2, Plan.plazaZ0 + 0.9),
         // (On the right, the vending machines stand there: by the yard.)
         s < 0 ? (s * 16.3, Plan.plazaZ0 + 1.9) : (16.45, -2.75),
-        // (On the left, the Glyph Works stands in the back corner.)
-        if (s > 0) ...[(s * 16.1, Plan.plazaZ1 - 0.8), (s * 15.0, Plan.plazaZ1 - 0.7)],
+        (s * 16.1, Plan.plazaZ1 - 0.8),
+        (s * 15.0, Plan.plazaZ1 - 0.7),
       ],
       (-12.5, Plan.plazaZ0 + 0.55),
       (-15.1, Plan.plazaZ0 + 0.5),
@@ -261,10 +261,11 @@ class CityProps {
       fronts.addInstance(f, color: v4(hex3(k.isEven ? 0xD8ECFF : 0xFFF1D6)));
     }
 
-    // Facing the avenue at the outer blocks' corners.
+    // Facing the avenue at the outer blocks' corners (on the left, on the
+    // pavement against the Glyph Works' hall, its front further out).
     for (final s in [-1.0, 1.0]) {
       for (var i = 0; i < 3; i++) {
-        machine(s * (31.0 + i * 1.08), Plan.aveZ1 + 2.6, 0);
+        machine(s * (31.0 + i * 1.08), s < 0 ? Plan.aveZ1 + 1.98 : Plan.aveZ1 + 2.6, 0);
       }
     }
     for (final (name, m) in [('vending machines', bodies), ('vending fronts', fronts)]) {

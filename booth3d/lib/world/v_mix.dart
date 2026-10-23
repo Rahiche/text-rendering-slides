@@ -86,6 +86,11 @@ class TalkMix extends Vignette {
 
   /// Each run's line: its number, top and bottom (px).
   final _lines = <(int, double, double)>[];
+
+  /// The runs side by side on screen, left to right along each line (the
+  /// cuts go between them; the right-to-left words stand the other way
+  /// round from the order they were typed).
+  final _neighbours = <(int, int)>[];
   bool _ready = false;
   int _act = 0;
 
@@ -123,6 +128,12 @@ class TalkMix extends Vignette {
     }
     final width = tp.width, height = tp.height;
     tp.dispose();
+    for (final line in {for (final l in _lines) l.$1}) {
+      final on = [for (var i = 0; i < _runs.length; i++) if (_lines[i].$1 == line) i]..sort((a, b) => _boxes[a].left.compareTo(_boxes[b].left));
+      for (var k = 0; k + 1 < on.length; k++) {
+        _neighbours.add((on[k], on[k + 1]));
+      }
+    }
     // Placed for the camera: as wide as [_wide] of the frame, facing it.
     final f = (_shot.target - _shot.eye).normalized();
     final right = vm.Vector3(0, 1, 0).cross(f).normalized(), up = f.cross(right);
@@ -298,13 +309,11 @@ class TalkMix extends Vignette {
       // The cuts between runs (itemize), drawn down each boundary.
       final cut = eo(seg(u, 3.4, 4.2)) * out;
       if (cut > 0.001) {
-        for (var i = 0; i + 1 < _boxes.length; i++) {
-          if (_lines[i + 1].$1 != _lines[i].$1) continue; // (a line between them)
-          // (Between them on screen, as tall as their ink: the line's own
+        for (final (i, j) in _neighbours) {
+          // (In the gap between them, as tall as their ink: the line's own
           // box is far taller, for the fallback fonts' ascents.)
-          final a = _boxes[i], b = _boxes[i + 1];
-          final x = a.right <= b.left ? (a.right + b.left) / 2 : (b.right + a.left) / 2;
-          final top = math.min(_inkTop(i), _inkTop(i + 1)) - 12, bottom = math.max(_inkBottom(i), _inkBottom(i + 1)) + 12;
+          final x = (_boxes[i].right + _boxes[j].left) / 2;
+          final top = math.min(_inkTop(i), _inkTop(j)) - 12, bottom = math.max(_inkBottom(i), _inkBottom(j)) + 12;
           _bar(x, top, x, top + (bottom - top) * cut, vm.Vector4(0.3, 2.0, 2.6, 1));
         }
       }

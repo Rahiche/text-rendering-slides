@@ -1615,7 +1615,8 @@ class Site3D {
   }
 }
 
-/// The site's street works: the delivery's, else the cleanup truck's.
+/// The site's street works: the delivery's, else the cleanup truck's; and
+/// the new manager's party on the front pavement.
 class _SiteWork implements StreetWork {
   _SiteWork(this.site);
   final Site3D site;
@@ -1653,6 +1654,9 @@ class _SiteWork implements StreetWork {
 
   @override
   bool crosswalkBusy(double x, double t) => site.delivery.crosswalkBusy(x, t);
+
+  @override
+  (double, double)? pavementBusy(double t) => site.verdict.pavementBusy(t);
 
   @override
   void trucks(double t, List<(vm.Vector3, vm.Vector3)> out) {

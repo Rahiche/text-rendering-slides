@@ -835,6 +835,9 @@ class Delivery3D implements StreetWork {
   }
 
   @override
+  (double, double)? pavementBusy(double t) => null;
+
+  @override
   bool crosswalkBusy(double x, double t) {
     for (final (px, pz, yaw, _) in _ahead(t)) {
       final over = footprintAcross(px, pz, yaw, _half + 0.3, 1.05 + 0.3, Plan.aveZ0 - 0.3, Plan.aveZ1 + 0.3);

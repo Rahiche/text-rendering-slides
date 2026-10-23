@@ -105,6 +105,11 @@ class CrewBreaks {
   final _breaks = <_Break>[];
   final _taken = <int, List<(double, double)>>{}; // spot → reserved intervals
   final _machines = [<(double, double)>[], <(double, double)>[]];
+
+  /// When people go by the corner by the machines ([_corner]) on their way
+  /// to one, and from one with a can (the breaks planned so far): half a
+  /// second either side.
+  final _cornerIn = <(double, double)>[], _cornerOff = <(double, double)>[];
   final _follows = <_Follow>[];
   final _down = <(double, double)>[]; // when the deck is down (on the ground)
   double _w = 12;
@@ -121,6 +126,8 @@ class CrewBreaks {
     for (final m in _machines) {
       m.clear();
     }
+    _cornerIn.clear();
+    _cornerOff.clear();
     _findDown(plan);
     final t0 = plan.t0, end = t0 + plan.len;
     final serial = plan.job.serial;
@@ -153,7 +160,7 @@ class CrewBreaks {
     for (final b in _breaks) {
       // ignore: avoid_print
       print(
-        'PLAN break who=${b.who} ${b.kind.name} ${b.from.toStringAsFixed(1)}-${b.to.toStringAsFixed(1)} leave=${b.leave.toStringAsFixed(1)} arrive=${b.arrive.toStringAsFixed(1)} depart=${b.depart.toStringAsFixed(1)} on=${b.stepOn.toStringAsFixed(1)} spot=${b.spotIndex} m=${b.machine}',
+        'PLAN break who=${b.who} ${b.kind.name} ${b.from.toStringAsFixed(1)}-${b.to.toStringAsFixed(1)} leave=${b.leave.toStringAsFixed(1)} arrive=${b.arrive.toStringAsFixed(1)} depart=${b.depart.toStringAsFixed(1)} on=${b.stepOn.toStringAsFixed(1)} spot=${b.spotIndex} m=${b.machine}${b.machine >= 0 ? ' off=${b.walkOff.toStringAsFixed(1)}' : ''}',
       );
     }
     for (final f in _follows) {
@@ -318,8 +325,33 @@ class CrewBreaks {
       final spot = _spots[spotIndex];
       final out = _groundRoute(behind, group, spot, isDriver: isDriver);
       final home = [spot.at, if (kind == BreakKind.coffee) _binStop, ...out.reversed.skip(1)];
-      final dOut = _length(out) / _vOut, dHome = _length(home) / _vHome;
-      final arrive = leave + step + dOut;
+      final dHome = _length(home) / _vHome;
+      // Coffee: by way of a machine free when they get there, the near one
+      // if it can be (the far one's way goes round behind whoever's at the
+      // near one). A machine is someone's from a moment before they're at
+      // it till they're at their spot with the can: nobody meets there.
+      // Nobody crosses anybody's way at the corner either: by it on the way
+      // when nobody's going off past it, and off from the machine when
+      // nobody's going by it at all (opening the can there meanwhile).
+      var machine = -1, way = out, walkOff = 0.0, byIn = 0.0, byOff = 0.0;
+      if (kind == BreakKind.coffee) {
+        for (final m in const [1, 0]) {
+          final w = [...out.take(out.length - 1), ..._toMachine(m)];
+          final at = leave + step + _length(w) / _vOut, by = _byCorner(w, leave + step, at);
+          if (!_free(_cornerOff, by - 0.5, by + 0.5)) continue;
+          final back = _fromMachine(m, spot.at), tBack = _length(back) / _vOut;
+          var go = at + _buyTime, off = _byCorner(back, go, go + tBack);
+          while (go < at + _buyTime + 4 && !(_free(_cornerIn, off - 0.5, off + 0.5) && _free(_cornerOff, off - 0.5, off + 0.5))) {
+            go += 0.1;
+            off = _byCorner(back, go, go + tBack);
+          }
+          if (go >= at + _buyTime + 4 || !_free(_machines[m], at - 1, go + tBack)) continue;
+          (machine, way, walkOff, byIn, byOff) = (m, w, go, by, off);
+          break;
+        }
+        if (machine < 0) continue;
+      }
+      final arrive = leave + step + _length(way) / _vOut;
       // Back on the deck as late as it allows (when it's down), after a
       // moment waiting behind it.
       final stepOn = isDriver ? latest - 0.3 : _lastDown(latest - step - 0.3, step + 0.1, arrive + minStay + dHome + 0.3);
@@ -327,19 +359,15 @@ class CrewBreaks {
       final behindAt = isDriver ? stepOn : stepOn - 0.3;
       final depart = behindAt - dHome;
       if (depart - arrive < minStay) return false; // the other spots are no nearer
-      // Coffee: a machine free for the purchase on arrival.
-      var machine = -1;
-      if (kind == BreakKind.coffee) {
-        for (var m = 0; m < 2 && machine < 0; m++) {
-          if (_free(_machines[m], arrive, arrive + _buyTime)) machine = m;
-        }
-        if (machine < 0) continue;
-      }
-      final stay = kind == BreakKind.coffee ? arrive + _buyTime + 0.8 : arrive;
+      final stay = machine >= 0 ? walkOff + _length(_fromMachine(machine, spot.at)) / _vOut : arrive;
       if (!_free(_taken[spotIndex] ?? const [], stay - 0.5, depart + 0.5)) continue;
       // Taken.
       (_taken[spotIndex] ??= []).add((stay - 0.5, depart + 0.5));
-      if (machine >= 0) _machines[machine].add((arrive, arrive + _buyTime));
+      if (machine >= 0) {
+        _machines[machine].add((arrive - 1, stay));
+        _cornerIn.add((byIn - 0.5, byIn + 0.5));
+        _cornerOff.add((byOff - 0.5, byOff + 0.5));
+      }
       b
         ..kind = kind
         ..spot = spot
@@ -350,13 +378,14 @@ class CrewBreaks {
         ..leave = leave
         ..arrive = arrive
         ..buyAt = arrive
+        ..walkOff = walkOff
         ..stay = stay
         ..depart = depart
         ..behindAt = behindAt
         ..stepOn = stepOn
         ..home = stepOn + step
         ..to = isDriver ? b.to : stepOn + step + 0.4
-        ..out.addAll(machine >= 0 ? [...out.take(out.length - 1), BreakSpots.buyAt(machine)] : out)
+        ..out.addAll(way)
         ..back.addAll(home);
       return true;
     }
@@ -377,24 +406,52 @@ class CrewBreaks {
 
   static final _binStop = vm.Vector3(15.75, 0, -5.05);
 
+  /// The corner by the machines, in front of the near one (1), where the
+  /// way to them comes down past the can bin.
+  static final _corner = vm.Vector3(15.55, 0, -5.4);
+
+  /// From [_corner] to buy at machine [m]: straight up to the near one; to
+  /// the far one (0), round behind whoever's at the near one.
+  static List<vm.Vector3> _toMachine(int m) => [if (m == 0) ...BreakSpots.roundNear, BreakSpots.buyAt(m)];
+
+  /// From machine [m] to [spot] with the can: from the far one, back round
+  /// behind the near one to [_corner] first.
+  static List<vm.Vector3> _fromMachine(int m, vm.Vector3 spot) => [BreakSpots.buyAt(m), if (m == 0) ...[...BreakSpots.roundNear.reversed, _corner], spot];
+
+  /// When the way [pts], walked evenly from [t0] to [t1], goes nearest
+  /// [_corner].
+  static double _byCorner(List<vm.Vector3> pts, double t0, double t1) {
+    var best = double.infinity, at = 0.0, acc = 0.0;
+    for (var i = 0; i + 1 < pts.length; i++) {
+      final a = pts[i], b = pts[i + 1], l = a.distanceTo(b);
+      final f = l < 1e-6 ? 0.0 : (((_corner.x - a.x) * (b.x - a.x) + (_corner.z - a.z) * (b.z - a.z)) / (l * l)).clamp(0.0, 1.0);
+      final dx = a.x + (b.x - a.x) * f - _corner.x, dz = a.z + (b.z - a.z) * f - _corner.z;
+      if (dx * dx + dz * dz < best) {
+        best = dx * dx + dz * dz;
+        at = acc + l * f;
+      }
+      acc += l;
+    }
+    return t0 + (t1 - t0) * at / math.max(acc, 1e-6);
+  }
+
   /// From behind the platform ([from]) to [spot] of [group]: along the back
-  /// of the platform, round the wall's end on the right for the machines.
+  /// of the platform, round the wall's end on the right for the machines
+  /// (the driver from the truck's crane controls, straight over).
   List<vm.Vector3> _groundRoute(vm.Vector3 from, int group, _Spot spot, {required bool isDriver}) {
     final w = _w;
     final e = Crew3D.endX(w);
     final pts = <vm.Vector3>[from];
     switch (group) {
       case 0:
-        if (isDriver) {
-          pts.add(vm.Vector3(15.55, 0, -4.0));
-        } else {
+        if (!isDriver) {
           // (Round the platform's end, then in front of the brick yard.)
           pts
             ..add(vm.Vector3(e, 0, from.z))
             ..add(vm.Vector3(e, 0, -2.62))
             ..add(vm.Vector3(15.55, 0, -2.62));
         }
-        pts.add(vm.Vector3(15.55, 0, -5.4));
+        pts.add(_corner);
       case 1:
         pts.add(vm.Vector3(-(w / 2 + 1.6), 0, 2.45));
       default:
@@ -586,11 +643,11 @@ class CrewBreaks {
     if (t >= b.depart) return _along(b.back, b.depart, b.behindAt, t, out.pos);
     // Coffee: from the machine to the spot after buying.
     if (b.machine >= 0 && t < b.stay) {
-      if (t < b.buyAt + _buyTime) {
+      if (t < b.walkOff) {
         out.pos.setFrom(b.out.last);
         return (false, -math.pi / 2);
       }
-      return _along([b.out.last, b.spot!.at], b.buyAt + _buyTime, b.stay, t, out.pos);
+      return _along(_fromMachine(b.machine, b.spot!.at), b.walkOff, b.stay, t, out.pos);
     }
     out.pos.setFrom(b.spot!.at);
     return (false, 0);
@@ -626,7 +683,7 @@ class CrewBreaks {
     final (walking, heading) = _place(b, t, me);
     me.pos.y = b.who != driver ? Crew3D.standY(me.pos, _w, floor) : 0;
     if (walking) {
-      OffDuty.walk(me, t, t < b.arrive ? _vOut : _vHome, b.seed);
+      OffDuty.walk(me, t, t < b.stay ? _vOut : _vHome, b.seed);
       me.yaw = heading;
       if (b.kind == BreakKind.coffee && t >= b.arrive && t < b.stepOn) {
         // With the can; it goes in the bin on the way past.
@@ -727,7 +784,11 @@ class CrewBreaks {
       return;
     }
     if (t < b.stay) {
-      // Walking over with it.
+      // Opening it at the machine till the way to the spot is clear (then
+      // walking over with it).
+      OffDuty.stand(me, t, b.seed);
+      me.yaw = -math.pi / 2;
+      OffDuty.hold(me, 1, 0.9);
       _can(me, b, t);
       return;
     }
@@ -985,10 +1046,10 @@ class _Spot {
 /// One person's time off: [who] (a builder, or [CrewBreaks.driver]) is ours
 /// to pose over [from]–[to]. A trip away when [spot] is set: stepping off
 /// the platform at [start] (their rest spot) at [leave] to [behind] it,
-/// along [out] to arrive at [arrive] (coffee: buying at [buyAt], at the
-/// spot from [stay]), leaving at [depart] along [back], behind the platform
-/// again at [behindAt], stepping on at [stepOn], back at [home]. The
-/// driver's trips start and end at [door].
+/// along [out] to arrive at [arrive] (coffee: buying at [buyAt], off from
+/// the machine at [walkOff], at the spot from [stay]), leaving at [depart]
+/// along [back], behind the platform again at [behindAt], stepping on at
+/// [stepOn], back at [home]. The driver's trips start and end at [door].
 class _Break {
   _Break(this.who, this.from, this.to, this.seed);
   final int who;
@@ -999,7 +1060,7 @@ class _Break {
   vm.Vector3 door = vm.Vector3.zero(), start = vm.Vector3.zero(), behind = vm.Vector3.zero();
   _Spot? spot;
   int spotIndex = -1, machine = -1;
-  double leave = 0, arrive = 0, buyAt = 0, stay = 0, depart = 0, behindAt = 0, stepOn = 0, home = 0;
+  double leave = 0, arrive = 0, buyAt = 0, walkOff = 0, stay = 0, depart = 0, behindAt = 0, stepOn = 0, home = 0;
   final out = <vm.Vector3>[], back = <vm.Vector3>[];
 }
 

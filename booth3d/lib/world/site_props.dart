@@ -20,6 +20,11 @@ abstract final class BreakSpots {
   /// Where a customer stands to buy from machine `m` (facing it, +x).
   static vm.Vector3 buyAt(int m) => vm.Vector3(vendX - 0.92, 0, vendZ[m]);
 
+  /// The way to machine 0 (the far one) from in front of machine 1: on past
+  /// it, then round behind whoever's buying there (between them and a
+  /// parked delivery truck), never through where they stand.
+  static final roundNear = [vm.Vector3(vendX - 1.4, 0, -5.5), vm.Vector3(vendX - 1.55, 0, vendZ[1] - 0.05)];
+
   /// The can bin beside the machines.
   static final bin = vm.Vector3(vendX + 0.02, 0, -5.12);
 

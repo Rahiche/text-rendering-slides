@@ -93,6 +93,12 @@ abstract interface class StreetWork {
   /// null.
   (double, double)? gateBusy(double t);
 
+  /// The front sidewalk held for the site's people walking along it at [t]
+  /// (the new manager's party, by the barriers to the site gate and back
+  /// again): x from..to, from a little before they're on it till they're
+  /// off it (people wait either side, as at the gate), or null.
+  (double, double)? pavementBusy(double t);
+
   /// Whether the avenue's crosswalk at x = [x] is in the truck's way at
   /// [t], or soon will be (people wait at the kerb).
   bool crosswalkBusy(double x, double t);
@@ -917,11 +923,11 @@ class _People {
       ..clear()
       ..addAll(cars);
     work?.trucks(t, _trucks);
-    final gate = work?.gateBusy(t);
+    final gate = work?.gateBusy(t), held = work?.pavementBusy(t);
     for (final p in _all) {
       switch (p.role) {
         case _Role.walker:
-          _walk(p, t, dt, m, gate);
+          _walk(p, t, dt, m, gate, held);
         case _Role.spectator:
           p.x = p.homeX;
           p.z = p.homeZ;
@@ -989,9 +995,9 @@ class _People {
     }
   }
 
-  void _walk(_Person p, double t, double dt, BoothModel m, (double, double)? gate) {
+  void _walk(_Person p, double t, double dt, BoothModel m, (double, double)? gate, (double, double)? held) {
     final r = p.route!;
-    final span = gate == null ? null : _gateSpan(r, gate);
+    final span = _spanFor(p, r, gate, held);
     if (_debugJumps && span != null && p.d > span.$1 && p.d < span.$2 && t - p.gateLogged > 1 && gateLog.length < 60) {
       p.gateLogged = t;
       gateLog.add('walker #${p.index} t=${t.toStringAsFixed(2)} in the gate at ${p.x.toStringAsFixed(1)},${p.z.toStringAsFixed(1)}: d ${p.d.toStringAsFixed(1)} span ${span.$1.toStringAsFixed(1)}..${span.$2.toStringAsFixed(1)} dir ${p.dir} waiting ${p.waiting} pause ${p.pause.toStringAsFixed(1)} lag ${p.lag.toStringAsFixed(2)} vel ${p.vel.toStringAsFixed(2)}');
@@ -1229,6 +1235,19 @@ class _People {
     return (math.min(u, v), math.max(u, v));
   }
 
+  /// Which stretch of the front sidewalk kept clear at the moment [p]
+  /// minds (along [r], see [_gateSpan]): of the truck's at the site [gate]
+  /// and the one [held] for the site's people, the one they're in, else
+  /// the nearer ahead of them.
+  static (double, double)? _spanFor(_Person p, _Route r, (double, double)? gate, (double, double)? held) {
+    final a = gate == null ? null : _gateSpan(r, gate), b = held == null ? null : _gateSpan(r, held);
+    if (a == null || b == null) return a ?? b;
+    if (p.d > b.$1 && p.d < b.$2) return b;
+    if (p.d > a.$1 && p.d < a.$2) return a;
+    double ahead((double, double) s) => ((p.dir > 0 ? s.$1 : s.$2) - p.d) * p.dir % r.length;
+    return ahead(b) < ahead(a) ? b : a;
+  }
+
   /// Walking round the people ahead of [p]: anyone within a step or two in
   /// front, close enough across to bump into and not walking away as fast,
   /// is passed with a step aside (whichever side needs less, keeping to the
@@ -1372,11 +1391,14 @@ class _People {
     if (close < 0.6) cap = math.min(cap, 0.3 + close);
     // Back into line once past (and only then). Waiting at the kerb for the
     // lights: as far to their side as there's room (the way off the
-    // crossing clear for those coming over).
+    // crossing clear for those coming over); with some of the site's people
+    // coming along the pavement by the barriers (the new manager's party),
+    // the other way, towards the kerb, out of theirs.
     var aside = 0.0;
     if (p.atKerb) {
       // (Only into room nobody's standing in.)
-      for (var s = 0.8 - off; s > 0.05; s -= 0.05) {
+      final kerbward = _siteNear(px, pz, 4);
+      for (var s = kerbward ? -0.3 - off : 0.8 - off; kerbward ? s < -0.05 : s > 0.05; s += kerbward ? 0.05 : -0.05) {
         if (fits(s) && !_taken(p, px + lx * s, pz + lz * s, 0.56 * p.scale)) {
           aside = p.dodge + s;
           break;
@@ -1408,6 +1430,15 @@ class _People {
     for (final (o, _, _) in others) {
       if (road(o.x, o.z)) out.add((o.x, o.z));
     }
+  }
+
+  /// Whether one of the site's people ([_others]) is within [r] of (x, z).
+  bool _siteNear(double x, double z, double r) {
+    for (final (o, _, _) in _others) {
+      final dx = o.x - x, dz = o.z - z;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
   }
 
   /// Whether someone (but [p]) stands within [r] of (x, z).

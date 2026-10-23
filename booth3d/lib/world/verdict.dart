@@ -521,6 +521,22 @@ class Verdict3D {
     }
     return open;
   }
+
+  /// The stretch of the front pavement held for the party at [t] (see
+  /// [StreetWork.pavementBusy]): x from..to, or null.
+  (double, double)? pavementBusy(double t) {
+    final p = _p;
+    if (p == null) return null;
+    for (final (a, e) in p.pavement) {
+      if (t >= a && t < e) return (p.pavementFrom, pavementTo);
+    }
+    return null;
+  }
+
+  /// Where the pavement held for the party ends in the east: round the
+  /// corner, so that the people coming down the flank wait clear of where
+  /// the party comes down it (north of the floodlight tower's footing).
+  static const pavementTo = 21.0;
 }
 
 /// The verdict starting at [d], for a wall [w] wide: where the blueprint is
@@ -529,30 +545,47 @@ class Verdict3D {
 /// when they set off: back from a photo cut short, say).
 class _Plan {
   _Plan(this.d, this.w, Crew3D figures, vm.Vector3? Function(int who, double t)? held) : x = (w / 2 - 1.0).clamp(2.6, 8.6), z = -3.3 {
-    // The party: along the front pavement from the east, in through the
-    // site gate, to the blueprint's place; the manager in front.
+    // The party: down the flank pavement round the corner and along the
+    // front one, in through the site gate, to the blueprint's place; the
+    // manager in front.
     const gx = 13.0;
     final spots = [vm.Vector3(x - 1.4, 0, z - 0.3), vm.Vector3(x - 0.12, 0, z + 0.05), vm.Vector3(x + 0.12, 0, z + 0.05)];
-    // (Along the pavement in single file by the site's barriers, out of
-    // the way of the people walking along it: beside their way, not in it.)
-    const pz = -9.3;
+    // (Along the pavement in single file, close by the site's barriers
+    // (they stand at z = −9.3) on the outside; the people walking along it
+    // wait either side while they pass, see [pavement]. Coming down the
+    // flank's kerb side, by the floodlight tower, never out in the side
+    // street, where its cars are.)
+    const pz = -9.65, fx = 18.6;
+    // (A long step apart, all setting off together, so they keep it: the
+    // planners' ways are no longer than the manager's, give or take.)
+    double lagOf(int i) => 0.3 + i * 0.9;
+    double sideOf(int i) => i == 0 ? 0.0 : (i == 1 ? -0.35 : 0.35);
+    List<vm.Vector3> wayIn(int i) => [vm.Vector3(fx, 0, pz + lagOf(i)), vm.Vector3(fx, 0, pz), vm.Vector3(gx + sideOf(i) + i * 0.27, 0, pz), vm.Vector3(gx + sideOf(i), 0, -6.2), spots[i]];
+    // All at the blueprint's place by [_arrive].
+    const speed = 1.55;
+    final start = d + Verdict3D._arrive - [for (var i = 0; i < 3; i++) Walk.lengthOf(wayIn(i))].reduce(math.max) / speed;
     for (var i = 0; i < 3; i++) {
-      final lag = i * 0.75, side = i == 0 ? 0.0 : (i == 1 ? -0.35 : 0.35);
-      final pts = [vm.Vector3(19.4 + lag, 0, pz), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(gx + side, 0, -6.2), spots[i]];
-      // Arriving at the blueprint's place by [_arrive].
-      final speed = 1.55;
-      final start = d + Verdict3D._arrive - Walk.lengthOf(pts) / speed - lag * 0.6;
-      arrive.add(Walk(pts, start, speed));
+      final side = sideOf(i);
+      arrive.add(Walk(wayIn(i), start, speed));
       // Then to the front right to watch, out of the way.
       final post = vm.Vector3(math.min(w / 2 + 2.3, 12.4) + 0.62 * i, 0, -4.4 - 0.4 * (i % 2));
       toPost.add(Walk([spots[i], post], d + Verdict3D._disperse + 0.5 + 0.2 * i, 1.3));
-      // And away during the cleanup, the way they came.
-      final out = [post, vm.Vector3(gx + side, 0, -6.2), vm.Vector3(gx + side + lag * 0.3, 0, pz), vm.Vector3(21 + lag, 0, pz)];
+      // And away during the cleanup, the way they came (the first out
+      // going furthest: nobody walks through someone who's stopped).
+      final out = [post, vm.Vector3(gx + side, 0, -6.2), vm.Vector3(gx + side + i * 0.27, 0, pz), vm.Vector3(fx, 0, pz), vm.Vector3(fx, 0, pz + lagOf(2 - i))];
       leave.add(Walk(out, d + CityPace.verdict + phaseSeconds[Phase.demolish]! + 1.5 + 0.8 * i, 1.4));
     }
     gate
-      ..add((arrive[0].at(1), arrive[2].at(2)))
+      ..add((arrive[0].at(2), arrive[2].at(3)))
       ..add((leave[0].at(1), leave[2].at(2)));
+    // The pavement held for them: from [pavementFrom], west of where they
+    // turn in at the gate, to the corner and round it (as for the delivery
+    // truck), from six seconds before the first of them is on it (time for
+    // whoever's in their way to get clear) till the last is off it.
+    pavementFrom = [for (final a in arrive) a.pts[2].x].reduce(math.min) - 0.6;
+    pavement
+      ..add((start - 6, arrive.map((a) => a.at(2)).reduce(math.max) + 1))
+      ..add((leave.map((l) => l.at(2)).reduce(math.min) - 6, leave.map((l) => l.end).reduce(math.max)));
     // The crew round the blueprint's right front (the side they come
     // from: nobody crosses in front of it), in two staggered rows nearest
     // first; the foreman at its left front, the camera past him.
@@ -593,4 +626,9 @@ class _Plan {
 
   /// When the gate stands open for them, in and out.
   final gate = <(double, double)>[];
+
+  /// When the front pavement is held for them, in and out, and its west
+  /// end (x; its east end is past the corner, see [Verdict3D.pavementTo]).
+  final pavement = <(double, double)>[];
+  late final double pavementFrom;
 }

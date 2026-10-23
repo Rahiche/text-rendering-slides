@@ -144,14 +144,16 @@ class ScriptAlley {
   /// Behind each stall's letters, a board that rises out of the counter
   /// while a talk shows the stall: a solid ground the glyphs read against
   /// (the stall's own wall is its colour, as the letters are), and the
-  /// keeper out of sight behind it. Its size, and how far back it stands
-  /// (stall frame; the letters stand at [AlleyLayout.stageZ]).
+  /// keeper out of sight behind it. (The vertical stall's column sinks into
+  /// the counter as its board comes up: its letters go straight onto the
+  /// board.) Its size, and how far back it stands (stall frame; the letters
+  /// stand at [AlleyLayout.stageZ]).
   static const boardW = 1.9, boardH = 1.35, boardZ = 0.2;
 
   /// With the board up, the letters step up onto a baseline drawn on it
   /// (this high over the counter): what hangs below the line — the dots
   /// under ب and ي — no longer sinks into the counter. (Not the vertical
-  /// stall's: its letters are on their own board.)
+  /// stall's: its letters hang in a column, top to bottom.)
   static const baseline = 0.2;
   final _boards = <Node>[], _roots = <Node>[];
   final _boardUp = List.filled(6, 0.0);
@@ -220,6 +222,12 @@ class ScriptAlley {
       if (n.visible) {
         n.localTransform = AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + boardH / 2 - boardH * (1 - e), boardZ));
       }
+      if (i == 5) {
+        // The vertical stall's column down into the counter as the board
+        // comes up behind it (and back up after).
+        _column.visible = e < 0.998;
+        if (_column.visible) _column.localTransform = AlleyLayout.frame(5) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + _columnH / 2 - _columnH * e, AlleyLayout.stageZ + 0.2));
+      }
       if (i < _roots.length) {
         _roots[i].localTransform = AlleyLayout.frame(i) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + _lift(i), AlleyLayout.stageZ));
       }
@@ -230,6 +238,11 @@ class ScriptAlley {
 
   /// Where a stall's two lanterns hang (stall frame: ± across, in front).
   static const _lanternX = 1.16, _lanternZ = -0.6;
+
+  /// The vertical stall's column on its counter, the board its letters
+  /// drop into (its own node: see [_poseBoards]); its height.
+  late final Node _column;
+  static const _columnH = 1.36;
 
   void _buildStalls() {
     final batch = Batch();
@@ -263,9 +276,12 @@ class ScriptAlley {
         box(0.2, 0.04, 0.2, x, 2.2, _lanternZ, cord);
         box(0.2, 0.04, 0.2, x, 1.82, _lanternZ, cord);
       }
-      // The vertical stall's board, on its counter.
-      if (i == 5) box(0.52, 1.36, 0.05, 0, AlleyLayout.stageY + 0.68, AlleyLayout.stageZ + 0.2, dark);
     }
+    _column = Node(name: 'alley column', mesh: Mesh(merged([painted(bevelBox(0.52, _columnH, 0.05), dark)]), timber))
+      ..castsShadows = false
+      ..lightChannelMask = 0x01
+      ..localTransform = AlleyLayout.frame(5) * vm.Matrix4.translation(vm.Vector3(0, AlleyLayout.stageY + _columnH / 2, AlleyLayout.stageZ + 0.2));
+    scene.add(_column);
     // The gate: two vermilion posts and a beam over the path.
     for (final x in [-AlleyLayout.gateX, AlleyLayout.gateX]) {
       batch.add(timber, part(CuboidGeometry(vm.Vector3(0.18, 3.7, 0.18)), trs(vm.Vector3(x, 1.85, AlleyLayout.gateZ)), vermilion));

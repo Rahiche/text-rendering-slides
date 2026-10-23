@@ -398,9 +398,9 @@ class _Card extends StatelessWidget {
   };
 }
 
-/// A chapter's opening, as the deck's dividers: its number very large in
-/// outline, a rule, its title and Japanese name, a line under them, and its
-/// glyphs rising one by one; in the middle, over a soft shade.
+/// A chapter's opening: a rule, its title large, and its glyphs rising one
+/// by one; in the middle, over a soft shade. (No number: the way along the
+/// bottom shows where the talk is.)
 class _Chapter extends StatelessWidget {
   const _Chapter({super.key, required this.card, required this.section, required this.glyphs, required this.animate});
 
@@ -419,7 +419,7 @@ class _Chapter extends StatelessWidget {
       gradient: RadialGradient(
         // (Tighter for the title and the end: their words in the air round
         // it stay clear.)
-        radius: section.number.isEmpty ? 0.52 : 0.75,
+        radius: section.number.isEmpty ? 0.52 : 0.62,
         colors: [BP.bg.withValues(alpha: 0.62), BP.bg.withValues(alpha: 0.32), BP.bg.withValues(alpha: 0)],
         stops: const [0, 0.55, 1],
       ),
@@ -429,22 +429,12 @@ class _Chapter extends StatelessWidget {
         animate: animate,
         center: true,
         children: [
-          if (section.number.isNotEmpty)
-            Text(
-              section.number,
-              style: UT.name(210, weight: 400, height: 0.9).copyWith(
-                foreground: Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = 2.6
-                  ..color = BP.amber,
-              ),
-            ),
-          Container(width: 140, height: 2, margin: const EdgeInsets.only(top: 20, bottom: 26), color: BP.amber),
+          Container(width: 140, height: 2, margin: const EdgeInsets.only(bottom: 26), color: BP.amber),
           if (card.kicker.isNotEmpty) ...[Text(card.kicker, style: UT.label(24, color: BP.inkDim, weight: 500).copyWith(shadows: _glow)), const SizedBox(height: 6)],
           Text(
             card.title,
             textAlign: TextAlign.center,
-            style: UT.name(section.number.isEmpty ? 92 : 76, color: BP.ink, weight: 600, height: 1.05).copyWith(shadows: _glow),
+            style: UT.name(92, color: BP.ink, weight: 600, height: 1.05).copyWith(shadows: _glow),
           ),
           if (section.number.isEmpty && card.lede.isNotEmpty)
             Padding(

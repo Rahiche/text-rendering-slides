@@ -105,9 +105,7 @@ class TalkOverlay extends StatelessWidget {
                   key: ValueKey((talk.sectionIndex, stop)),
                   card: talk.card,
                   section: section,
-                  stop: stop,
                   beat: talk.beat,
-                  beats: talk.beats,
                   animate: animate,
                 ),
               ),
@@ -164,18 +162,15 @@ class _Card extends StatelessWidget {
     super.key,
     required this.card,
     required this.section,
-    required this.stop,
     required this.beat,
-    required this.beats,
     required this.animate,
   });
 
   final TalkCard card;
   final TalkSection section;
-  final int stop;
 
-  /// Where in the stop (a stop with more than one beat shows a dot each).
-  final int beat, beats;
+  /// Which of its stop's beats is on (the rows it lights follow them).
+  final int beat;
 
   /// Its parts come in one after another (not in a capture).
   final bool animate;
@@ -213,36 +208,9 @@ class _Card extends StatelessWidget {
     child: _Stagger(
       animate: animate,
       children: [
-        Row(
-          children: [
-            Text(
-              section.number.isEmpty ? section.title.toUpperCase() : '${section.number} · ${section.title.toUpperCase()}',
-              style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6),
-            ),
-            const Spacer(),
-            if (beats > 1) ...[
-              for (var i = 0; i < beats; i++)
-                Container(
-                  width: 7,
-                  height: 7,
-                  margin: const EdgeInsets.only(right: 5),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i <= beat ? BP.amber : null,
-                    border: Border.all(color: i <= beat ? BP.amber : BP.inkFaint, width: 1.2),
-                  ),
-                ),
-              const SizedBox(width: 8),
-            ],
-            Text('${stop + 1} / ${section.stops.length}', style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.2)),
-          ],
-        ),
-        if (card.opener && section.number.isNotEmpty)
-          // A section's first: its number large, as the deck's divider.
-          Padding(
-            padding: const EdgeInsets.only(top: 18),
-            child: Text(section.number, style: UT.name(88, color: BP.amber, weight: 500, height: 0.95)),
-          ),
+        // Just the section's name: no number, no count (the way along the
+        // bottom shows where the talk is).
+        Text(section.title.toUpperCase(), style: UT.mono(12.5, color: BP.amber, weight: 600, ls: 1.6)),
         Padding(
           padding: const EdgeInsets.only(top: 18),
           child: Column(

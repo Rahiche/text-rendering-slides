@@ -94,6 +94,7 @@ class TalkBeat {
     this.live,
     this.cardAt = 0,
     this.chapter = false,
+    this.chapterFor,
     this.questions,
   });
 
@@ -118,6 +119,10 @@ class TalkBeat {
   /// Opens a chapter: the section's number, title and glyphs large in the
   /// middle until the card comes up.
   final bool chapter;
+
+  /// How long the chapter's title stays up, if not till the card comes
+  /// (the camera's way there has something to see first).
+  final double? chapterFor;
 
   /// The questions after the talk: this many seconds into the beat (or at
   /// the next press), the booth's own demo takes over behind the thanks

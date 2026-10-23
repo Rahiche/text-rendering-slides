@@ -48,13 +48,14 @@ PhysicallyBasedMaterial pbr(
 /// `[name]_albedo.jpg` (colour), `_normal.jpg` (OpenGL) and
 /// `_arm.jpg` (ambient occlusion, roughness, metal, as glTF reads them),
 /// [tint] multiplied over its colour. Laid by the geometry's UVs: a tile per
-/// unit, so lay them in world space at the surface's real size.
+/// unit, so lay them in world space at the surface's real size. (Each
+/// surface's textures are loaded once: materials made from it share them.)
 Future<PhysicallyBasedMaterial> photoPbr(String name, {String dir = 'assets/textures', vm.Vector4? tint, double normalScale = 1, double occlusion = 1, double roughness = 1}) async {
-  final (albedo, normal, arm) = await (
+  final (albedo, normal, arm) = await (_photoTextures['$dir/$name'] ??= (
     Texture2D.fromAsset('$dir/${name}_albedo.jpg'),
     Texture2D.fromAsset('$dir/${name}_normal.jpg', content: TextureContent.normal),
     Texture2D.fromAsset('$dir/${name}_arm.jpg', content: TextureContent.data),
-  ).wait;
+  ).wait);
   return PhysicallyBasedMaterial()
     ..baseColorTexture = albedo
     ..baseColorFactor = tint ?? vm.Vector4(1, 1, 1, 1)
@@ -66,6 +67,8 @@ Future<PhysicallyBasedMaterial> photoPbr(String name, {String dir = 'assets/text
     ..occlusionTexture = arm
     ..occlusionStrength = occlusion;
 }
+
+final _photoTextures = <String, Future<(Texture2D, Texture2D, Texture2D)>>{};
 
 /// A glyph mesh (from the booth's extruder) as engine geometry.
 MeshGeometry glyphGeometry(GlyphMesh m) => MeshGeometry.fromArrays(

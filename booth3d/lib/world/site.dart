@@ -42,6 +42,7 @@ import 'site_wreck.dart';
 import 'v_atlas.dart';
 import 'v_bidi.dart';
 import 'v_engines.dart';
+import 'v_town.dart';
 import 'v_family.dart';
 import 'v_farm.dart';
 import 'v_forge.dart';
@@ -139,6 +140,7 @@ class Site3D {
       HyphenMill(kit),
       TalkWord(kit),
       TalkEngines(kit),
+      TalkTown(kit),
       TalkScripts(kit),
       TalkPhones(kit),
       TalkMix(kit),

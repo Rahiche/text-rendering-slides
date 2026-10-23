@@ -14,7 +14,7 @@ import 'talk_section.dart';
 /// turn, held [hold] seconds in while the presenter talks, else on round);
 /// or a Script Alley stall's ([stall]), its letters played and held.
 class CityBeat {
-  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pull = 1, this.pins = const [], this.cardAt = 0, this.fireworks = false, this.chapter = false})
+  CityBeat.at(Shot this.shot, {this.fly = 2.2, this.shift = 0.3, this.pull = 1, this.pins = const [], this.cardAt = 0, this.fireworks = false, this.chapter = false, this.chapterFor})
     : scene = null,
       stall = null,
       from = 0,
@@ -35,6 +35,7 @@ class CityBeat {
     this.cardAt = 0,
     this.fireworks = false,
     this.chapter = false,
+    this.chapterFor,
     this.lead,
     this.view,
     this.viewFrom,
@@ -57,6 +58,7 @@ class CityBeat {
       cardAt = 0,
       fireworks = false,
       chapter = false,
+      chapterFor = null,
       lead = null,
       view = null,
       viewFrom = null,
@@ -75,8 +77,10 @@ class CityBeat {
   final double cardAt;
   final bool fireworks;
 
-  /// Opens the section (its title large in the middle first).
+  /// Opens the section (its title large in the middle first: until the
+  /// card comes, or for [chapterFor] seconds).
   final bool chapter;
+  final double? chapterFor;
 
   /// How long before the camera gets there its scene starts (else as it's
   /// nearly there: the last third of the way).
@@ -134,6 +138,7 @@ class CitySection extends TalkSection {
             live: b.scene == null ? null : () => _live(b),
             cardAt: b.cardAt,
             chapter: b.chapter,
+            chapterFor: b.chapterFor,
             questions: b.questions,
           ),
         );

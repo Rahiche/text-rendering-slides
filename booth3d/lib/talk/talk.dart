@@ -77,10 +77,10 @@ class Talk extends ChangeNotifier {
   /// camera's on its way down).
   bool get cardShown => _on && (_from == null || _back || _age >= _now.cardAt);
 
-  /// Whether the chapter's title is up (a chapter's beat, its card not yet;
-  /// not over the questions).
-  bool get chapter => _on && _now.chapter && !cardShown && !questions;
-  bool _cardWas = false;
+  /// Whether the chapter's title is up (a chapter's beat, its card not yet,
+  /// for as long as it's to stay; not over the questions).
+  bool get chapter => _on && _now.chapter && !cardShown && !questions && (_now.chapterFor == null || _age < _now.chapterFor!);
+  bool _cardWas = false, _chapterWas = false;
 
   /// The word the booth builds behind the questions: the thanks, in
   /// Japanese.
@@ -245,8 +245,9 @@ class Talk extends ChangeNotifier {
     _script(t);
     if (!_on) return;
     _age += dt;
-    if (cardShown != _cardWas) {
+    if (cardShown != _cardWas || chapter != _chapterWas) {
       _cardWas = cardShown;
+      _chapterWas = chapter;
       notifyListeners();
     }
     section.update(_beat, _age, t, dt);

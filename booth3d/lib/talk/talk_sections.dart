@@ -389,11 +389,17 @@ List<TalkSection> talkSections(Site3D site) {
           ],
           true,
         ),
-        [CityBeat.at(_overview, fly: 3.2, shift: 0.2, cardAt: 2.8, chapter: true, pins: _engines)],
+        // (Out of the city along the avenue, past the sign saying you're
+        // leaving it, to Engine Town: the four others' headquarters round
+        // its square, each with its logo on its front. The chapter's title
+        // while the camera comes down to the avenue; the card as it gets
+        // there.)
+        [CityBeat.scene('town', hold: 12.0, fly: 3.0, shift: 0, cardAt: 12.6, chapter: true, chapterFor: 4.0)],
       ),
-      // (The four others, each a screen showing what its way of setting
-      // text gives it: hung in a row over the east side street, the camera
-      // gliding along it.)
+      // (The four others, each in its own text rendering room on Engine
+      // Town's square: its stack lit on the console, its screen showing
+      // what its way of setting text gives it. The camera crosses the
+      // square and goes in.)
       CityStop(
         'chrome',
         const TalkCard(
@@ -406,7 +412,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('and', 'find · select · translate · a11y · SEO'),
           ],
         ),
-        [CityBeat.scene('engines', hold: 8.6, fly: 3.4, shift: 0.37)],
+        [CityBeat.scene('town', from: 20, hold: 30, fly: 2.4, shift: 0)],
       ),
       CityStop(
         'figma',
@@ -421,7 +427,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('≈ Flutter', 'canvas + own engine', accent: true),
           ],
         ),
-        [CityBeat.scene('engines', from: 10, hold: 18.6, fly: 1.8, shift: 0.37)],
+        [CityBeat.scene('town', from: 32, hold: 42, fly: 2.4, shift: 0)],
       ),
       CityStop(
         'macos',
@@ -436,7 +442,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('AA', 'subpixel off since 10.14'),
           ],
         ),
-        [CityBeat.scene('engines', from: 20, hold: 28.6, fly: 1.8, shift: 0.37)],
+        [CityBeat.scene('town', from: 44, hold: 54, fly: 2.4, shift: 0)],
       ),
       CityStop(
         'android',
@@ -451,7 +457,7 @@ List<TalkSection> talkSections(Site3D site) {
             FactRow('lineage', 'Minikin → libtxt → SkParagraph (2022)'),
           ],
         ),
-        [CityBeat.scene('engines', from: 30, hold: 38.6, fly: 1.8)],
+        [CityBeat.scene('town', from: 56, hold: 66, fly: 2.4, shift: 0)],
       ),
     ]),
     section('04', "Flutter's trade-off", const ['✕', '✓'], [
@@ -491,9 +497,9 @@ List<TalkSection> talkSections(Site3D site) {
           // ruby, then hyphenation, acted out.)
           ['vertical text|optimal breaks', 'ruby', 'hyphenation'],
         ),
-        // (Back to the row of screens, to its last: the web page as Flutter
-        // sets it; then ruby and hyphenation, acted out.)
-        [CityBeat.scene('engines', from: 40, hold: 46, fly: 3.0, shift: 0.37), CityBeat.scene('ruby', hold: 6.0, fly: 3.0), CityBeat.scene('hyphen', hold: 8.0, fly: 2.6)],
+        // (Chrome's page as Flutter sets it, on a screen over the east side
+        // street; then ruby and hyphenation, acted out.)
+        [CityBeat.scene('engines', hold: 6, fly: 3.0, shift: 0.37), CityBeat.scene('ruby', hold: 6.0, fly: 3.0), CityBeat.scene('hyphen', hold: 8.0, fly: 2.6)],
       ),
       CityStop(
         'only',
@@ -650,17 +656,4 @@ final _stages = [
   _pin(-9.0, 1.6, 79.0, 'RASTER', order: 7, sub: 'Skia'),
 ];
 
-/// The city's east side from above, its rooftop signs: the five engines'
-/// buildings.
-final _overview = talkShot(-30, 55, -40, 48, 10, 30, 56, drift: 1.0);
-
-/// Five buildings along the east side as the five engines' headquarters
-/// (Flutter's has its name on the roof).
-final _engines = [
-  _pin(33.6, 14.6, -2.2, 'CHROME'),
-  _pin(51.5, 27.2, 14.8, 'FIGMA'),
-  _pin(51.3, 18.6, 48.6, 'MACOS'),
-  _pin(34.0, 14.5, 57.6, 'ANDROID'),
-  _pin(52.6, 22.6, 33.5, 'FLUTTER'),
-];
 

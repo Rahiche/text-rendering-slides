@@ -13,15 +13,16 @@ import 'shot.dart';
 import 'site_geo.dart' show setTqs;
 import 'vignette.dart';
 
-/// 画素畑 · Rasterization, a field beyond the park (north of the tram):
-/// its plots are pixels, and the outline of an "a" is marked out across
-/// them. An irrigation boom as wide as the field rolls down it row by row,
-/// like a scanline (the water reaching its nozzles left to right), and
-/// each plot it waters comes up as much as the outline covers it — a full
-/// crop where it's all inside, a thinner, lower one on the edges (the
-/// greys that smooth a glyph's edge), bare earth outside. From the air: an
-/// "a", anti-aliased. Then the boom rolls back, clearing the field for the
-/// next one; the farmer walks beside it.
+/// Rasterization, a field beyond the park (north of the tram): its plots
+/// are pixels — white, as a screen's are under black text — and the
+/// outline of an "a" is marked out across them. An irrigation boom as wide
+/// as the field rolls down it row by row, like a scanline (the water
+/// reaching its nozzles left to right), and each plot it waters comes up as
+/// much as the outline covers it, in the grey grayscale anti-aliasing
+/// gives it: black where it's all inside, greys on the edges, white
+/// outside. From the air: an "a", anti-aliased, pixel for pixel as a screen
+/// shows it. Then the boom rolls back, clearing the field for the next one;
+/// the farmer walks beside it.
 class PixelFarm extends Vignette {
   PixelFarm(super.kit);
 
@@ -104,15 +105,16 @@ class PixelFarm extends Vignette {
     await _rasterize();
     final b = Batch();
     final m = pbr(rgb(1, 1, 1), roughness: 0.95);
-    // The field's earth, its plots' furrows, a fence round it (room inside
-    // it for the boom's towers, and the farmer).
+    // The field, white as unlit pixels; the plots' grid in a light grey; a
+    // fence round it (room inside it for the boom's towers, and the
+    // farmer).
     final w = _fenceX, d = _fenceZ;
-    box(b, m, 2 * w - 0.2, 0.06, 2 * d - 0.2, 0, 0.03, 0, Vignette.c(0xC9AE84));
+    box(b, m, 2 * w - 0.2, 0.06, 2 * d - 0.2, 0, 0.03, 0, Vignette.c(0xEDEDEB));
     for (var c = 0; c <= _cols; c++) {
-      box(b, m, 0.03, 0.065, _rows * _cell, (c - _cols / 2) * _cell, 0.035, 0, Vignette.c(0x9E8662));
+      box(b, m, 0.03, 0.065, _rows * _cell, (c - _cols / 2) * _cell, 0.035, 0, Vignette.c(0xBDBDBD));
     }
     for (var r = 0; r <= _rows; r++) {
-      box(b, m, _cols * _cell, 0.065, 0.03, 0, 0.035, (r - _rows / 2) * _cell, Vignette.c(0x9E8662));
+      box(b, m, _cols * _cell, 0.065, 0.03, 0, 0.035, (r - _rows / 2) * _cell, Vignette.c(0xBDBDBD));
     }
     for (final (x0, z0, x1, z1) in [(-w, -d, w, -d), (-w, d, w, d), (-w, -d, -w, d), (w, -d, w, d)]) {
       final len = math.sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
@@ -206,9 +208,10 @@ class PixelFarm extends Vignette {
         final hgt = 0.06 + 0.55 * g;
         _q.setEuler(kit.yawOf(frame), 0, 0);
         _crops.setInstanceTransform(i, setTqs(_m, _at[i].x, 0.06 + hgt / 2, _at[i].z, _q, _cell * 0.86, hgt, _cell * 0.86));
-        // Darker, the more it covers (as ink would be).
-        final dark = 0.85 - 0.75 * g;
-        _crops.setInstanceColor(i, vm.Vector4(0.22 * dark + 0.05, 0.42 * dark + 0.08, 0.16 * dark + 0.04, 1));
+        // Its grey, as grayscale anti-aliasing shades it (black ink on
+        // white: 1 − coverage, in sRGB).
+        final grey = math.pow(1 - g, 2.2).toDouble();
+        _crops.setInstanceColor(i, vm.Vector4(grey, grey, grey, 1));
       }
     }
     final sweeping = u > _scan0 && u < _scanEnd;

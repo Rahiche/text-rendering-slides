@@ -239,7 +239,7 @@ final _brushed = pbr(lin3v(0xB8BEC6), metallic: 0.85, roughness: 0.35);
 
 /// A device's screen: it lights itself (barely lit by the sun: its colour
 /// is its own glow, the same whichever way it faces), under glass.
-PhysicallyBasedMaterial deviceScreen(Texture2D t) => PhysicallyBasedMaterial()
+PhysicallyBasedMaterial deviceScreen(TextureSource t) => PhysicallyBasedMaterial()
   ..baseColorTexture = t
   ..baseColorFactor = vm.Vector4(0.1, 0.1, 0.1, 1)
   ..metallicFactor = 0

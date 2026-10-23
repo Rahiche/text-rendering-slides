@@ -77,6 +77,11 @@ class Talk extends ChangeNotifier {
   /// camera's on its way down).
   bool get cardShown => _on && (_from == null || _back || _age >= _now.cardAt);
 
+  /// Whether what a card holds back until [at] (seconds into the beat) is
+  /// out: all of it at once when the beat's come back to (its scene cut to
+  /// its end).
+  bool shown(double at) => _on && (_back || _from == null || _age >= at);
+
   /// Whether the chapter's title is up (a chapter's beat, its card not yet,
   /// for as long as it's to stay; not over the questions).
   bool get chapter => _on && _now.chapter && !cardShown && !questions && (_now.chapterFor == null || _age < _now.chapterFor!);

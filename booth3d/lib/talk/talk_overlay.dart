@@ -103,6 +103,7 @@ class TalkOverlay extends StatelessWidget {
                     ? const SizedBox(key: ValueKey('none'))
                     : _Card(
                   key: ValueKey((talk.sectionIndex, stop)),
+                  talk: talk,
                   card: talk.card,
                   section: section,
                   beat: talk.beat,
@@ -160,12 +161,14 @@ class TalkOverlay extends StatelessWidget {
 class _Card extends StatelessWidget {
   const _Card({
     super.key,
+    required this.talk,
     required this.card,
     required this.section,
     required this.beat,
     required this.animate,
   });
 
+  final Talk talk;
   final TalkCard card;
   final TalkSection section;
 
@@ -225,40 +228,100 @@ class _Card extends StatelessWidget {
           padding: const EdgeInsets.only(top: 12),
           child: Text(card.lede, style: UT.label(19.5, color: BP.inkDim, weight: 400, height: 1.42)),
         ),
-        for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f)),
+        for (final f in card.facts) Padding(padding: const EdgeInsets.only(top: 18), child: _fact(f, _labelWidth())),
       ],
     ),
   );
 
-  /// Row [label]: its value (lit, or counted up as the one to look at),
-  /// and its [example] under it.
-  Widget _row(String label, String value, bool accent, String? example) => Row(
+  static final _labelStyle = UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1);
+
+  /// The rows' labels' column: as wide as the widest label and a gap (not
+  /// under 138).
+  double _labelWidth() {
+    var w = 0.0;
+    for (final f in card.facts) {
+      if (f is! FactRow) continue;
+      final tp = TextPainter(text: TextSpan(text: _caps(f.label), style: _labelStyle), textDirection: TextDirection.ltr)..layout();
+      w = math.max(w, tp.width);
+      tp.dispose();
+    }
+    return math.max(138.0, w + 18);
+  }
+
+  /// Row [label]: its [value], and its [example] under it.
+  Widget _row(String label, Widget value, String? example, double labelW) => Row(
     crossAxisAlignment: CrossAxisAlignment.baseline,
     textBaseline: TextBaseline.alphabetic,
     children: [
-      SizedBox(width: 138, child: Text(_caps(label), style: UT.mono(12.5, color: BP.inkFaint, weight: 600, ls: 1.1))),
+      SizedBox(width: labelW, child: Text(_caps(label), style: _labelStyle)),
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (card.follow != null)
-              // (Lit in turn, beat by beat: the light moves down the card.)
-              TweenAnimationBuilder<Color?>(
-                tween: ColorTween(end: _lit(label, accent) ? BP.amber : BP.ink),
-                duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
-                curve: Curves.easeOutCubic,
-                builder: (context, c, _) => Text(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600)),
-              )
-            else if (accent)
-              _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate)
-            else
-              Text(value, style: UT.mono(17, color: BP.ink, weight: 600)),
+            value,
             if (example != null) Padding(padding: const EdgeInsets.only(top: 5), child: _breaks(example)),
           ],
         ),
       ),
     ],
   );
+
+  /// A row's value: lit, or counted up as the one to look at.
+  Widget _value(String label, String value, bool accent) {
+    if (card.follow != null) {
+      // (Lit in turn, beat by beat: the light moves down the card.)
+      return TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: _lit(label, accent) ? BP.amber : BP.ink),
+        duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+        curve: Curves.easeOutCubic,
+        builder: (context, c, _) => Text(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600)),
+      );
+    }
+    if (accent) return _CountUp(value, style: UT.mono(17, color: BP.amber, weight: 600), animate: animate);
+    return Text(value, style: UT.mono(17, color: BP.ink, weight: 600));
+  }
+
+  /// A row held back until its time: a dash, then its value counted up and
+  /// lit (until the next row's out).
+  Widget _timedValue(String value, bool shown, bool lit) => shown
+      ? TweenAnimationBuilder<Color?>(
+          tween: ColorTween(end: lit ? BP.amber : BP.ink),
+          duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+          curve: Curves.easeOutCubic,
+          builder: (context, c, _) => _CountUp(value, style: UT.mono(17, color: c ?? BP.ink, weight: 600), animate: animate),
+        )
+      : Text('—', style: UT.mono(17, color: BP.inkFaint.withValues(alpha: 0.6), weight: 600));
+
+  /// The bar beside the row to look at (moving down the card with the
+  /// beats, when the card follows them, or with the rows' times).
+  Widget _barred(bool lit, Widget row) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      Positioned(
+        left: -16,
+        top: 2,
+        bottom: 2,
+        child: AnimatedOpacity(
+          opacity: lit ? 1 : 0,
+          duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
+          curve: Curves.easeOutCubic,
+          child: Container(width: 3, decoration: BoxDecoration(color: BP.amber, borderRadius: BorderRadius.circular(2))),
+        ),
+      ),
+      row,
+    ],
+  );
+
+  /// When the timed row after the one held back until [at] comes out.
+  double? _nextAt(double at) {
+    double? next;
+    for (final f in card.facts) {
+      if (f is! FactRow) continue;
+      final a = f.at;
+      if (a != null && a > at && (next == null || a < next)) next = a;
+    }
+    return next;
+  }
 
   /// An example line, each | in it an amber mark where a line may break.
   static Widget _breaks(String s) {
@@ -287,25 +350,16 @@ class _Card extends StatelessWidget {
     return f[beat.clamp(0, f.length - 1)].split('|').contains(label);
   }
 
-  Widget _fact(CardFact f) => switch (f) {
-    FactRow(:final label, :final value, :final accent, :final example) => Stack(
-      clipBehavior: Clip.none,
-      children: [
-        // The row to look at: a bar beside it (moving down the card with
-        // the beats, when the card follows them).
-        Positioned(
-          left: -16,
-          top: 2,
-          bottom: 2,
-          child: AnimatedOpacity(
-            opacity: _lit(label, accent) ? 1 : 0,
-            duration: animate ? const Duration(milliseconds: 420) : Duration.zero,
-            curve: Curves.easeOutCubic,
-            child: Container(width: 3, decoration: BoxDecoration(color: BP.amber, borderRadius: BorderRadius.circular(2))),
-          ),
-        ),
-        _row(label, value, accent, example),
-      ],
+  Widget _fact(CardFact f, double labelW) => switch (f) {
+    FactRow(:final label, :final value, :final accent, :final example, at: null) => _barred(
+      _lit(label, accent),
+      _row(label, _value(label, value, accent), example, labelW),
+    ),
+    FactRow(:final label, :final value, :final example, :final at?) => _Timed(
+      talk: talk,
+      at: at,
+      next: _nextAt(at),
+      builder: (shown, lit) => _barred(lit, _row(label, _timedValue(value, shown, lit), example, labelW)),
     ),
     FactTable(:final columns, :final rows, :final lit) => Table(
       columnWidths: const {0: FlexColumnWidth(1.35)},
@@ -530,6 +584,50 @@ class _Questions extends StatelessWidget {
 }
 
 /// A value whose first number (10 or more) counts up as its card comes in.
+/// A card's row held back until [at] seconds into the beat: whether it's
+/// out, and whether it's the latest out (until [next]).
+class _Timed extends StatefulWidget {
+  const _Timed({required this.talk, required this.at, required this.next, required this.builder});
+
+  final Talk talk;
+  final double at;
+  final double? next;
+  final Widget Function(bool shown, bool lit) builder;
+
+  @override
+  State<_Timed> createState() => _TimedState();
+}
+
+class _TimedState extends State<_Timed> {
+  late (bool, bool) _state = _now();
+
+  (bool, bool) _now() {
+    final t = widget.talk, next = widget.next;
+    final shown = t.shown(widget.at);
+    return (shown, shown && (next == null || !t.shown(next)));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.talk.frame.addListener(_tick);
+  }
+
+  void _tick() {
+    final s = _now();
+    if (s != _state) setState(() => _state = s);
+  }
+
+  @override
+  void dispose() {
+    widget.talk.frame.removeListener(_tick);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_state.$1, _state.$2);
+}
+
 class _CountUp extends StatelessWidget {
   const _CountUp(this.value, {required this.style, required this.animate});
 

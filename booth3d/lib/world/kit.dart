@@ -229,16 +229,16 @@ class _SolidJob {
 /// extruded to a solid on a background isolate. Empty text gives an empty
 /// mesh.
 Future<List<GlyphMesh>> extrudeTexts(List<TextSolid> specs) async {
-  const pad = 6;
   final jobs = <_SolidJob>[];
   for (final s in specs) {
     final tp = TextPainter(
       text: TextSpan(text: s.text, style: s.style.copyWith(color: const Color(0xFFFFFFFF))),
       textDirection: TextDirection.ltr,
     )..layout();
-    final w = tp.width.ceil() + 2 * pad, h = tp.height.ceil() + 2 * pad;
+    final (px, py) = _inkRoom(s.style);
+    final w = tp.width.ceil() + 2 * px, h = tp.height.ceil() + 2 * py;
     final rec = ui.PictureRecorder();
-    tp.paint(Canvas(rec), const Offset(6, 6));
+    tp.paint(Canvas(rec), Offset(px.toDouble(), py.toDouble()));
     tp.dispose();
     final image = await rec.endRecording().toImage(w, h);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -251,6 +251,15 @@ Future<List<GlyphMesh>> extrudeTexts(List<TextSolid> specs) async {
     jobs.add(_SolidJob(VectorizeInput(w, h, alpha), s.height, s.depth, s.simplify));
   }
   return compute(_solids, jobs);
+}
+
+/// Room round a line of [style] for ink that leaves its box (px across,
+/// px up and down): a mark over a letter, as ि's hook rises over कि's
+/// headstroke, or a tail under it, may reach well past the line's height,
+/// and anything off the image would be cut off flat.
+(int, int) _inkRoom(TextStyle style) {
+  final size = style.fontSize ?? 14;
+  return (6 + (0.25 * size).ceil(), 6 + (0.6 * size).ceil());
 }
 
 List<GlyphMesh> _solids(List<_SolidJob> jobs) => [
@@ -277,18 +286,18 @@ class PlacedSolid {
 /// common baseline (letters alone and the word they make, a mark and its
 /// base…).
 Future<List<PlacedSolid>> extrudeTextsAt(List<(String, TextStyle)> texts, {required double unitsPerPx, double depth = 0.1, double simplify = 0.7}) async {
-  const pad = 6;
   final jobs = <_SolidJob>[];
-  final pens = <(double, double)>[];
+  final pens = <(double, double, int)>[];
   for (final (text, style) in texts) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style.copyWith(color: const Color(0xFFFFFFFF))),
       textDirection: TextDirection.ltr,
     )..layout();
-    final w = tp.width.ceil() + 2 * pad, h = tp.height.ceil() + 2 * pad;
-    pens.add((tp.width, pad + tp.computeDistanceToActualBaseline(TextBaseline.alphabetic)));
+    final (px, py) = _inkRoom(style);
+    final w = tp.width.ceil() + 2 * px, h = tp.height.ceil() + 2 * py;
+    pens.add((tp.width, py + tp.computeDistanceToActualBaseline(TextBaseline.alphabetic), px));
     final rec = ui.PictureRecorder();
-    tp.paint(Canvas(rec), const Offset(6, 6));
+    tp.paint(Canvas(rec), Offset(px.toDouble(), py.toDouble()));
     tp.dispose();
     final image = await rec.endRecording().toImage(w, h);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -305,8 +314,8 @@ Future<List<PlacedSolid>> extrudeTextsAt(List<(String, TextStyle)> texts, {requi
     for (var i = 0; i < solids.length; i++)
       () {
         final (mesh, inkCx, inkBottom) = solids[i];
-        final (advance, baseline) = pens[i];
-        return PlacedSolid(mesh, (inkCx - pad) * unitsPerPx, (baseline - inkBottom) * unitsPerPx, advance * unitsPerPx);
+        final (advance, baseline, px) = pens[i];
+        return PlacedSolid(mesh, (inkCx - px) * unitsPerPx, (baseline - inkBottom) * unitsPerPx, advance * unitsPerPx);
       }(),
   ];
 }

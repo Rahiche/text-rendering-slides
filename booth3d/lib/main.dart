@@ -30,6 +30,7 @@ import 'world/figure.dart' show Figures;
 import 'tuning.dart';
 import 'works_chip.dart';
 import 'world/site.dart' show Site3D;
+import 'world/live_screen.dart';
 import 'world/site_plan.dart' show CityPace;
 import 'world/world.dart';
 
@@ -398,6 +399,8 @@ class _NameCityAppState extends State<NameCityApp> with SingleTickerProviderStat
         fit: StackFit.expand,
         children: [
           view,
+          // (The city's live screens' widgets: never shown here.)
+          const LiveScreens(),
           PictureFx(model: model),
           // The booth's own on screen, unless the talk is on (its captions
           // over the questions, as its demo plays behind them).

@@ -228,16 +228,17 @@ List<TalkSection> talkSections(Site3D site) {
       ),
       CityStop(
         'unicode',
+        // (Each count held back until the hall lights its era, as the
+        // narration says it: v_archive.dart's eras.)
         const TalkCard(
-          '128 → 172,808',
-          "From ASCII's 128 characters to Unicode 18's 172,808, across 170+ scripts, and still only "
-              '15.5% of the codespace.',
+          'The scale of the problem',
+          'Every version of Unicode adds characters that fonts and renderers have to keep up with.',
           [
-            FactRow('1963 · ASCII', '128'),
-            FactRow('1991 · Unicode 1', '~7,000'),
-            FactRow('2010 · Unicode 6', '109,449 · emoji arrive'),
-            FactRow('2026 · Unicode 18', '172,808', accent: true),
-            FactRow('codespace', '15.5% of 1,114,112'),
+            FactRow('1963 · ASCII', '128', at: 6.9),
+            FactRow('1991 · Unicode 1', '~7,000', at: 14.6),
+            FactRow('2010 · Unicode 6', '109,449 · emoji arrive', at: 20.7),
+            FactRow('2026 · Unicode 18', '172,808 · 170+ scripts', at: 26.6),
+            FactRow('codespace', '15.5% of 1,114,112', at: 35.9),
           ],
         ),
         // (Down into the Unicode archive, timed to the narration: the
@@ -521,9 +522,9 @@ List<TalkSection> talkSections(Site3D site) {
         // font; every glyph a box, turned in 3D.)
         [
           CityBeat.scene('phones', from: 20, hold: 31.0, fly: 3.0),
-          // (Wider, from in front of the park bench: the letters and the
-          // wght board beside them.)
-          CityBeat.scene('gym', hold: 7.6, fly: 3.0, shift: 0.34, view: Shot(vm.Vector3(-1.58, 1.5, -2.94), vm.Vector3(-0.58, 1.3, 1.26), fov: 46, drift: 0.4)),
+          // (The gym's screen, painted live, right of the card; on to the
+          // end of the narration's clip: it paints along with it.)
+          CityBeat.scene('gym', hold: 20.6, fly: 3.0, shift: 0.4),
           CityBeat.scene('word', hold: 7.0, fly: 3.0, shift: 0.26),
         ],
       ),

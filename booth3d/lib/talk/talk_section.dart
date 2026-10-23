@@ -28,12 +28,16 @@ sealed class CardFact {
 }
 
 /// A value with its label ([accent]: the one to look at), and an
-/// [example] under it (a | in it is a place a line may break).
+/// [example] under it (a | in it is a place a line may break). [at]: held
+/// back until that many seconds into the beat (as its scene reveals it,
+/// the narration saying it), then counted up and lit until the next row's
+/// out.
 class FactRow extends CardFact {
-  const FactRow(this.label, this.value, {this.accent = false, this.example});
+  const FactRow(this.label, this.value, {this.accent = false, this.example, this.at});
   final String label, value;
   final bool accent;
   final String? example;
+  final double? at;
 }
 
 /// A few samples measured several ways: the columns' names (the first is

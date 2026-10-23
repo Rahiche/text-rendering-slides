@@ -1,0 +1,223 @@
+{
+  "schema": 3,
+  "package": "booth3d",
+  "entries": [
+    {
+      "family": "scene",
+      "id": "assets/models/anvil",
+      "file": "scene.anvil.8fa921fc.fsceneb",
+      "stamp": "9b57fcbefecb2988",
+      "source": "assets/models/anvil.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/bin",
+      "file": "scene.bin.730c2dcf.fsceneb",
+      "stamp": "32bf2737b633a08a",
+      "source": "assets/models/bin.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/hammer",
+      "file": "scene.hammer.8ec7f43f.fsceneb",
+      "stamp": "d540a4e47963cb03",
+      "source": "assets/models/hammer.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/hydrant",
+      "file": "scene.hydrant.5e700c7e.fsceneb",
+      "stamp": "8b19dd3b5aa47c78",
+      "source": "assets/models/hydrant.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/people",
+      "file": "scene.people.3420c855.fsceneb",
+      "stamp": "58c880635ba24652",
+      "source": "assets/models/people.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tram_car",
+      "file": "scene.tram_car.eaf2e098.fsceneb",
+      "stamp": "9b311a8f7c147c07",
+      "source": "assets/models/tram_car.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_round",
+      "file": "scene.tree_round.6ef70ca5.fsceneb",
+      "stamp": "e25b4d60a341d872",
+      "source": "assets/models/tree_round.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_tall",
+      "file": "scene.tree_tall.8c64be6a.fsceneb",
+      "stamp": "7ec90f1fa2003373",
+      "source": "assets/models/tree_tall.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/tree_wide",
+      "file": "scene.tree_wide.41cd6589.fsceneb",
+      "stamp": "3cac217f1dfc721f",
+      "source": "assets/models/tree_wide.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/models/vehicles",
+      "file": "scene.vehicles.1d655fbd.fsceneb",
+      "stamp": "e1a0561f6a03462e",
+      "source": "assets/models/vehicles.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_f1",
+      "file": "scene.casual_f1.9eebfaee.fsceneb",
+      "stamp": "ab9bebb5d25a6430",
+      "source": "assets/people/casual_f1.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_f2",
+      "file": "scene.casual_f2.9eebe8f7.fsceneb",
+      "stamp": "38e8f132bcaf9fb1",
+      "source": "assets/people/casual_f2.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_f3",
+      "file": "scene.casual_f3.9eebe904.fsceneb",
+      "stamp": "3761f11a055d438a",
+      "source": "assets/people/casual_f3.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_f4",
+      "file": "scene.casual_f4.9eebfc85.fsceneb",
+      "stamp": "818293d6106cb42f",
+      "source": "assets/people/casual_f4.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_m1",
+      "file": "scene.casual_m1.9e1728e5.fsceneb",
+      "stamp": "82b3ef2a11f8cda8",
+      "source": "assets/people/casual_m1.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_m2",
+      "file": "scene.casual_m2.9e1739a8.fsceneb",
+      "stamp": "06fb6e024dd52c28",
+      "source": "assets/people/casual_m2.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_m3",
+      "file": "scene.casual_m3.9e173b1b.fsceneb",
+      "stamp": "160bffaf542f6a9b",
+      "source": "assets/people/casual_m3.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/casual_m4",
+      "file": "scene.casual_m4.9e173ece.fsceneb",
+      "stamp": "01b240b8efa534bb",
+      "source": "assets/people/casual_m4.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/lab_f",
+      "file": "scene.lab_f.3c6867c1.fsceneb",
+      "stamp": "07fb0ab2f404ad4d",
+      "source": "assets/people/lab_f.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/lab_m",
+      "file": "scene.lab_m.3c686540.fsceneb",
+      "stamp": "489339023abce019",
+      "source": "assets/people/lab_m.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/motions",
+      "file": "scene.motions.39e95850.fsceneb",
+      "stamp": "ad8bb7254240e76a",
+      "source": "assets/people/motions.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_f1",
+      "file": "scene.office_f1.b2b2d444.fsceneb",
+      "stamp": "2db40f4d671c83eb",
+      "source": "assets/people/office_f1.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_f2",
+      "file": "scene.office_f2.b2b2ddb9.fsceneb",
+      "stamp": "088e380729720322",
+      "source": "assets/people/office_f2.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_f3",
+      "file": "scene.office_f3.b2b2deea.fsceneb",
+      "stamp": "cf1e6c581b681eda",
+      "source": "assets/people/office_f3.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_m1",
+      "file": "scene.office_m1.b2f285cf.fsceneb",
+      "stamp": "275feee4e6cc3f60",
+      "source": "assets/people/office_m1.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_m2",
+      "file": "scene.office_m2.b2f29da6.fsceneb",
+      "stamp": "e5fef33f83250580",
+      "source": "assets/people/office_m2.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/office_m3",
+      "file": "scene.office_m3.b2f29c75.fsceneb",
+      "stamp": "4d264f66693593f5",
+      "source": "assets/people/office_m3.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/worker_a",
+      "file": "scene.worker_a.121b2482.fsceneb",
+      "stamp": "63f093e4d06ddd61",
+      "source": "assets/people/worker_a.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/worker_b",
+      "file": "scene.worker_b.121b2a9b.fsceneb",
+      "stamp": "89d7656ddbeaa637",
+      "source": "assets/people/worker_b.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/worker_c",
+      "file": "scene.worker_c.121b2fec.fsceneb",
+      "stamp": "4cc9bc267bf5e103",
+      "source": "assets/people/worker_c.glb"
+    },
+    {
+      "family": "scene",
+      "id": "assets/people/worker_d",
+      "file": "scene.worker_d.121b226d.fsceneb",
+      "stamp": "1d358a5c4e1432c4",
+      "source": "assets/people/worker_d.glb"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "headline-flutter",
+    "title": "Headline: phrase breaking",
+    "text": "Flutterで日本語の改行をきれいにする方法",
+    "fontSize": 40,
+    "width": 520,
+    "balance": true
+  },
+  {
+    "id": "headline-flutter-narrow",
+    "title": "Same headline, narrower",
+    "text": "Flutterで日本語の改行をきれいにする方法",
+    "fontSize": 40,
+    "width": 380,
+    "balance": true
+  },
+  {
+    "id": "weather",
+    "title": "Two sentences",
+    "text": "今日は天気です。明日も晴れるでしょう。",
+    "fontSize": 32,
+    "width": 330,
+    "balance": false
+  },
+  {
+    "id": "katakana",
+    "title": "Long katakana words",
+    "text": "テキストレンダリングの仕組みを理解しよう",
+    "fontSize": 40,
+    "width": 460,
+    "balance": true
+  },
+  {
+    "id": "kinsoku",
+    "title": "Kinsoku: small kana and ー at line starts",
+    "text": "ちょっとキャッシュをクリアしてから、もう一度ダウンロードしてください。",
+    "fontSize": 28,
+    "width": 172,
+    "balance": false
+  },
+  {
+    "id": "yakumono",
+    "title": "Punctuation spacing (yakumono)",
+    "text": "「こんにちは」「世界」。（注）「例」、それから。",
+    "fontSize": 32,
+    "width": 900,
+    "balance": false
+  },
+  {
+    "id": "paragraph",
+    "title": "Body paragraph",
+    "text": "Flutterは、SkParagraphとHarfBuzzを使ってテキストをレイアウトします。日本語の改行は、単語の途中で分割されることがあります。",
+    "fontSize": 18,
+    "width": 420,
+    "balance": false
+  }
+]
